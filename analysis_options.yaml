@@ -15,9 +15,11 @@ analyzer:
     constant_identifier_names: ignore
     dangling_library_doc_comments: ignore
     dead_code: ignore
+    depend_on_referenced_packages: ignore
     deprecated_member_use: ignore
     duplicate_import: ignore
     file_names: ignore
+    invalid_use_of_visible_for_testing_member: ignore
     library_private_types_in_public_api: ignore
     must_be_immutable: ignore
     non_constant_identifier_names: ignore

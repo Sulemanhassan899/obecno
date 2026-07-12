@@ -3,6 +3,9 @@ import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/screens/Employee_module/clock_module/clock_screen.dart';
+import 'package:Obecno/screens/Manager_module/manager_attendence_module/manager_attendance_screen.dart';
+import 'package:Obecno/screens/Manager_module/manager_clock_module/clock_screen.dart';
+import 'package:Obecno/screens/Manager_module/overview_module/overview_screen.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -18,18 +21,19 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   // ✅ ADD SCREENS
   final List<Widget> screens = [
-    ClockScreen(),
-    Container(),
-    Container(),
+    OverviewScreen(),
+    ManagerClockScreen(),
+    ManagerAttendanceScreen(),
     Container(),
   ];
 
   final List<Map<String, dynamic>> items = [
     {
-      "activeIcon": Assets.navigationActiveClockIcon,
-      "inactiveIcon": Assets.navigationUnactiveClockIcon,
-      "label": "Clock",
+      "activeIcon": Assets.navigationActiveOverviewIcon,
+      "inactiveIcon": Assets.navigationUnactiveOverviewIcon,
+      "label": "Overview",
     },
+
     {
       "activeIcon": Assets.navigationActiveClockIcon,
       "inactiveIcon": Assets.navigationUnactiveClockIcon,

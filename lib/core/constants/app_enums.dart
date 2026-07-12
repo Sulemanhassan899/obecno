@@ -19,3 +19,5 @@ enum AttendanceDayStatus {
   manuallyEdited,
   weekend,
 }
+
+

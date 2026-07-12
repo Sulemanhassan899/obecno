@@ -1,5 +1,5 @@
-import 'package:Obecno/screens/onboarding/onboarding.dart';
-import 'package:Obecno/screens/splash/splash.dart';
+import 'package:Obecno/screens/launch/onboarding/onboarding.dart';
+import 'package:Obecno/screens/launch/splash/splash.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 

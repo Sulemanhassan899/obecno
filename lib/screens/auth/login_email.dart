@@ -1,5 +1,8 @@
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/auth/providers/auth_provider.dart';
+import 'package:Obecno/screens/auth/enable_permission.dart';
 import 'package:Obecno/screens/auth/login_pass.dart';
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +10,10 @@ import '../../core/constants/all_colors.dart';
 import '../../widgets/custom_textfield.dart';
 import '../../widgets/my_button.dart';
 import '../../widgets/text_widget.dart';
+import 'package:Obecno/widgets/custom_checkbox_widget.dart';
+import 'package:Obecno/screens/auth/forgot_password.dart';
+import 'package:Obecno/core/services/permission_helper.dart';
+import 'package:Obecno/screens/bottom_nav_bars/employee_nav.dart';
 
 class LoginEmailScreen extends StatefulWidget {
   const LoginEmailScreen({super.key});
@@ -16,38 +23,53 @@ class LoginEmailScreen extends StatefulWidget {
 }
 
 class _LoginEmailScreenState extends State<LoginEmailScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final FocusNode _emailFocus = FocusNode();
-
+  /// ✅ PREFILLED VALUE
+  final TextEditingController _emailController = TextEditingController(
+    text: "suleman@naxovatetechnologies.com",
+  );
+  final TextEditingController _passController = TextEditingController(
+    text: "38f29b82448e",
+  );
+  bool _isEdited = false;
   String? _errorText;
+  bool _isObscure = true;
+  bool _rememberMe = true;
+  final FocusNode _emailFocus = FocusNode();
+  final FocusNode _passFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
 
-    /// ✅ AUTO OPEN KEYBOARD
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _emailFocus.requestFocus();
     });
   }
 
   bool _validate() {
-    String email = _emailController.text.trim();
+    String input = _emailController.text.trim();
 
-    if (email.isEmpty) {
-      setState(() => _errorText = "Email is required");
+    /// ✅ IF NOT EDITED → SKIP VALIDATION
+    if (!_isEdited) return true;
+
+    if (input.isEmpty) {
+      setState(() => _errorText = "Field is required");
       return false;
     }
 
     final emailRegex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
+    final phoneRegex = RegExp(r"^\d{10,13}$");
+    final idRegex = RegExp(r"^[a-zA-Z0-9]{4,}$");
 
-    if (!emailRegex.hasMatch(email)) {
-      setState(() => _errorText = "Enter valid email");
+    if (emailRegex.hasMatch(input) ||
+        phoneRegex.hasMatch(input) ||
+        idRegex.hasMatch(input)) {
+      setState(() => _errorText = null);
+      return true;
+    } else {
+      setState(() => _errorText = "Enter valid Email, Phone or ID");
       return false;
     }
-
-    setState(() => _errorText = null);
-    return true;
   }
 
   @override
@@ -62,7 +84,6 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: kWhite,
-
       body: Padding(
         padding: AppSizes.DEFAULT,
         child: Column(
@@ -70,7 +91,6 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
           children: [
             const SizedBox(height: 10),
 
-            /// BACK BUTTON
             Padding(
               padding: const EdgeInsets.only(top: 40),
               child: BackButtonBg(),
@@ -78,18 +98,17 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
 
             const SizedBox(height: 60),
 
-            /// TITLE
             Center(child: AppText.h4("Enter account details")),
 
             const SizedBox(height: 40),
 
-            /// EMAIL FIELD
             CustomTextField(
               controller: _emailController,
               focusNode: _emailFocus,
-              labelText: "Email",
+              labelText: "Email / Phone / ID",
               haveLebelText: true,
               radius: 14,
+              keyboardType: TextInputType.emailAddress,
               errorBorderColor: _errorText == null ? kBorderColor : Colors.red,
               focusedBorderColor: _errorText == null
                   ? kPrimaryColor
@@ -97,6 +116,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
               backgroundColor: kWhite,
               txtColor: kBlack,
               onChanged: (_) {
+                _isEdited = true; // ✅ TRACK EDIT
                 if (_errorText != null) {
                   setState(() => _errorText = null);
                 }
@@ -113,26 +133,111 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
                 ),
               ),
 
-            /// ✅ THIS IS THE KEY
+            /// PASSWORD FIELD
+            CustomTextField(
+              controller: _passController,
+              focusNode: _passFocus,
+              labelText: "Password",
+              hintText: "Enter your password",
+              haveLebelText: true,
+              radius: 14,
+
+              errorBorderColor: _errorText == null ? kBorderColor : Colors.red,
+              focusedBorderColor: _errorText == null
+                  ? kPrimaryColor
+                  : Colors.red,
+
+              backgroundColor: kWhite,
+              txtColor: kBlack,
+
+              obscureText: _isObscure,
+              haveSuffixIcon: true,
+              suffixWidget: IconButton(
+                icon: Icon(
+                  _isObscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: kBlack300,
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() => _isObscure = !_isObscure);
+                },
+              ),
+
+              onChanged: (_) {
+                if (_errorText != null) {
+                  setState(() => _errorText = null);
+                }
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            /// REMEMBER + FORGOT
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                CustomCheckbox(
+                  text: "Remember",
+                  text2: "me",
+                  initialValue: _rememberMe,
+                  onChanged: (val) {
+                    setState(() => _rememberMe = val);
+                  },
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordScreen(),
+                      ),
+                    );
+                  },
+                  child: AppText.p2("Forgot your Password?", color: kBlue),
+                ),
+              ],
+            ),
+
             const Spacer(),
 
-            /// BUTTON (NATURAL POSITION)
             SafeArea(
               top: false,
               child: MyButton(
-                mTop: 8,
-                mBottom: 16,
+           
+    
                 buttonText: "Continue",
                 backgroundColor: kBlack,
                 fontColor: kWhite,
-                onTap: () {
-                  if (_validate()) {
+                onTap: () async {
+     
+                  if (!_validate()) return;
+                  final ok = await context.read<AuthProvider>().login(
+                    email: _emailController.text.trim(),
+                    password: _passController.text.trim(),
+                    rememberMe: _rememberMe,
+                  );
+                  if (!ok || !context.mounted) return;
+
+                  final permissionsAllowed = await PermissionService.areAllPermissionsAllowed();
+                  if (!context.mounted) return;
+
+                  if (permissionsAllowed) {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const LoginPasswordScreen(),
+                        builder: (_) => const EmployeeBottomNavBar(),
                       ),
-                      (route) => true,
+                      (route) => false,
+                    );
+                  } else {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EnablePermissionsScreen(),
+                      ),
+                      (route) => false,
                     );
                   }
                 },

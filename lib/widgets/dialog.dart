@@ -136,7 +136,7 @@ class DialogHelper {
                               Expanded(
                                 child: MyButton(
                                   buttonText: cancelButtonText,
-                                  onTap: () {
+                                  onTap: () async {
                                     Navigator.pop(context);
                                     if (onCancelTap != null) {
                                       onCancelTap();
@@ -145,7 +145,6 @@ class DialogHelper {
                                   backgroundColor: kWhite,
                                   fontColor: kBlack,
                                   outlineColor: kBorderColor,
-                                  hasgrad: false,
                                 ),
                               ),
 
@@ -157,7 +156,7 @@ class DialogHelper {
                               Expanded(
                                 child: MyButton(
                                   buttonText: buttonText,
-                                  onTap: () {
+                                  onTap: () async {
                                     Navigator.pop(context);
 
                                     if (onButtonTap != null) {

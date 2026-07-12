@@ -1,5 +1,7 @@
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/screens/auth/login_pass.dart';
 import 'package:Obecno/screens/auth/otp.dart';
 import 'package:Obecno/widgets/back_button.dart';
@@ -17,7 +19,10 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController(
+    text: "suleman@naxovatetechnologies.com",
+  );
+  bool _isEdited = false;
   final FocusNode _emailFocus = FocusNode();
 
   String? _errorText;
@@ -92,6 +97,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               controller: _emailController,
               focusNode: _emailFocus,
               labelText: "Email",
+              hintText: "Enter your email",
               haveLebelText: true,
               radius: 14,
               errorBorderColor: _errorText == null ? kBorderColor : Colors.red,
@@ -129,15 +135,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 buttonText: "Reset Password",
                 backgroundColor: kBlack,
                 fontColor: kWhite,
-                onTap: () {
-                  if (_validate()) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const OTPScreen()),
-                      (route) => true,
-                    );
-                 
-                  }
+                onTap: () async {
+                  if (!_validate()) return;
+                  final ok = await context.read<AuthProvider>().forgotPassword(
+                    _emailController.text.trim(),
+                  );
+                  if (!ok || !context.mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OTPScreen()),
+                    (route) => true,
+                  );
                 },
               ),
             ),

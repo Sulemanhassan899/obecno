@@ -8,8 +8,10 @@ import 'package:Obecno/screens/Employee_module/more_module/linked_devices.dart';
 import 'package:Obecno/screens/Employee_module/more_module/office_location.dart';
 import 'package:Obecno/screens/Employee_module/more_module/policy.dart';
 import 'package:Obecno/screens/Employee_module/more_module/terms.dart';
-import 'package:Obecno/screens/onboarding/onboarding.dart';
+import 'package:Obecno/screens/launch/onboarding/onboarding.dart';
 import 'package:flutter/material.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
@@ -178,7 +180,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
             /// LOGOUT
             ButtonAnimations.press(
-              onTap: () {
+              onTap: () async {
+                await context.read<AuthProvider>().logout();
+                if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (_) => const OnBoardingScreen()),

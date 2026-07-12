@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/constants/all_colors.dart';
 import '../core/state/change_notifier_provider.dart';
-import '../theme/theme_provider.dart';
+import '../core/theme/theme_provider.dart';
 import 'text_widget.dart';
 
 class CustomThemeSwitch extends StatelessWidget {

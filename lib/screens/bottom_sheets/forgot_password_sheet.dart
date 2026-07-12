@@ -3,7 +3,7 @@ import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/screens/auth/login_pass.dart';
-import 'package:Obecno/screens/onboarding/onboarding.dart';
+import 'package:Obecno/screens/launch/onboarding/onboarding.dart';
 import 'package:Obecno/widgets/bottom_sheet.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/my_button.dart';
@@ -71,7 +71,7 @@ class _ForgotPasswordContent extends StatelessWidget {
           buttonText: "Sign in",
           backgroundColor: kBlack,
           fontColor: kWhite,
-          onTap: () {
+          onTap: () async{
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => const OnBoardingScreen()),

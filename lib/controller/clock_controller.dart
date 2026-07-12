@@ -157,22 +157,16 @@ class ClockScreenController extends ChangeNotifier {
       case AttendanceDayStatus.outofRange:
         break;
       case AttendanceDayStatus.lateCheckIn:
-        // TODO: Handle this case.
         throw UnimplementedError();
       case AttendanceDayStatus.absent:
-        // TODO: Handle this case.
         throw UnimplementedError();
       case AttendanceDayStatus.normal:
-        // TODO: Handle this case.
         throw UnimplementedError();
       case AttendanceDayStatus.missingCheckOut:
-        // TODO: Handle this case.
         throw UnimplementedError();
       case AttendanceDayStatus.manuallyEdited:
-        // TODO: Handle this case.
         throw UnimplementedError();
       case AttendanceDayStatus.weekend:
-        // TODO: Handle this case.
         throw UnimplementedError();
     }
 

@@ -50,7 +50,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             MyButton(
               buttonText: 'Manager',
 
-              onTap: () {
+              onTap: () async {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -63,7 +63,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             MyButton(
               buttonText: 'Employee',
 
-              onTap: () {
+              onTap: () async {
                 Navigator.push(
                   context,
                   MaterialPageRoute(

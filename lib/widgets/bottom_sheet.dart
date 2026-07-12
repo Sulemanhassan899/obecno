@@ -177,13 +177,15 @@ class CommonBottomSheet extends StatelessWidget {
                       if (buttonText != null &&
                           buttonText.trim().isNotEmpty) ...[
                         MyButton(
-                          onTap:
-                              onButtonTap ?? () => Navigator.of(context).pop(),
+                          onTap: onButtonTap != null
+                              ? () async {
+                                  onButtonTap();
+                                }
+                              : () async {},
                           buttonText: buttonText,
                           choiceIconRight: buttonRightIcon,
                           radius: buttonRadius,
                           hasiconRight: hasRightIcon,
-                          isRight: hasRightIcon,
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
                           backgroundColor: buttonColor,
