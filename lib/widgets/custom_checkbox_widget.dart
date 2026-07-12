@@ -9,6 +9,7 @@ class CustomCheckbox extends StatefulWidget {
   final String? text2;
   final Color? textcolor;
   final Function(bool) onChanged;
+  final bool initialValue;
 
   const CustomCheckbox({
     super.key,
@@ -16,6 +17,7 @@ class CustomCheckbox extends StatefulWidget {
     this.text2,
     required this.onChanged,
     this.textcolor,
+    this.initialValue = true,
   });
 
   @override
@@ -23,7 +25,13 @@ class CustomCheckbox extends StatefulWidget {
 }
 
 class _CustomCheckboxState extends State<CustomCheckbox> {
-  bool _isChecked = false;
+  late bool _isChecked;
+
+  @override
+  void initState() {
+    super.initState();
+    _isChecked = widget.initialValue;
+  }
 
   @override
   Widget build(BuildContext context) {

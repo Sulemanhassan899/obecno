@@ -1,4 +1,4 @@
-import 'package:Obecno/controller/attendece_controller.dart';
+import 'package:Obecno/controller/attendence_controller.dart';
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_enums.dart';

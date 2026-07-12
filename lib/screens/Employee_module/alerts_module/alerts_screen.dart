@@ -28,7 +28,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
               mTop: 16,
               mBottom: 16,
               buttonText: "Show Message",
-              onTap: () {
+              onTap: ()async {
                 CommonBottomSheet.show(
                   context: context,
                   height: 500, // adjust if needed

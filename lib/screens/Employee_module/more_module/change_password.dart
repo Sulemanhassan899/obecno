@@ -82,7 +82,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 buttonText: "Save New Password",
                 backgroundColor: kBlack,
                 fontColor: kWhite,
-                onTap: () {
+                onTap: ()async {
                   if (_validate()) {
                     Navigator.pop(context);
                   }

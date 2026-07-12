@@ -53,7 +53,7 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-          (route) => false, 
+          (route) => false,
         );
       } else {
         SnackbarHelper.showTopToast(
@@ -133,17 +133,14 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             MyButton(
-              buttonText: _loading ?
-              "Please wait..."
-              : "Continue",
+              buttonText: _loading ? "Please wait..." : "Continue",
               radius: 30,
               backgroundColor: kBlack,
               fontColor: kWhite,
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              onTap: _loading ? () {} : _handleContinue,
+              onTap: _loading ? () async {} : _handleContinue,
             ),
-           
           ],
         ),
       ),

@@ -178,7 +178,7 @@ class _LinkedDevicesState extends State<LinkedDevices> {
                   width: 140,
                   height: 40,
                   buttonText: "Delete Request",
-                  onTap: () {},
+                  onTap: () async{},
                   fontSize: 12,
                   backgroundColor: kWhite,
                   fontColor: Colors.red,

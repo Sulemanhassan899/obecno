@@ -42,6 +42,18 @@ class Assets {
   /// assets/fonts/Poppins-Thin.ttf
   static const String fontsPoppinsThin = "assets/fonts/Poppins-Thin.ttf";
 
+  /// Assets for imagesAddEmployee
+  /// assets/images/add_employee.png
+  static const String imagesAddEmployee = "assets/images/add_employee.png";
+
+  /// Assets for imagesAddLocationIcon
+  /// assets/images/add_location_icon.png
+  static const String imagesAddLocationIcon = "assets/images/add_location_icon.png";
+
+  /// Assets for imagesAllEmployees
+  /// assets/images/all_employees.png
+  static const String imagesAllEmployees = "assets/images/all_employees.png";
+
   /// Assets for imagesAndroid
   /// assets/images/android.png
   static const String imagesAndroid = "assets/images/android.png";
@@ -154,6 +166,10 @@ class Assets {
   /// assets/images/location_dot_2.png
   static const String imagesLocationDot2 = "assets/images/location_dot_2.png";
 
+  /// Assets for imagesLocationIcon
+  /// assets/images/location_icon.png
+  static const String imagesLocationIcon = "assets/images/location_icon.png";
+
   /// Assets for imagesLocationPin
   /// assets/images/location_pin.png
   static const String imagesLocationPin = "assets/images/location_pin.png";
@@ -226,6 +242,10 @@ class Assets {
   /// assets/images/setting.png
   static const String imagesSetting = "assets/images/setting.png";
 
+  /// Assets for imagesShareButton
+  /// assets/images/share_button.png
+  static const String imagesShareButton = "assets/images/share_button.png";
+
   /// Assets for imagesTerms
   /// assets/images/terms.png
   static const String imagesTerms = "assets/images/terms.png";
@@ -242,57 +262,29 @@ class Assets {
   /// assets/images/yellow_triangle.png
   static const String imagesYellowTriangle = "assets/images/yellow_triangle.png";
 
-  /// Assets for navigationActiveAlerts
-  /// assets/navigation/active_alerts.png
-  static const String navigationActiveAlerts = "assets/navigation/active_alerts.png";
-
   /// Assets for navigationActiveAlertsIcon
   /// assets/navigation/active_alerts_icon.png
   static const String navigationActiveAlertsIcon = "assets/navigation/active_alerts_icon.png";
-
-  /// Assets for navigationActiveAttendence
-  /// assets/navigation/active_attendence.png
-  static const String navigationActiveAttendence = "assets/navigation/active_attendence.png";
 
   /// Assets for navigationActiveAttendenceIcon
   /// assets/navigation/active_attendence_icon.png
   static const String navigationActiveAttendenceIcon = "assets/navigation/active_attendence_icon.png";
 
-  /// Assets for navigationActiveClock
-  /// assets/navigation/active_clock.png
-  static const String navigationActiveClock = "assets/navigation/active_clock.png";
-
   /// Assets for navigationActiveClockIcon
   /// assets/navigation/active_clock_icon.png
   static const String navigationActiveClockIcon = "assets/navigation/active_clock_icon.png";
-
-  /// Assets for navigationActiveMore
-  /// assets/navigation/active_more.png
-  static const String navigationActiveMore = "assets/navigation/active_more.png";
 
   /// Assets for navigationActiveMoreIcon
   /// assets/navigation/active_more_icon.png
   static const String navigationActiveMoreIcon = "assets/navigation/active_more_icon.png";
 
-  /// Assets for navigationActiveOverview
-  /// assets/navigation/active_overview.png
-  static const String navigationActiveOverview = "assets/navigation/active_overview.png";
-
   /// Assets for navigationActiveOverviewIcon
   /// assets/navigation/active_overview_icon.png
   static const String navigationActiveOverviewIcon = "assets/navigation/active_overview_icon.png";
 
-  /// Assets for navigationUnactiveAlerts
-  /// assets/navigation/unactive_alerts.png
-  static const String navigationUnactiveAlerts = "assets/navigation/unactive_alerts.png";
-
   /// Assets for navigationUnactiveAlertsIcon
   /// assets/navigation/unactive_alerts_icon.png
   static const String navigationUnactiveAlertsIcon = "assets/navigation/unactive_alerts_icon.png";
-
-  /// Assets for navigationUnactiveAttendence
-  /// assets/navigation/unactive_attendence.png
-  static const String navigationUnactiveAttendence = "assets/navigation/unactive_attendence.png";
 
   /// Assets for navigationUnactiveAttendenceIcon
   /// assets/navigation/unactive_attendence_icon.png
@@ -302,17 +294,9 @@ class Assets {
   /// assets/navigation/unactive_clock_icon.png
   static const String navigationUnactiveClockIcon = "assets/navigation/unactive_clock_icon.png";
 
-  /// Assets for navigationUnactiveMore
-  /// assets/navigation/unactive_more.png
-  static const String navigationUnactiveMore = "assets/navigation/unactive_more.png";
-
   /// Assets for navigationUnactiveMoreIcon
   /// assets/navigation/unactive_more_icon.png
   static const String navigationUnactiveMoreIcon = "assets/navigation/unactive_more_icon.png";
-
-  /// Assets for navigationUnactiveOverview
-  /// assets/navigation/unactive_overview.png
-  static const String navigationUnactiveOverview = "assets/navigation/unactive_overview.png";
 
   /// Assets for navigationUnactiveOverviewIcon
   /// assets/navigation/unactive_overview_icon.png

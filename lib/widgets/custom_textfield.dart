@@ -24,6 +24,7 @@ class CustomTextField extends StatelessWidget {
 
   final Color disabledBorderColor;
   final double disabledBorderWidth;
+  final TextInputType keyboardType;
 
   /// =====================
   /// BASIC
@@ -101,6 +102,7 @@ class CustomTextField extends StatelessWidget {
     this.errorBorderWidth = 1.5,
     this.disabledBorderColor = kGreyColor2,
     this.disabledBorderWidth = 1,
+    this.keyboardType = TextInputType.text,
 
     /// BASIC
     this.hintText = 'Hint here',
@@ -194,6 +196,7 @@ class CustomTextField extends StatelessWidget {
             child: SizedBox(
               width: isExpanded ? double.infinity : width,
               child: TextFormField(
+                keyboardType: keyboardType,
                 focusNode: focusNode,
                 validator: validator,
                 controller: controller,

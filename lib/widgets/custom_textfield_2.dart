@@ -76,7 +76,7 @@ class CustomTextField2 extends StatelessWidget {
   final double contentPaddingRight;
   final double contentPaddingBottom;
   final double contentPaddingTop;
-
+  final TextInputType keyboardType;
   final double left;
   final double right;
   final double top;
@@ -89,6 +89,7 @@ class CustomTextField2 extends StatelessWidget {
   CustomTextField2({
     super.key,
     this.controller,
+    this.keyboardType = TextInputType.text,
 
     /// BORDER DEFAULTS
     this.radius = 12,
@@ -198,6 +199,7 @@ class CustomTextField2 extends StatelessWidget {
             width: isExpanded ? double.infinity : width,
             height: height,
             child: TextFormField(
+              keyboardType: keyboardType,
               validator: validator,
               controller: controller,
               maxLines: maxlines,

@@ -226,6 +226,7 @@ class _PhoneFieldState extends State<PhoneField> {
                   hintText: "300 123 4567",
                   hintTextFontColor: kBlack,
                   hintTextFontSize: 14,
+                  keyboardType: TextInputType.phone,
                   haveLebelText: false,
                   radius: 0,
                   bottom: 0,

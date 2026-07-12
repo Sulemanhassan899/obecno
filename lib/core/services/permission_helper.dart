@@ -35,4 +35,11 @@ class PermissionService {
   static bool isAllowed(PermissionStatus s) {
     return s.isGranted || s.isLimited || s.isProvisional;
   }
+
+  static Future<bool> areAllPermissionsAllowed() async {
+    final loc = await Permission.locationWhenInUse.status;
+    final notif = await Permission.notification.status;
+    final motion = await Permission.activityRecognition.status;
+    return isAllowed(loc) && isAllowed(notif) && isAllowed(motion);
+  }
 }

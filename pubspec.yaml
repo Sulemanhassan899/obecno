@@ -24,6 +24,10 @@ dependencies:
   connectivity_plus:
   country_pickers: 
   pinput:
+  http:  
+  cookie_jar:
+  path_provider: 
+  flutter_secure_storage: 
 
 dev_dependencies:
   flutter_test:
