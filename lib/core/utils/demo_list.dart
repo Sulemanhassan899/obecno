@@ -1,9 +1,10 @@
 import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
+
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/model/attendence_model.dart';
-import 'package:Obecno/model/manager_attendence_model.dart';
-import 'package:Obecno/screens/bottom_sheets/location_detail_sheet.dart';
-import 'package:Obecno/screens/bottom_sheets/company_detail_sheet.dart';
+import 'package:Obecno/shared/bottom_sheets/company_detail_sheet.dart';
+import 'package:Obecno/shared/bottom_sheets/location_detail_sheet.dart';
+
 
 class ClockScreenDemoData {
   ClockScreenDemoData._();
@@ -180,64 +181,3 @@ class MonthlyAttendanceDemoData {
     ];
   }
 }
-
-final List<ManagerAttendanceModel> dummyManagerAttendance = [
-  ManagerAttendanceModel(
-    name: "Armando Predovic",
-    role: "Owner",
-    team: "Team",
-    checkIn: "09:10 AM",
-    status: "working",
-    warning: true,
-  ),
-  ManagerAttendanceModel(
-    name: "Jonas Janak",
-    role: "Manager",
-    team: "Team",
-    checkIn: "09:10 AM",
-    checkOut: "08:10 PM",
-  ),
-  ManagerAttendanceModel(
-    name: "Jonas Janak",
-    role: null,
-    team: null,
-    checkIn: null,
-    checkOut: null,
-    editIcon: false,
-    warning: false,
-  ),
-  ManagerAttendanceModel(
-    name: "Armando Predovic",
-    role: "Owner",
-    team: "Team",
-    checkIn: "09:10 AM",
-    status: "break",
-    warning: true,
-  ),
-  ManagerAttendanceModel(
-    name: "Jonas Janak",
-    role: "Manager",
-    team: "Team",
-    status: "late",
-    checkIn: "09:10 AM",
-    checkOut: "08:10 PM",
-  ),
-  ManagerAttendanceModel(
-    name: "Jonas Janak",
-    role: null,
-    team: null,
-    checkIn: null,
-    checkOut: null,
-    editIcon: false,
-    warning: false,
-  ),
-  ManagerAttendanceModel(
-    name: "Jonas Janak",
-    role: "Manager",
-    team: "Team",
-    status: "late",
-    checkIn: "09:10 AM",
-    checkOut: "08:10 PM",
-  ),
-
-];

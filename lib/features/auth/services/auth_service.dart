@@ -1,27 +1,100 @@
-import 'package:Obecno/api/api_response.dart';
-import 'package:Obecno/api/session_cookie_store.dart';
-import 'package:Obecno/core/services/token_service.dart';
-import 'package:Obecno/features/auth/repositories/auth_repository.dart';
-import 'package:Obecno/model/auth_user_model.dart';
 
+// import 'package:Obecno/core/api/api_response.dart';
+// import 'package:Obecno/core/api/session_cookie_store.dart';
+// import 'package:Obecno/core/services/token_service.dart';
+// import 'package:Obecno/features/auth/repositories/auth_repository.dart';
+// import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
+
+// class AuthService {
+//   AuthService(
+//     this._repository,
+//     this._tokenService, {
+//     SessionCookieStore? cookieStore,
+//   }) : _cookieStore = cookieStore ?? SessionCookieStore();
+
+//   final AuthRepository _repository;
+//   final TokenService _tokenService;
+//   final SessionCookieStore _cookieStore;
+
+//   // ================= CHECK EMAIL (STEP 1) =================
+//   Future<ApiResponse<bool>> checkEmailExists(String email) async {
+//     return await _repository.checkEmail(email);
+//   }
+
+//   // ================= SIGN IN (STEP 2) =================
+//   Future<ApiResponse<AuthUserModel>> login({
+//     required String email,
+//     required String password,
+//     bool rememberMe = true,
+//   }) async {
+//     final response = await _repository.login(
+//       email: email,
+//       password: password,
+//       rememberMe: rememberMe,
+//     );
+
+//     if (response.success && response.data != null) {
+//       final user = response.data!;
+//       await _tokenService.setRememberMe(rememberMe);
+//       await _tokenService.markSessionActive(userId: user.id, role: user.role);
+//     }
+
+//     return response;
+//   }
+
+//   Future<bool> isRememberMe() async {
+//     return await _tokenService.isRememberMe;
+//   }
+
+//   Future<ApiResponse<void>> forgotPassword(String email) async {
+//     final res = await _repository.forgotPassword(email);
+//     return res;
+//   }
+//   // ================= LOGOUT =================
+//   Future<void> logout() async {
+//     await _tokenService.clearSession();
+//     await _cookieStore.clear();
+//   }
+
+//   Future<bool> isLoggedIn() async {
+//     return await _tokenService.isSessionActive;
+//   }
+// }
+
+import 'package:Obecno/core/api/api_response.dart';
+import 'package:Obecno/core/services/token_service.dart';
+import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:Obecno/features/auth/repositories/auth_repository.dart';
+
+/// Thin orchestration layer between [AuthProvider] (UI state) and
+/// [AuthRepository] (network I/O). Owns session bookkeeping via
+/// [TokenService] -- [AuthRepository] never touches local storage itself.
+///
+/// FIXED: previously took an optional `SessionCookieStore` and cleared it
+/// on [logout], a leftover from the old `HttpApiClient` flow
+/// (`core/api/session_cookie_store.dart`). That store isn't what
+/// [ApiClient] actually reads cookies from -- `TokenService.clearSession()`
+/// already wipes the real cookie jar via `CookieService.instance.clear()`
+/// -- so keeping it here was dead code that also referenced a client this
+/// class no longer depends on. Removed.
 class AuthService {
-  AuthService(
-    this._repository,
-    this._tokenService, {
-    SessionCookieStore? cookieStore,
-  }) : _cookieStore = cookieStore ?? SessionCookieStore();
+  AuthService(this._repository, this._tokenService);
 
   final AuthRepository _repository;
   final TokenService _tokenService;
-  final SessionCookieStore _cookieStore;
 
-  // ================= LOGIN =================
+  // ================= CHECK EMAIL (STEP 1) =================
+  Future<ApiResponse<bool>> checkEmailExists(String email) {
+    return _repository.checkEmail(email);
+  }
+
+  // ================= SIGN IN (STEP 2) =================
   Future<ApiResponse<AuthUserModel>> login({
     required String email,
     required String password,
     bool rememberMe = true,
   }) async {
-    final response = await _repository.login(email: email, password: password);
+    final response = await _repository.login(email: email, password: password, rememberMe: rememberMe);
 
     if (response.success && response.data != null) {
       final user = response.data!;
@@ -32,39 +105,47 @@ class AuthService {
     return response;
   }
 
-  Future<bool> isRememberMe() async {
-    return await _tokenService.isRememberMe;
-  }
-  // ✅ NO STRUCTURE CHANGE — ONLY SAFE RETURN HANDLING
+  Future<bool> isRememberMe() => _tokenService.isRememberMe;
 
-  Future<ApiResponse<void>> forgotPassword(String email) async {
-    final res = await _repository.forgotPassword(email);
-    return res;
+  Future<ApiResponse<void>> forgotPassword(String email) {
+    return _repository.forgotPassword(email);
   }
 
-  Future<ApiResponse<void>> verifyOtp(String otp) async {
-    final res = await _repository.verifyOtp(otp);
-    return res;
+  // ================= CURRENT USER =================
+  /// Refreshes the session user from `/api/auth/me` and re-persists the
+  /// (possibly changed) role. Callers get the same [AuthUserModel] shape
+  /// as [login] so it can be dropped straight into [AuthProvider]'s
+  /// `_user` field.
+  Future<ApiResponse<AuthUserModel>> getCurrentUser() async {
+    final response = await _repository.getCurrentUser();
+
+    if (response.success && response.data != null) {
+      final user = response.data!;
+      await _tokenService.markSessionActive(userId: user.id, role: user.role);
+    }
+
+    return response;
   }
 
-  Future<ApiResponse<void>> resetPassword({
-    required String oldPassword,
+  // ================= CHANGE PASSWORD =================
+  Future<ApiResponse<void>> changePassword({
+    required String currentPassword,
     required String newPassword,
-  }) async {
-    final res = await _repository.resetPassword(
-      oldPassword: oldPassword,
+    required String newPasswordConfirmation,
+  }) {
+    return _repository.changePassword(
+      currentPassword: currentPassword,
       newPassword: newPassword,
+      newPasswordConfirmation: newPasswordConfirmation,
     );
-    return res;
   }
 
   // ================= LOGOUT =================
   Future<void> logout() async {
     await _tokenService.clearSession();
-    await _cookieStore.clear();
   }
 
-  Future<bool> isLoggedIn() async {
-    return await _tokenService.isSessionActive;
+  Future<bool> isLoggedIn() {
+    return _tokenService.isSessionActive;
   }
 }

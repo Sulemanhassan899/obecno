@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:Obecno/api/api.dart'; // ✅ FIXED (was api_client.dart)
-import 'package:Obecno/api/cookie_service.dart';
+import 'package:Obecno/core/api/api.dart';
+import 'package:Obecno/core/api/api_client.dart';
+import 'package:Obecno/core/api/cookie_service.dart';
 import 'package:Obecno/core/services/network_checker.dart';
 import 'package:Obecno/core/services/token_service.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
@@ -42,19 +43,22 @@ void main() {
     final cookieService = await CookieService.init();
     final tokenService = TokenService();
 
-    // ✅ FIX: Use HttpApiClient (correct client for AuthRepository)
-    final apiClient = HttpApiClient(
+    final apiClient = ApiClient(
+      cookieService: cookieService,
+      networkChecker: _FakeNetworkChecker(),
+      tokenService: tokenService,
+    );
+    final httpapiClient = HttpApiClient(
       cookieService: cookieService,
       networkChecker: _FakeNetworkChecker(),
     );
-
-    // ✅ FIX: Use positional constructor (not named)
+    // Positional constructor, as AuthProvider expects.
     final authProvider = AuthProvider(
       AuthService(AuthRepository(apiClient), tokenService),
     );
 
     // Build app
-    await tester.pumpWidget(MyApp(authProvider: authProvider));
+    await tester.pumpWidget(MyApp());
     await tester.pumpAndSettle();
 
     // Smoke test assertion

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:Obecno/api/constants.dart';
+import 'package:Obecno/core/api/constants.dart';
 
 import 'logger.dart';
 
