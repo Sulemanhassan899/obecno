@@ -20,4 +20,16 @@ enum AttendanceDayStatus {
   weekend,
 }
 
+enum AttendanceActionResult {
+  checkedIn,
+  checkedOut,
+  breakStarted,
+  breakEnded,
+  outOfRange,
+  none,
+}
+
+enum AttendanceEventType { checkIn, checkOut, breakStart, breakEnd }
+
+enum AttendanceHisotryEventType { checkIn, checkOut, breakStart, breakEnd }
 

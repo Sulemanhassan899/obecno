@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:Obecno/api/constants.dart';
+import 'package:Obecno/core/api/constants.dart';
 import 'package:flutter/foundation.dart';
 
 /// Dependency-free logger for the API layer.

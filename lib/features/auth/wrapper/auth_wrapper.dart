@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:Obecno/core/services/connectivity_service.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/screens/auth/login_email.dart';
+import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:flutter/material.dart';
 
 import '../providers/auth_provider.dart';

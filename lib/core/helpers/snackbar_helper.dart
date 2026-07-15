@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 
 /// ===============================
@@ -279,11 +279,18 @@ class _TopToastWidgetState extends State<_TopToastWidget>
                           ),
 
                         /// ✅ TEXT
-                        AppText.p2(
-                          widget.message,
-                          color: widget.textColor,
-                          weight: widget.fontWeight,
-                          align: TextAlign.center,
+                        // FIXED: wrapped in Flexible -- longer messages
+                        // (e.g. permission/connectivity toasts) were
+                        // overflowing the Row since AppText.p2 had no
+                        // width constraint of its own.
+                        Flexible(
+                          child: AppText.p2(
+                            widget.message,
+                            color: widget.textColor,
+                            weight: widget.fontWeight,
+                            align: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),

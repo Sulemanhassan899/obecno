@@ -27,7 +27,10 @@ dependencies:
   http:  
   cookie_jar:
   path_provider: 
-  flutter_secure_storage: 
+  flutter_secure_storage:
+  geolocator:
+  sqflite:
+  shared_preferences : 
 
 dev_dependencies:
   flutter_test:

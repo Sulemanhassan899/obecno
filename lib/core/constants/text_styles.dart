@@ -1,6 +1,6 @@
 import 'package:Obecno/core/constants/app_fonts.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:Obecno/shared/widgets/text_widget.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 
 /// ===============================
@@ -157,10 +157,12 @@ class AppText {
     String? fontFamily,
     FontWeight weight = FontWeight.w400,
     TextAlign? align,
+    TextOverflow? overflow,
   }) {
     return TextWidget(
       text: text,
       size: 14,
+      textOverflow: overflow,
       fontFamily: fontFamily ?? AppFonts.Poppins,
       weight: weight,
       color: color ?? kBlack,
@@ -203,7 +205,6 @@ class AppText {
       textAlign: align ?? TextAlign.center,
     );
   }
-
 
   /// 🔥 P3 - 14
   static Widget p5(
