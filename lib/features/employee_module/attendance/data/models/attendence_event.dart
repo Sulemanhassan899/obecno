@@ -1,5 +1,5 @@
-import 'package:Obecno/core/constants/app_enums.dart';
 
+import 'package:Obecno/core/constants/app_enums.dart';
 
 class HistoryAttendanceEvent {
   final AttendanceHisotryEventType type;
@@ -25,10 +25,10 @@ class HistoryAttendanceEvent {
   }
 
   Map<String, dynamic> toJson() => {
-    'type': type.name,
-    'time': time.toIso8601String(),
-    'location': location,
-  };
+        'type': type.name,
+        'time': time.toIso8601String(),
+        'location': location,
+      };
 
   factory HistoryAttendanceEvent.fromJson(Map<String, dynamic> json) {
     return HistoryAttendanceEvent(
@@ -41,7 +41,6 @@ class HistoryAttendanceEvent {
     );
   }
 
-  /// Human readable label, e.g. "Check-In", "Break Start"
   String get label {
     switch (type) {
       case AttendanceHisotryEventType.checkIn:
@@ -57,9 +56,7 @@ class HistoryAttendanceEvent {
 }
 
 /// ------------------------------------------------------------
-/// Shared formatting helpers used across ClockScreen,
-/// AttendanceCard and AttendanceDetailsSheet so time/duration
-/// text is always consistent.
+/// Formatting Helpers
 /// ------------------------------------------------------------
 class AttendanceFormat {
   AttendanceFormat._();
@@ -112,7 +109,6 @@ class AttendanceFormat {
     return "${_days[d.weekday % 7]}, ${d.day} ${_months[d.month - 1]}";
   }
 
-  /// e.g. "17 October 2025" (used as the bottom sheet header)
   static String fullDate(DateTime d) {
     return "${d.day} ${_months[d.month - 1]} ${d.year}";
   }

@@ -1,5 +1,3 @@
-
-
 import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_enums.dart';
@@ -10,11 +8,16 @@ import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-class AttendanceSummaryCard extends StatelessWidget {
+class AttendanceSummaryCard extends StatefulWidget {
   const AttendanceSummaryCard({super.key, required this.summary});
 
   final MonthSummary summary;
 
+  @override
+  State<AttendanceSummaryCard> createState() => _AttendanceSummaryCardState();
+}
+
+class _AttendanceSummaryCardState extends State<AttendanceSummaryCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -30,8 +33,8 @@ class AttendanceSummaryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _StatItem(
-                  value: "${summary.workingDays}",
-                  suffix: " / ${summary.totalDays}",
+                  value: "${widget.summary.workingDays}",
+                  suffix: " / ${widget.summary.totalDays}",
                   valueColor: kPrimaryColor,
                   label: "Working Days",
                 ),
@@ -43,7 +46,7 @@ class AttendanceSummaryCard extends StatelessWidget {
               ),
               Expanded(
                 child: _StatItem(
-                  value: "${summary.absentOrLeaves}",
+                  value: "${widget.summary.absentOrLeaves}",
                   valueColor: kPurple,
                   label: "Absent / Leaves",
                 ),
@@ -57,7 +60,7 @@ class AttendanceSummaryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _StatItem(
-                  value: summary.lateCheckIns.toString().padLeft(2, '0'),
+                  value: widget.summary.lateCheckIns.toString().padLeft(2, '0'),
                   valueColor: kredColor,
                   label: "Late Check-in",
                 ),
@@ -69,7 +72,7 @@ class AttendanceSummaryCard extends StatelessWidget {
               ),
               Expanded(
                 child: _StatItem(
-                  value: "${summary.lateCheckOuts}",
+                  value: "${widget.summary.lateCheckOuts}",
                   valueColor: kPrimaryColor,
                   label: "Late Check-out",
                 ),

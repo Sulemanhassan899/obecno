@@ -19,6 +19,7 @@ import 'package:Obecno/shared/bottom_sheets/attendance_details_sheet.dart';
 import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 class MonthlyAttendanceScreen extends StatefulWidget {
   const MonthlyAttendanceScreen({super.key});
@@ -112,7 +113,7 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
   List<HistoryAttendanceEvent> _eventsFor(normalized.AttendanceDay? day) {
     if (day == null) return [];
 
-    final events = <HistoryAttendanceEvent>[]; // ✅ FIXED
+    final events = <HistoryAttendanceEvent>[]; 
 
     if (day.firstCheckIn != null) {
       events.add(
@@ -158,25 +159,24 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
     final s = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
     return DateTime(date.year, date.month, date.day, h, m, s);
   }
+void _onDayTap(AttendanceDayRecord record) {
+  final day = record.date;
 
-  void _onDayTap(AttendanceDayRecord record) {
-    final day = record.date;
+  final normalizedDay = _controller.dayFor(day);
+  final dayEvents = _eventsFor(normalizedDay);
 
-    // 🔥 CHANGED: real data for this date instead of filtering the old
-    // hardcoded (always-empty) `allEvents` list.
-    final normalizedDay = _controller.dayFor(day);
-    final dayEvents = _eventsFor(normalizedDay);
+  final summary = HistoryAttendanceEngine.compute(dayEvents);
 
-    final summary = HistoryAttendanceEngine.compute(dayEvents);
-
-    AttendanceDetailsSheet.show(
-      context: context,
-      day: day,
-      events: dayEvents,
-      summary: summary,
-      onEditAttendance: () {},
-    );
-  }
+  AttendanceDetailsSheet.show(
+    context: context,
+    day: day,
+    events: dayEvents,
+    summary: summary,
+    apiClient: _controller.apiClient,
+    userEmail: _controller.userEmail, 
+    onEditAttendance: () {},
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +211,7 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
                   const SizedBox(height: 20),
                   Expanded(
                     child: _controller.isLoading || summary == null
-                        ? const Center(child: CircularProgressIndicator())
+                        ? _buildLoadingShimmer()
                         : _controller.records.isEmpty
                         // 🔥 NEW: "No Record" empty state per spec
                         // (functional requirement #1). Summary card still
@@ -268,15 +268,13 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
                               // to a month that isn't cached yet — never a
                               // full-screen loader for pagination.
                               if (_controller.isPaginating)
-                                const Padding(
+                                 Padding(
                                   padding: EdgeInsets.symmetric(vertical: 16),
                                   child: Center(
                                     child: SizedBox(
                                       height: 20,
                                       width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
+                                      child: _shimmerBox(height: 20, width: 80),
                                     ),
                                   ),
                                 ),
@@ -287,6 +285,77 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingShimmer() {
+    return ListView(
+      children: [
+        /// Summary shimmer
+        Container(
+          padding: const EdgeInsets.all(25),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _shimmerBox(height: 20)),
+                  const SizedBox(width: 20),
+                  Expanded(child: _shimmerBox(height: 20)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(child: _shimmerBox(height: 20)),
+                  const SizedBox(width: 20),
+                  Expanded(child: _shimmerBox(height: 20)),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        /// List shimmer
+        ...List.generate(6, (index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                _shimmerBox(
+                  height: 60,
+                  width: 60,
+                  radius: BorderRadius.circular(10),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: _shimmerBox(height: 16)),
+                const SizedBox(width: 16),
+                _shimmerBox(height: 16, width: 80),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _shimmerBox({
+    double height = 16,
+    double width = double.infinity,
+    BorderRadius? radius,
+  }) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        height: height,
+        width: width,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: radius ?? BorderRadius.circular(6),
         ),
       ),
     );

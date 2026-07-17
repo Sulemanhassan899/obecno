@@ -86,6 +86,10 @@ class Assets {
   /// assets/images/call.png
   static const String imagesCall = "assets/images/call.png";
 
+  /// Assets for imagesCheck
+  /// assets/images/check.png
+  static const String imagesCheck = "assets/images/check.png";
+
   /// Assets for imagesCheckInHand
   /// assets/images/check_in_hand.png
   static const String imagesCheckInHand = "assets/images/check_in_hand.png";
@@ -105,6 +109,10 @@ class Assets {
   /// Assets for imagesClipboardClock
   /// assets/images/clipboard_clock.png
   static const String imagesClipboardClock = "assets/images/clipboard_clock.png";
+
+  /// Assets for imagesClockGrey
+  /// assets/images/Clock_grey.png
+  static const String imagesClockGrey = "assets/images/Clock_grey.png";
 
   /// Assets for imagesDemoReq
   /// assets/images/demo_req.png
@@ -257,6 +265,10 @@ class Assets {
   /// Assets for imagesUserPen
   /// assets/images/user_pen.png
   static const String imagesUserPen = "assets/images/user_pen.png";
+
+  /// Assets for imagesXmark
+  /// assets/images/xmark.png
+  static const String imagesXmark = "assets/images/xmark.png";
 
   /// Assets for imagesYellowTriangle
   /// assets/images/yellow_triangle.png

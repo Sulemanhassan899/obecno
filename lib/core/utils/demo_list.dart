@@ -88,7 +88,7 @@ class MonthlyAttendanceDemoData {
       ),
       AttendanceDayRecord(
         day: 16,
-        weekday: "Thu", // ✅ fixed
+        weekday: "Thu", 
         date: DateTime(month.year, month.month, 16),
         checkIn: "09:01 AM",
         checkOut: "05:02 PM",

@@ -6,13 +6,12 @@ import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/bottom_nav_bars/employee_nav.dart';
-import 'package:Obecno/shared/bottom_nav_bars/manager_nav.dart';
 import 'package:Obecno/shared/widgets/back_button.dart';
 import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
 import 'package:Obecno/shared/widgets/my_button.dart';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class EnablePermissionsScreen extends StatefulWidget {
@@ -54,15 +53,16 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
         // ROLE-BASED NAVIGATION (SAFE INJECTION): role-selection screen
         // removed from the flow -- go straight to the correct home based
         // on AuthProvider.homeTarget (data.user.role).
+        //
+        // FIXED: was `Navigator.pushAndRemoveUntil(...)`, a raw
+        // imperative page pushed on top of GoRouter's stack -- see the
+        // matching fix + explanation in login_pass.dart. `context.go`
+        // keeps GoRouter's own page list in sync with what's on screen.
         final homeTarget = context.read<AuthProvider>().homeTarget;
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => homeTarget == AuthHomeTarget.manager
-                ? const ManagerBottomNavBar()
-                : const EmployeeBottomNavBar(),
-          ),
-          (route) => false,
+        context.go(
+          homeTarget == AuthHomeTarget.manager
+              ? '/manager_nav'
+              : '/employee_nav',
         );
       } else {
         SnackbarHelper.showTopToast(

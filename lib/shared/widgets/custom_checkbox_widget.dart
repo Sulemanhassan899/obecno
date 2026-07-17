@@ -61,7 +61,6 @@ class _CustomCheckboxState extends State<CustomCheckbox> {
 
           const SizedBox(width: 8),
 
-          /// ✅ FIXED TEXT HANDLING
           Flexible(
             child: Wrap(
               spacing: 4,

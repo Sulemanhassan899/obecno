@@ -5,7 +5,7 @@ import 'package:Obecno/features/employee_module/more/presentation/screens/terms.
 
 import 'package:Obecno/core/constants/app_fonts.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/features/launch/book_demo/book_demo.dart';
+import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';
 
 import 'package:Obecno/shared/widgets/term_text.dart';
 import 'package:flutter/material.dart';

@@ -1,372 +1,3 @@
-// import 'package:Obecno/features/employee_module/clock/domain/controllers/clock_controller.dart';
-// import 'package:Obecno/core/animations/app_animations.dart';
-// import 'package:Obecno/core/constants/all_colors.dart';
-// import 'package:Obecno/core/constants/app_enums.dart'
-//     hide AttendanceActionResult;
-// import 'package:Obecno/core/constants/app_sizes.dart';
-// import 'package:Obecno/core/constants/text_styles.dart';
-// import 'package:Obecno/core/helpers/snackbar_helper.dart';
-// import 'package:Obecno/core/utils/demo_list.dart';
-// import 'package:Obecno/features/employee_module/clock/domain/controllers/synced_clock_screen_controller.dart';
-// import 'package:Obecno/features/employee_module/clock/repositories/clock_attendance_repository.dart';
-// import 'package:Obecno/generated/assets.dart';
-// import 'package:Obecno/main.dart';
-// import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
-// import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendence_card.dart';
-
-// import 'package:Obecno/shared/bottom_sheets/company_detail_sheet.dart';
-// import 'package:Obecno/shared/bottom_sheets/location_detail_sheet.dart';
-
-// import 'package:Obecno/shared/widgets/check_in_button.dart';
-// import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-// import 'package:flutter/cupertino.dart';
-// import 'package:flutter/material.dart';
-
-// class ClockScreen extends StatefulWidget {
-//   const ClockScreen({super.key});
-
-//   @override
-//   State<ClockScreen> createState() => _ClockScreenState();
-// }
-
-// class _ClockScreenState extends State<ClockScreen> with RouteAware {
-//   late final ClockScreenController _controller;
-//   final ClockTicker _ticker = ClockTicker();
-//   bool _isActive = true;
-
-//   @override
-//   void initState() {
-//     super.initState();
-
-//     _controller = SyncedClockScreenController(
-//       repository: bindings.clockAttendanceRepository,
-//     );
-//     _ticker.start();
-//   }
-
-//   @override
-//   void didChangeDependencies() {
-//     super.didChangeDependencies();
-//     final route = ModalRoute.of(context);
-//     if (route is PageRoute) {
-//       routeObserver.subscribe(this, route);
-//     }
-//   }
-
-//   @override
-//   void didPushNext() {
-//     setState(() => _isActive = false);
-//     _ticker.stop();
-//   }
-
-//   @override
-//   void didPopNext() {
-//     setState(() => _isActive = true);
-//     _ticker.start();
-//   }
-
-//   @override
-//   void dispose() {
-//     routeObserver.unsubscribe(this);
-//     _ticker.dispose();
-//     _controller.dispose();
-//     super.dispose();
-//   }
-
-//   String _formattedTime(DateTime now) {
-//     final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
-//     final minute = now.minute.toString().padLeft(2, '0');
-//     return "$hour:$minute";
-//   }
-
-//   void _openLocationSheet() async {
-//     final result = await showModalBottomSheet<LocationModel>(
-//       context: context,
-//       isScrollControlled: true,
-//       backgroundColor: Colors.transparent,
-//       builder: (_) => LocationBottomSheet(
-//         locations: ClockScreenDemoData.locations,
-//         selected: _controller.selectedLocationName,
-//       ),
-//     );
-//     if (result != null) {
-//       _controller.selectLocation(
-//         result.name,
-//         inRange: result.address != "No Location",
-//       );
-//     }
-//   }
-
-//   void _openCompanySheet() async {
-//     final result = await showModalBottomSheet<CompanyModel>(
-//       context: context,
-//       isScrollControlled: true,
-//       backgroundColor: Colors.transparent,
-//       builder: (_) => CompanyBottomSheet(
-//         companys: ClockScreenDemoData.companys,
-//         selected: _controller.selectedCompanyName,
-//       ),
-//     );
-//     if (result != null) {
-//       _controller.selectCompany(
-//         result.name,
-//         isCompany: result.address != "No Location",
-//       );
-//     }
-//   }
-
-//   Future<void> _onMainTap() async {
-//     final result = await _controller.handleMainTap();
-
-//     final syncedController = _controller as SyncedClockScreenController;
-
-//     // 🔥 PRIORITY: Show server error first
-//     if (syncedController.lastServerMessage != null) {
-//       SnackbarHelper.showTopToast(
-//         context,
-//         message: syncedController.lastServerMessage!,
-//         backgroundColor: kredColor,
-//       );
-
-//       // clear after showing
-//       syncedController.lastServerMessage = null;
-//       return;
-//     }
-
-//     _showResultToast(result);
-//   }
-
-//   Future<void> _onBreakTap() async {
-//     final result = await _controller.handleBreakTap();
-//     _showResultToast(result);
-//   }
-
-//   void _showResultToast(AttendanceActionResult result) {
-//     if (!mounted) return;
-//     switch (result) {
-//       case AttendanceActionResult.checkedIn:
-//         SnackbarHelper.showTopToast(
-//           context,
-//           message: "Checked In Successfully",
-//           backgroundColor: kBlack,
-//           textColor: kWhite,
-//           imagePath: Assets.imagesCircleCheckDown,
-//         );
-//         break;
-//       case AttendanceActionResult.checkedOut:
-//         SnackbarHelper.showTopToast(
-//           context,
-//           message: "Checked Out Successfully",
-//           backgroundColor: kBlack,
-//           textColor: kWhite,
-//           imagePath: Assets.imagesCircleCheckUp,
-//         );
-//         break;
-//       case AttendanceActionResult.breakStarted:
-//         SnackbarHelper.showTopToast(
-//           context,
-//           message: "Break Started Successfully",
-//           backgroundColor: kBlack,
-//           textColor: kWhite,
-//           imagePath: Assets.imagesMugHotWhite,
-//         );
-//         break;
-//       case AttendanceActionResult.breakEnded:
-//         SnackbarHelper.showTopToast(
-//           context,
-//           message: "Break End Successfully",
-//           backgroundColor: kBlack,
-//           textColor: kWhite,
-//           imagePath: Assets.imagesCircleCheckTick,
-//         );
-//         break;
-//       case AttendanceActionResult.outOfRange:
-//         SnackbarHelper.showTopToast(
-//           context,
-//           message: "You are out of range",
-//           backgroundColor: kredColor,
-//         );
-//         break;
-//       case AttendanceActionResult.none:
-//         break;
-//     }
-//   }
-
-//   ({Color color, String text, bool showBreakBadge}) _configFor(
-//     AttendanceDayStatus status,
-//   ) {
-//     switch (status) {
-//       case AttendanceDayStatus.checkedOut:
-//         return (color: kPrimaryColor, text: "Check In", showBreakBadge: false);
-//       case AttendanceDayStatus.checkedIn:
-//       case AttendanceDayStatus.endedBreak:
-//         return (color: kredColor, text: "Check Out", showBreakBadge: true);
-//       case AttendanceDayStatus.onBreak:
-//         return (color: kYellowColor, text: "End Break", showBreakBadge: false);
-//       case AttendanceDayStatus.outofRange:
-//         return (
-//           color: kGreyContainerGreyColor2,
-//           text: "Out of Range",
-//           showBreakBadge: false,
-//         );
-//       default:
-//         return (
-//           color: kGreyContainerGreyColor2,
-//           text: "Unavailable",
-//           showBreakBadge: false,
-//         );
-//     }
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Padding(
-//         padding: AppSizes.DEFAULT2,
-//         child: ListenableBuilder(
-//           listenable: _controller,
-//           builder: (context, _) {
-//             final status = _controller.effectiveStatus;
-//             final config = _configFor(status);
-//             final isOnBreak = _controller.isOnBreak;
-
-//             return ListView(
-//               children: [
-//                 ButtonAnimations.press(
-//                   onTap: _openCompanySheet,
-//                   child: Row(
-//                     spacing: 5,
-//                     mainAxisAlignment: MainAxisAlignment.center,
-//                     children: [
-//                       AppText.p3(
-//                         _controller.selectedCompanyName,
-//                         color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
-//                         weight: FontWeight.w600,
-//                       ),
-//                       const SizedBox(height: 6),
-//                       Icon(
-//                         size: 20,
-//                         weight: 3,
-//                         CupertinoIcons.chevron_down,
-//                         color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
-//                       ),
-//                     ],
-//                   ),
-//                 ),
-
-//                 if (isOnBreak) ...[
-//                   const SizedBox(height: 40),
-//                   // Only this label rebuilds every second.
-//                   ValueListenableBuilder<DateTime>(
-//                     valueListenable: _ticker,
-//                     builder: (context, now, _) => AppText.p1(
-//                       "Break started at ${_formattedTime(now)}",
-//                       color: kYellowColorLight,
-//                       weight: FontWeight.w400,
-//                     ),
-//                   ),
-//                 ],
-
-//                 const SizedBox(height: 40),
-//                 ValueListenableBuilder<DateTime>(
-//                   valueListenable: _ticker,
-//                   builder: (context, now, _) => AppText.bigNumber3(
-//                     _formattedTime(now),
-//                     weight: FontWeight.w400,
-//                   ),
-//                 ),
-
-//                 if (!isOnBreak) ...[
-//                   const SizedBox(height: 8),
-//                   ValueListenableBuilder<DateTime>(
-//                     valueListenable: _ticker,
-//                     builder: (context, now, _) => AppText.p3(
-//                       AttendanceFormat.weekdayDate(now),
-//                       color: kGreyColor,
-//                       weight: FontWeight.w500,
-//                     ),
-//                   ),
-//                   const SizedBox(height: 20),
-//                 ],
-
-//                 CheckInButton(
-//                   size: 250,
-//                   color: config.color,
-//                   text: config.text,
-//                   enabled: _controller.isButtonEnabled,
-//                   showBreakBadge: config.showBreakBadge,
-//                   breakBadgeText: "Break",
-//                   breakBadgeColor: kYellowColor,
-//                   onTap: _onMainTap,
-//                   onBreakTap: _onBreakTap,
-//                   isOnBreak: status == AttendanceDayStatus.onBreak,
-//                   isActive:
-//                       _isActive && status != AttendanceDayStatus.outofRange,
-//                   isLoading: _controller.isProcessing,
-//                 ),
-
-//                 const SizedBox(height: 30),
-//                 if (isOnBreak) ...[
-//                   AppText.p1(
-//                     "Break time end’s at - 02:00 PM",
-//                     weight: FontWeight.w400,
-//                   ),
-//                   const SizedBox(height: 20),
-//                 ],
-
-//                 if (!isOnBreak) ...[
-//                   ButtonAnimations.press(
-//                     onTap: _openLocationSheet,
-//                     child: Row(
-//                       mainAxisAlignment: MainAxisAlignment.center,
-//                       children: [
-//                         CommonImageView(
-//                           imagePath: Assets.imagesLocationDot,
-//                           height: 12,
-//                         ),
-//                         const SizedBox(width: 6),
-//                         AppText.p2("Location:", color: kGreyColor),
-//                         const SizedBox(width: 6),
-//                         AppText.p2(
-//                           _controller.isInRange
-//                               ? _controller.selectedLocationName
-//                               : "Not in office range",
-//                           color: _controller.isInRange
-//                               ? kPrimaryColor
-//                               : kredColor,
-//                           weight: FontWeight.w600,
-//                         ),
-//                         const SizedBox(width: 6),
-//                         Icon(
-//                           size: 20,
-//                           weight: 3,
-//                           CupertinoIcons.chevron_down,
-//                           color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
-//                         ),
-//                       ],
-//                     ),
-//                   ),
-//                 ],
-
-//                 const SizedBox(height: 30),
-
-//                 (!isOnBreak && _controller.hasAnyEventToday)
-//                     ? AttendanceCard(
-//                         day: _ticker.value,
-//                         events: _controller.events,
-//                         onEditAttendance: () {},
-//                       )
-//                     : const SizedBox.shrink(),
-//                 const SizedBox(height: 30),
-//               ],
-//             );
-//           },
-//         ),
-//       ),
-//     );
-//   }
-// }
-
 import 'dart:async';
 
 import 'package:Obecno/features/employee_module/clock/domain/controllers/clock_controller.dart';
@@ -403,7 +34,11 @@ class ClockScreen extends StatefulWidget {
   State<ClockScreen> createState() => _ClockScreenState();
 }
 
-class _ClockScreenState extends State<ClockScreen> with RouteAware {
+// ADDED: TickerProviderStateMixin so we can drive the staggered
+// one-by-one entrance animation below (kept alongside RouteAware,
+// nothing else about the class signature changed).
+class _ClockScreenState extends State<ClockScreen>
+    with RouteAware, TickerProviderStateMixin {
   late final ClockScreenController _controller;
   final ClockTicker _ticker = ClockTicker();
   bool _isActive = true;
@@ -416,6 +51,14 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
   Timer? _permissionPollTimer; // ADDED: continuous permission polling
   bool _permissionDialogShowing = false; // ADDED: avoid dialog/toast spam
 
+  // ADDED: drives the staggered "one item after another, sliding down
+  // into place" entrance animation for the body. Plain AnimationController
+  // + Interval per item -- no AnimatedList involved.
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -425,6 +68,7 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
     );
     _ticker.start();
     _startMonitoring();
+    _entranceController.forward(); // ADDED: play the entrance once on load
   }
 
   // ADDED: internet monitoring, scoped to the Clock tab.
@@ -466,7 +110,8 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
   // so the passive monitor can't say "fine" when a real check-in would
   // still fail.
   Future<void> _checkPermissions() async {
-    final permissionsGranted = await PermissionService.areAllPermissionsAllowed();
+    final permissionsGranted =
+        await PermissionService.areAllPermissionsAllowed();
     final gpsEnabled = await Geolocator.isLocationServiceEnabled();
     final allowed = permissionsGranted && gpsEnabled;
     if (!mounted || !_isActive) return;
@@ -539,6 +184,11 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
     if (controller is SyncedClockScreenController) {
       unawaited(controller.reconcileWithServer());
     }
+
+    // ADDED: replay the staggered entrance whenever we come back to this tab.
+    _entranceController
+      ..reset()
+      ..forward();
   }
 
   @override
@@ -548,6 +198,7 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
     _controller.dispose();
     _connectivitySub?.cancel();
     _permissionPollTimer?.cancel();
+    _entranceController.dispose(); // ADDED
     super.dispose();
   }
 
@@ -696,6 +347,33 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
     }
   }
 
+  // ADDED: wraps a child so it fades in + slides down into place, delayed
+  // according to its position in the list (index/total). This is what
+  // produces the "one after another" staggered effect without AnimatedList.
+  Widget _staggered(int index, int total, Widget child) {
+    final safeTotal = total <= 1 ? 1 : total;
+    final start = (index / safeTotal) * 0.6;
+    final end = (start + 0.4).clamp(0.0, 1.0);
+    final animation = CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
+    );
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animation.value,
+          child: Transform.translate(
+            // Slides DOWN into place: starts slightly above, settles at 0.
+            offset: Offset(0, (1 - animation.value) * -18),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -708,20 +386,108 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
             final config = _configFor(status);
             final isOnBreak = _controller.isOnBreak;
 
-            return ListView(
-              children: [
+            // ADDED: build the raw list of items first (unchanged content),
+            // then wrap each one with `_staggered` right before returning it
+            // from the ListView -- this is the only structural change.
+            final List<Widget> items = [
+              ButtonAnimations.press(
+                onTap: _openCompanySheet,
+                child: Row(
+                  spacing: 5,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AppText.p3(
+                      _controller.selectedCompanyName,
+                      color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
+                      weight: FontWeight.w600,
+                    ),
+                    const SizedBox(height: 6),
+                    Icon(
+                      size: 20,
+                      weight: 3,
+                      CupertinoIcons.chevron_down,
+                      color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
+                    ),
+                  ],
+                ),
+              ),
+              if (isOnBreak) ...[
+                const SizedBox(height: 40),
+                // Only this label rebuilds every second.
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _ticker,
+                  builder: (context, now, _) => AppText.p1(
+                    "Break started at ${_formattedTime(now)}",
+                    color: kYellowColorLight,
+                    weight: FontWeight.w400,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 40),
+              ValueListenableBuilder<DateTime>(
+                valueListenable: _ticker,
+                builder: (context, now, _) => AppText.bigNumber3(
+                  _formattedTime(now),
+                  weight: FontWeight.w400,
+                ),
+              ),
+              if (!isOnBreak) ...[
+                const SizedBox(height: 8),
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _ticker,
+                  builder: (context, now, _) => AppText.p3(
+                    AttendanceFormat.weekdayDate(now),
+                    color: kGreyColor,
+                    weight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+              CheckInButton(
+                size: 250,
+                color: config.color,
+                text: config.text,
+                enabled: _controller.isButtonEnabled,
+                showBreakBadge: config.showBreakBadge,
+                breakBadgeText: "Break",
+                breakBadgeColor: kYellowColor,
+                onTap: _onMainTap,
+                onBreakTap: _onBreakTap,
+                isOnBreak: status == AttendanceDayStatus.onBreak,
+                isActive: _isActive && status != AttendanceDayStatus.outofRange,
+                isLoading: _controller.isProcessing,
+              ),
+              const SizedBox(height: 30),
+              if (isOnBreak) ...[
+                AppText.p1(
+                  "Break time end’s at - 02:00 PM",
+                  weight: FontWeight.w400,
+                ),
+                const SizedBox(height: 20),
+              ],
+              if (!isOnBreak) ...[
                 ButtonAnimations.press(
-                  onTap: _openCompanySheet,
+                  onTap: _openLocationSheet,
                   child: Row(
-                    spacing: 5,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      AppText.p3(
-                        _controller.selectedCompanyName,
-                        color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
+                      CommonImageView(
+                        imagePath: Assets.imagesLocationDot,
+                        height: 12,
+                      ),
+                      const SizedBox(width: 6),
+                      AppText.p2("Location:", color: kGreyColor),
+                      const SizedBox(width: 6),
+                      AppText.p2(
+                        _controller.isInRange
+                            ? _controller.selectedLocationName
+                            : "Not in office range",
+                        color: _controller.isInRange
+                            ? kPrimaryColor
+                            : kredColor,
                         weight: FontWeight.w600,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(width: 6),
                       Icon(
                         size: 20,
                         weight: 3,
@@ -731,111 +497,22 @@ class _ClockScreenState extends State<ClockScreen> with RouteAware {
                     ],
                   ),
                 ),
+              ],
+              const SizedBox(height: 30),
+              (!isOnBreak && _controller.hasAnyEventToday)
+                  ? AttendanceCard(
+                      day: _ticker.value,
+                      events: _controller.events,
+                      onEditAttendance: () {},
+                    )
+                  : const SizedBox.shrink(),
+              const SizedBox(height: 30),
+            ];
 
-                if (isOnBreak) ...[
-                  const SizedBox(height: 40),
-                  // Only this label rebuilds every second.
-                  ValueListenableBuilder<DateTime>(
-                    valueListenable: _ticker,
-                    builder: (context, now, _) => AppText.p1(
-                      "Break started at ${_formattedTime(now)}",
-                      color: kYellowColorLight,
-                      weight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 40),
-                ValueListenableBuilder<DateTime>(
-                  valueListenable: _ticker,
-                  builder: (context, now, _) => AppText.bigNumber3(
-                    _formattedTime(now),
-                    weight: FontWeight.w400,
-                  ),
-                ),
-
-                if (!isOnBreak) ...[
-                  const SizedBox(height: 8),
-                  ValueListenableBuilder<DateTime>(
-                    valueListenable: _ticker,
-                    builder: (context, now, _) => AppText.p3(
-                      AttendanceFormat.weekdayDate(now),
-                      color: kGreyColor,
-                      weight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                CheckInButton(
-                  size: 250,
-                  color: config.color,
-                  text: config.text,
-                  enabled: _controller.isButtonEnabled,
-                  showBreakBadge: config.showBreakBadge,
-                  breakBadgeText: "Break",
-                  breakBadgeColor: kYellowColor,
-                  onTap: _onMainTap,
-                  onBreakTap: _onBreakTap,
-                  isOnBreak: status == AttendanceDayStatus.onBreak,
-                  isActive:
-                      _isActive && status != AttendanceDayStatus.outofRange,
-                  isLoading: _controller.isProcessing,
-                ),
-
-                const SizedBox(height: 30),
-                if (isOnBreak) ...[
-                  AppText.p1(
-                    "Break time end’s at - 02:00 PM",
-                    weight: FontWeight.w400,
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                if (!isOnBreak) ...[
-                  ButtonAnimations.press(
-                    onTap: _openLocationSheet,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CommonImageView(
-                          imagePath: Assets.imagesLocationDot,
-                          height: 12,
-                        ),
-                        const SizedBox(width: 6),
-                        AppText.p2("Location:", color: kGreyColor),
-                        const SizedBox(width: 6),
-                        AppText.p2(
-                          _controller.isInRange
-                              ? _controller.selectedLocationName
-                              : "Not in office range",
-                          color: _controller.isInRange
-                              ? kPrimaryColor
-                              : kredColor,
-                          weight: FontWeight.w600,
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          size: 20,
-                          weight: 3,
-                          CupertinoIcons.chevron_down,
-                          color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 30),
-
-                (!isOnBreak && _controller.hasAnyEventToday)
-                    ? AttendanceCard(
-                        day: _ticker.value,
-                        events: _controller.events,
-                        onEditAttendance: () {},
-                      )
-                    : const SizedBox.shrink(),
-                const SizedBox(height: 30),
+            return ListView(
+              children: [
+                for (int i = 0; i < items.length; i++)
+                  _staggered(i, items.length, items[i]),
               ],
             );
           },

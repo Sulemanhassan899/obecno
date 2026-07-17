@@ -1,4 +1,7 @@
+
+
 import 'dart:io';
+import 'package:Obecno/core/animations/app_shimmer.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -57,7 +60,6 @@ class CommonImageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ❌ animation removed as requested
     return _buildImageView();
   }
 
@@ -84,7 +86,7 @@ class CommonImageView extends StatelessWidget {
       );
     }
 
-    /// ✅ NETWORK (UPDATED → CACHED)
+    /// ✅ NETWORK (UPDATED → SHIMMER LOADER)
     if (url != null && url!.isNotEmpty) {
       return _wrap(
         CachedNetworkImage(
@@ -93,20 +95,12 @@ class CommonImageView extends StatelessWidget {
           width: width,
           fit: fit,
 
-          /// Loader
-          placeholder: (context, url) => SizedBox(
+          /// 🔥 SHIMMER LOADER (REPLACED)
+          placeholder: (context, url) => AppShimmer(
+            isLoading: true,
             height: height,
             width: width,
-            child: Center(
-              child: SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: kGreyColor,
-                ),
-              ),
-            ),
+            borderRadius: _borderRadius,
           ),
 
           /// Error

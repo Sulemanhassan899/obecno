@@ -14,8 +14,6 @@ dependencies:
   cupertino_icons:
   provider:
   go_router:
-  get_it:
-  gap:
   svg_flutter:
   flutter_animate:
   cached_network_image:
@@ -31,6 +29,7 @@ dependencies:
   geolocator:
   sqflite:
   shared_preferences : 
+  shimmer:
 
 dev_dependencies:
   flutter_test:

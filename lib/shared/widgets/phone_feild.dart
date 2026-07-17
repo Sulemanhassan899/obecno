@@ -223,8 +223,8 @@ class _PhoneFieldState extends State<PhoneField> {
               Expanded(
                 child: CustomTextField2(
                   controller: widget.controller,
-                  hintText: "300 123 4567",
-                  hintTextFontColor: kBlack,
+                  hintText: "12345667890",
+                  hintTextFontColor: kGreyColor,
                   hintTextFontSize: 14,
                   keyboardType: TextInputType.phone,
                   haveLebelText: false,
