@@ -13,6 +13,7 @@ analyzer:
     avoid_unnecessary_containers: ignore
     await_only_futures: ignore
     constant_identifier_names: ignore
+    curly_braces_in_flow_control_structures: ignore
     dangling_library_doc_comments: ignore
     dead_code: ignore
     depend_on_referenced_packages: ignore
@@ -26,6 +27,7 @@ analyzer:
     prefer_final_fields: ignore
     prefer_typing_uninitialized_variables: ignore
     sized_box_for_whitespace: ignore
+    sort_child_properties_last: ignore
     unnecessary_brace_in_string_interps: ignore
     unnecessary_import: ignore
     unnecessary_null_comparison: ignore

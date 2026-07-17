@@ -1,18 +1,18 @@
+import 'package:flutter/material.dart';
+
 import 'package:Obecno/core/animations/app_animations.dart';
+import 'package:Obecno/core/api/api_client.dart';
+import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:Obecno/core/constants/text_styles.dart';
+
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_event.dart';
 import 'package:Obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
 
-import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
-import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendence_card.dart';
-import 'package:Obecno/shared/bottom_sheets/hoilday_detail_sheet.dart';
-
-import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
+
 import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/shared/bottom_sheets/add_attendance_bottom_sheet.dart';
 
 class AttendanceDetailsSheet {
   AttendanceDetailsSheet._();
@@ -22,17 +22,25 @@ class AttendanceDetailsSheet {
     required DateTime day,
     required List<HistoryAttendanceEvent> events,
     required HistoryAttendanceSummary summary,
+    // needed to fire the POST /api/employee/tickets fix request from
+    // AddAttendanceBottomSheet. Pass whatever your DI locator /
+    // AuthProvider gives you for these two.
+    required ApiClient apiClient,
+    required String userEmail,
     VoidCallback? onEditAttendance,
   }) {
     return showModalBottomSheet(
       context: context,
-      isScrollControlled: false,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (sheetContext) {
         return _AttendanceDetailsSheetBody(
+          pageContext: context,
           day: day,
           events: events,
           summary: summary,
+          apiClient: apiClient,
+          userEmail: userEmail,
           onEditAttendance: onEditAttendance,
         );
       },
@@ -41,19 +49,24 @@ class AttendanceDetailsSheet {
 }
 
 class _AttendanceDetailsSheetBody extends StatelessWidget {
+  final BuildContext pageContext;
   final DateTime day;
   final List<HistoryAttendanceEvent> events;
   final HistoryAttendanceSummary summary;
+  final ApiClient apiClient;
+  final String userEmail;
   final VoidCallback? onEditAttendance;
 
   const _AttendanceDetailsSheetBody({
+    required this.pageContext,
     required this.day,
     required this.events,
     required this.summary,
+    required this.apiClient,
+    required this.userEmail,
     required this.onEditAttendance,
   });
 
-  /// ✅ FIXED TYPE
   Color _colorFor(AttendanceHisotryEventType type) {
     switch (type) {
       case AttendanceHisotryEventType.checkIn:
@@ -66,10 +79,54 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
     }
   }
 
+  // DateTime -> TimeOfDay, used to seed AddAttendanceBottomSheet.
+  TimeOfDay _timeOfDay(DateTime dt) =>
+      TimeOfDay(hour: dt.hour, minute: dt.minute);
+
   @override
   Widget build(BuildContext context) {
-    /// ✅ FIX: engine must accept HistoryAttendanceEvent
-    final timeline = HistoryAttendanceEngine.sortedNewestFirst(events);
+    HistoryAttendanceEvent? checkIn;
+    HistoryAttendanceEvent? checkOut;
+    HistoryAttendanceEvent? breakIn; // 🟢 break end
+    HistoryAttendanceEvent? breakOut; // 🔴 break start
+
+    for (final e in events) {
+      switch (e.type) {
+        case AttendanceHisotryEventType.checkIn:
+          checkIn ??= e;
+          break;
+
+        case AttendanceHisotryEventType.checkOut:
+          checkOut ??= e;
+          break;
+
+        case AttendanceHisotryEventType.breakStart:
+          breakOut ??= e; // 🔴 correct
+          break;
+
+        case AttendanceHisotryEventType.breakEnd:
+          breakIn ??= e; // 🟢 correct
+          break;
+      }
+    }
+
+    final now = DateTime.now();
+
+    /// ✅ Fake event generator
+    HistoryAttendanceEvent fakeEvent(AttendanceHisotryEventType type) {
+      return HistoryAttendanceEvent(
+        type: type,
+        time: now,
+        location: "__fake__",
+      );
+    }
+
+    final timeline = [
+      checkIn ?? fakeEvent(AttendanceHisotryEventType.checkIn),
+      breakOut ?? fakeEvent(AttendanceHisotryEventType.breakStart),
+      breakIn ?? fakeEvent(AttendanceHisotryEventType.breakEnd),
+      checkOut ?? fakeEvent(AttendanceHisotryEventType.checkOut),
+    ];
 
     final workingDuration = summary.liveWorkingDuration();
 
@@ -86,7 +143,6 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
           ),
           child: Column(
             children: [
-              /// HEADER
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
                 child: Row(
@@ -120,7 +176,6 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
                       vertical: 20,
                     ),
                     children: [
-                      /// SUMMARY CARD (UNCHANGED)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -155,7 +210,6 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-
                                 Column(
                                   children: [
                                     Row(
@@ -176,7 +230,6 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -201,26 +254,82 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      /// TIMELINE
-                      if (timeline.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: AppText.p2(
-                            "No events recorded yet",
-                            color: kGreyColor,
-                          ),
-                        )
-                      else
-                        ...timeline.map(
-                          (e) => _TimelineTile(
-                            event: e,
-                            color: _colorFor(e.type), // ✅ FIXED
-                          ),
-                        ),
+                      ...timeline.map(
+                        (e) =>
+                            _TimelineTile(event: e, color: _colorFor(e.type)),
+                      ),
                     ],
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      // close this sheet, open the editable one seeded
+                      // with the real tapped-day times, using
+                      // `pageContext` (still mounted after this pop).
+                      onTap: () {
+                        Navigator.of(context).pop();
+
+                        AddAttendanceBottomSheet.show(
+                          pageContext,
+                          day: day,
+                          apiClient: apiClient,
+                          userEmail: userEmail,
+                          initialCheckIn: checkIn != null
+                              ? _timeOfDay(checkIn.time)
+                              : null,
+                          initialCheckOut: checkOut != null
+                              ? _timeOfDay(checkOut.time)
+                              : null,
+                          initialBreakStart: breakOut != null
+                              ? _timeOfDay(breakOut.time)
+                              : null,
+                          initialBreakEnd: breakIn != null
+                              ? _timeOfDay(breakIn.time)
+                              : null,
+                        );
+
+                        onEditAttendance?.call();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: kWhite,
+                          border: Border.all(color: kBorderColor),
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Row(
+                          spacing: 6,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: 4,
+                                left: 6,
+                              ),
+                              child: CommonImageView(
+                                imagePath: Assets.imagesPen,
+                                height: 16,
+                              ),
+                            ),
+                            AppText.caption(
+                              "Edit Attendance",
+                              weight: FontWeight.w500,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
             ],
           ),
         );
@@ -235,7 +344,6 @@ class _AttendanceDetailsSheetBody extends StatelessWidget {
       Container(width: 18, height: 2, color: kGreyColor.withOpacity(0.3));
 }
 
-/// ================= TILE =================
 class _TimelineTile extends StatelessWidget {
   final HistoryAttendanceEvent event;
   final Color color;
@@ -244,6 +352,8 @@ class _TimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isZero = event.location == "__fake__";
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
@@ -255,10 +365,12 @@ class _TimelineTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AppText.h6(
-            AttendanceFormat.time(event.time),
-            weight: FontWeight.w700,
-          ),
+          isZero
+              ? const SizedBox(height: 6)
+              : AppText.h6(
+                  AttendanceFormat.time(event.time),
+                  weight: FontWeight.w700,
+                ),
           const SizedBox(height: 6),
           Row(
             children: [

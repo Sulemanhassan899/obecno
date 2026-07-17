@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:Obecno/core/binding/app_binding.dart';
@@ -14,14 +13,15 @@ class MonthlyAttendanceController extends ChangeNotifier {
     DateTime? initialMonth,
     HistoryAttendanceRepository? repository,
   }) : selectedMonth = _monthOnly(initialMonth ?? DateTime.now()),
-       _repository =
-           repository ??
-           (bindings.attendanceRepository) {
-    // ✅ FIX
+       _repository = repository ?? (bindings.attendanceRepository) {
     _initialLoad();
   }
 
   final HistoryAttendanceRepository _repository;
+
+  // ✅ REQUIRED FOR AttendanceDetailsSheet (NO LOGIC CHANGE)
+  get apiClient => bindings.ApihttpClient;
+  String get userEmail => bindings.userEmail;
 
   DateTime selectedMonth;
   MonthSummary? summary;
@@ -81,10 +81,9 @@ class MonthlyAttendanceController extends ChangeNotifier {
     isSyncing = false;
 
     final currentMonth = _monthOnly(DateTime.now());
-    // Only reflect this in the UI if the user is still looking at the
-    // current month — otherwise it'd silently overwrite whatever month
-    // they've since paginated to.
-    if (selectedMonth == currentMonth && response.success && response.data != null) {
+    if (selectedMonth == currentMonth &&
+        response.success &&
+        response.data != null) {
       final result = response.data!;
       summary = result.summary;
       records = result.records;
@@ -102,8 +101,6 @@ class MonthlyAttendanceController extends ChangeNotifier {
     final target = _monthOnly(date);
     final currentMonth = _monthOnly(DateTime.now());
 
-    // 🔒 Never allow navigating into a future month, however it was
-    // requested (picker, deep link, etc).
     selectedMonth = target.isAfter(currentMonth) ? currentMonth : target;
     _loadMonth(preferCache: true);
   }
@@ -113,7 +110,6 @@ class MonthlyAttendanceController extends ChangeNotifier {
   }
 
   void nextMonth() {
-    // ❌ No forward navigation past the current month.
     if (!canGoNext) return;
     setMonth(DateTime(selectedMonth.year, selectedMonth.month + 1));
   }
@@ -133,13 +129,15 @@ class MonthlyAttendanceController extends ChangeNotifier {
   // 🔥 NEW: month-based pagination — cache first, API fallback
   // -----------------------------------------------------------------------
 
-  Future<void> _loadMonth({bool preferCache = true, bool silent = false}) async {
+  Future<void> _loadMonth({
+    bool preferCache = true,
+    bool silent = false,
+  }) async {
     final requestedMonth = selectedMonth;
 
     if (preferCache) {
       final cached = await _repository.loadMonthFromCache(requestedMonth);
       if (cached != null) {
-        // Stale guard: user may have navigated again while we awaited.
         if (requestedMonth != selectedMonth) return;
 
         summary = cached.summary;
@@ -153,9 +151,6 @@ class MonthlyAttendanceController extends ChangeNotifier {
       }
     }
 
-    // Not cached — need the network. Full loader only if this is the very
-    // first paint (`silent == false` and nothing shown yet); otherwise
-    // it's pagination, so only the bottom loader shows.
     if (silent) {
       isSyncing = true;
     } else if (summary == null && records.isEmpty) {
@@ -169,7 +164,7 @@ class MonthlyAttendanceController extends ChangeNotifier {
     try {
       final response = await _repository.loadMonthSmart(requestedMonth);
 
-      if (requestedMonth != selectedMonth) return; // stale — user moved on
+      if (requestedMonth != selectedMonth) return;
 
       if (response.success && response.data != null) {
         final result = response.data!;
@@ -190,8 +185,6 @@ class MonthlyAttendanceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-fetches the currently selected month from the API, bypassing the
-  /// cache (pull-to-refresh style).
   Future<void> refresh() async {
     isPaginating = summary != null;
     isLoading = !isPaginating;

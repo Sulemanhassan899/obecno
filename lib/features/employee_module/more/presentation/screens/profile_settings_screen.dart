@@ -1,4 +1,3 @@
-
 // ignore_for_file: non_constant_identifier_names
 
 import 'package:Obecno/core/animations/app_animations.dart';
@@ -101,10 +100,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   ),
 
                   if (isInitialLoad)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 80),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
+                    const Padding(padding: EdgeInsets.only(top: 80))
                   else if (profileProvider.hasError && profile == null)
                     _errorState(
                       profileProvider.errorMessage ?? 'Failed to load profile.',
@@ -113,7 +109,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   else
                     _profileHeader(profile),
 
-              
                   const SizedBox(height: 18),
 
                   /// ================= OFFICE CARD =================
@@ -234,36 +229,26 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     );
   }
 
-  /// ================= PROFILE HEADER =================
-  /// Name/designation/photo straight from GET /api/employee/profile.
-  /// Falls back to the placeholder asset whenever `photoUrl` is null/empty
-  /// or fails to load, instead of leaving a blank circle.
   Widget _profileHeader(EmployeeProfileModel? profile) {
-    final hasPhoto = profile?.photoUrl != null && profile!.photoUrl!.isNotEmpty;
-
+    final photoUrl = profile?.photoUrl;
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
     return Column(
       children: [
         Center(
-          child: ClipOval(
-            child: hasPhoto
-                ?
-                 Image.network(
-                    profile!.photoUrl!,
-                    height: 110,
-                    width: 110,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => CommonImageView(
-                      imagePath: Assets.imagesProfileImage,
-                      height: 110,
-                      fit: BoxFit.contain,
-                    ),
-                  )
-                : CommonImageView(
-                    imagePath: Assets.imagesProfileImage,
-                    height: 110,
-                    fit: BoxFit.contain,
-                  ),
-          ),
+          child: hasPhoto
+              ? CommonImageView(
+                  url: photoUrl,
+                  height: 110,
+                  width: 110,
+                  radius: 500,
+                  fit: BoxFit.cover,
+                )
+              : CommonImageView(
+                  imagePath: Assets.imagesProfileImage,
+                  height: 110,
+                  width: 110,
+                  fit: BoxFit.contain,
+                ),
         ),
 
         const SizedBox(height: 14),

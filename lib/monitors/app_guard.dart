@@ -1,7 +1,12 @@
+
+
 import 'dart:async';
 import 'package:Obecno/core/services/connectivity_service.dart';
 import 'package:Obecno/core/services/notification_helper.dart';
 import 'package:Obecno/core/services/permission_helper.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/auth/providers/auth_provider.dart';
+import 'package:Obecno/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -17,6 +22,14 @@ class AppGuard extends StatefulWidget {
 class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   Timer? _timer;
   bool _dialogOpen = false;
+
+  // FIXED (missing logic): nothing was watching AuthProvider for a session
+  // dying mid-app-use (401/419 interceptor, or app-resume revalidation
+  // below), so a user could be left stranded on an authenticated screen
+  // with no valid session and no way back to Login except a manual
+  // restart. `_authProvider`/`_lastAuthenticated` back that watcher.
+  AuthProvider? _authProvider;
+  bool? _lastAuthenticated;
 
   final List<AppPermission> _permissions = [
     AppPermission.location,
@@ -36,6 +49,15 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAll();
+
+      // FIXED (missing logic): subscribe to AuthProvider so a session
+      // invalidated from anywhere (401/419 -> AuthProvider.
+      // validateSessionOnUnauthorized, or an explicit logout()) is
+      // automatically followed by a redirect back to Splash instead of
+      // leaving the user stuck on a now-unauthenticated screen.
+      _authProvider = context.read<AuthProvider>();
+      _lastAuthenticated = _authProvider?.isAuthenticated;
+      _authProvider?.addListener(_onAuthChanged);
     });
 
     // Listen real-time internet changes
@@ -51,6 +73,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     ConnectivityService.stop();
+    _authProvider?.removeListener(_onAuthChanged);
     super.dispose();
   }
 
@@ -58,7 +81,57 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkAll();
+
+      // FIXED (missing logic, spec: "Trigger /api/auth/me ... App resume"):
+      // previously only app start (Splash) and a live 401/419 ever
+      // re-checked the session -- a session that expired while the app
+      // was backgrounded was never caught until some other API call
+      // happened to fail.
+      _revalidateSession();
     }
+  }
+
+  /// Re-validates the session against `GET /api/auth/me` on app resume.
+  /// Only runs if the user currently looks authenticated -- no point
+  /// hitting `/me` for someone sitting on Login/Onboarding. Never
+  /// navigates itself (per spec); [_onAuthChanged] reacts to the
+  /// resulting state change and does the actual redirect.
+  Future<void> _revalidateSession() async {
+    final authProvider = _authProvider;
+    if (!mounted || authProvider == null) return;
+    if (!authProvider.isAuthenticated) return;
+
+    await authProvider.validateSessionOnUnauthorized();
+  }
+
+  /// Fires whenever [AuthProvider] notifies. Only reacts to an
+  /// authenticated -> unauthenticated transition (expired cookie
+  /// confirmed via `/api/auth/me`, or an explicit logout) that happens
+  /// while the user is elsewhere in the app -- routes back through
+  /// Splash, which re-runs the single centralized routing decision
+  /// (Onboarding vs Login vs Dashboard) instead of leaving a dead screen
+  /// on display.
+  ///
+  /// Uses the global `router` singleton (not `context.go`) because this
+  /// widget's own BuildContext sits *above* the Router/Navigator that
+  /// `MaterialApp.router`'s `builder` wraps, so `GoRouter.of(context)`
+  /// isn't reachable from here.
+  void _onAuthChanged() {
+    if (!mounted || _authProvider == null) return;
+
+    final isAuth = _authProvider!.isAuthenticated;
+
+    if (_lastAuthenticated == true && isAuth == false) {
+      // FIXED: previously routed to '/' (Splash), which re-runs the
+      // whole bootstrap (permissions/connectivity checks, etc.) just to
+      // land back on Login anyway. Per spec, logout / an invalidated
+      // session should go straight to the email login screen -- Splash
+      // and Onboarding are first-run-only concerns, not part of the
+      // logout flow.
+      router.go('/login');
+    }
+
+    _lastAuthenticated = isAuth;
   }
 
   Future<void> _checkAll() async {

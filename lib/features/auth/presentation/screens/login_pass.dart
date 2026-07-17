@@ -3,15 +3,14 @@ import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/services/permission_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/presentation/screens/enable_permission.dart';
 import 'package:Obecno/features/auth/presentation/screens/forgot_password.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/shared/bottom_nav_bars/employee_nav.dart';
 import 'package:Obecno/shared/widgets/back_button.dart';
 import 'package:Obecno/shared/widgets/custom_checkbox_widget.dart';
 import 'package:Obecno/shared/widgets/custom_textfield.dart';
 import 'package:Obecno/shared/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class LoginPasswordScreen extends StatefulWidget {
   const LoginPasswordScreen({super.key, required this.email});
@@ -104,17 +103,17 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
     setState(() => _isSubmitting = false);
 
     if (permissionsAllowed) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const EmployeeBottomNavBar()),
-        (route) => false,
-      );
+      // FIXED: was `Navigator.pushAndRemoveUntil(...)`, which pushed
+      // EmployeeBottomNavBar as a raw imperative page ON TOP of
+      // GoRouter's own stack instead of going through the router. That
+      // mismatch is exactly why logout couldn't reliably get back to
+      // Login: `router.go('/login')` only ever manages GoRouter's own
+      // page list, so it had no way to remove a page that was pushed
+      // outside of it. `context.go(...)` replaces the whole stack
+      // through GoRouter itself, keeping the two in sync.
+      context.go('/employee_nav');
     } else {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const EnablePermissionsScreen()),
-        (route) => false,
-      );
+      context.go('/enable_permissions');
     }
   }
 

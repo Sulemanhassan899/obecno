@@ -116,7 +116,6 @@ class CheckInButton extends StatelessWidget {
               ),
             ),
 
-            /// ✅ FIXED CONDITION — also hide badge while loading
             if (showBreakBadge && enabled && !isOnBreak && !isLoading)
               Positioned(
                 bottom: size * 0.13,

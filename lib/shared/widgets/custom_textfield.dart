@@ -85,7 +85,7 @@ class CustomTextField extends StatelessWidget {
   final double bottom;
   final FocusNode? focusNode;
   final bool isExpanded;
-  final double minHeight; // ✅ FIXED (was height)
+  final double minHeight;
   final double width;
 
   CustomTextField({

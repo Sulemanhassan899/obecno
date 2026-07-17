@@ -62,14 +62,9 @@ class _WaterRippleEffectState extends State<WaterRippleEffect>
     super.dispose();
   }
 
-  /// ✅ FIXED: strong/full opacity at the center (progress 0),
-  /// fading out to 0 as the ring expands outward (progress 1).
   double _calcOpacity(double progress) {
     return (1 - progress) * widget.opacityFactor;
   }
-
-  /// ✅ FIXED: starts small (minScale, near center) and grows
-  /// to maxScale (outward) as progress goes 0 → 1.
   double _calcScale(double progress) {
     return widget.minScale + (widget.maxScale - widget.minScale) * progress;
   }

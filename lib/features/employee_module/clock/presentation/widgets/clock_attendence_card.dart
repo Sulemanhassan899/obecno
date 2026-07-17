@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
@@ -8,7 +9,6 @@ import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-
 
 class AttendanceCard extends StatefulWidget {
   final DateTime day;
@@ -69,7 +69,18 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   String formatTime(DateTime? time) => AttendanceFormat.time(time);
 
-  String formatDuration(Duration d) => AttendanceFormat.duration(d);
+  // CHANGED: was `AttendanceFormat.duration(d)` -- now formatted locally
+  // as "Hh Mm Ss", e.g. "2h 05m 09s", so it always reads as
+  // hour / minutes / seconds regardless of what AttendanceFormat.duration
+  // used to produce.
+  String formatDuration(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    return "${hours}h ${mm}m ${ss}s";
+  }
 
   void _openDetails() {
     ClockAttendanceDetailsSheet.show(

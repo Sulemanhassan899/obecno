@@ -1,7 +1,7 @@
-
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 
@@ -42,8 +42,8 @@ class _ChangePasswordState extends State<ChangePassword> {
       return false;
     }
 
-    if (newPass.length < 6) {
-      setState(() => _error = "Minimum 6 characters required");
+    if (newPass.length < 8) {
+      setState(() => _error = "Minimum 8 characters required");
       return false;
     }
 
@@ -66,7 +66,7 @@ class _ChangePasswordState extends State<ChangePassword> {
     return true;
   }
 
-  bool get hasMinLength => _newController.text.length >= 6;
+  bool get hasMinLength => _newController.text.length >= 8;
   bool get hasUpper => RegExp(r'[A-Z]').hasMatch(_newController.text);
   bool get hasNumber => RegExp(r'[0-9]').hasMatch(_newController.text);
 
@@ -88,13 +88,13 @@ class _ChangePasswordState extends State<ChangePassword> {
     if (!mounted) return;
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
+      SnackbarHelper.showTopToast(
+        context,
+        message:
             authProvider.changePasswordMessage ??
-                'Password changed successfully.',
-          ),
-        ),
+            'Password changed successfully.',
+        backgroundColor: kOrangeColor,
+        duration: const Duration(seconds: 3),
       );
       authProvider.clearChangePasswordMessage();
       Navigator.pop(context);
@@ -267,7 +267,7 @@ class _ChangePasswordState extends State<ChangePassword> {
 
             const SizedBox(height: 10),
 
-            _buildRule("At least 6 characters", hasMinLength),
+            _buildRule("At least 8 characters", hasMinLength),
             _buildRule("1 uppercase", hasUpper),
             _buildRule("1 number", hasNumber),
 

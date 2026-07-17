@@ -94,6 +94,14 @@ abstract class BaseRepository {
         final parsed = parser(response.data);
         return ApiResponse.success(parsed, statusCode: response.statusCode);
       } catch (parseError) {
+        // FIXED: a parser can deliberately throw an ApiError (e.g. to
+        // surface a backend `success: false` message) -- this used to
+        // catch that too and stomp it with a generic "Failed to read
+        // server response" message, so callers never saw the real
+        // reason. Only wrap *actual* parse failures (malformed JSON,
+        // missing fields, etc.) in the generic message; let a
+        // deliberately-thrown ApiError pass through unchanged.
+        if (parseError is ApiError) rethrow;
         throw ApiError(
           type: ApiErrorType.parsing,
           message: 'Failed to read server response. Please try again.',

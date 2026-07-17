@@ -48,8 +48,11 @@ class _HolidayBottomSheetState extends State<HolidayBottomSheet> {
           buttonText: "Add Attendance",
           backgroundColor: kWhite,
           fontColor: kBlack,
-          onTap: () async{
+          onTap: () async {
             Navigator.pop(context);
+            Future.delayed(Duration.zero, () {
+              AddAttendanceBottomSheet.show(context);
+            });
           },
         ),
       ],

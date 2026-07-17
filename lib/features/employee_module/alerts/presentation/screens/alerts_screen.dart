@@ -1,8 +1,10 @@
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/shared/bottom_sheets/hoilday_detail_sheet.dart';
 import 'package:Obecno/shared/widgets/bottom_sheet.dart';
+import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
 import 'package:Obecno/shared/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
@@ -20,25 +22,19 @@ class _AlertsScreenState extends State<AlertsScreen> {
       backgroundColor: kWhite,
       body: Padding(
         padding: AppSizes.DEFAULT,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppText.h1("Alert Screen", weight: FontWeight.w600),
-            MyButton(
-              mTop: 16,
-              mBottom: 16,
-              buttonText: "Show Message",
-              onTap: ()async {
-                CommonBottomSheet.show(
-                  context: context,
-                  height: 500, // adjust if needed
-                  buttonText: "", // optional (since your UI already has button)
-                  onButtonTap: () {},
-                  children: [HolidayBottomSheet()],
-                );
-              },
-            ),
-          ],
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
+              CommonImageView(
+                imagePath: Assets.imagesCalendarStar,
+                height: 125,
+              ),
+              const SizedBox(height: 20),
+              AppText.h1("Alerts Coming soon", weight: FontWeight.w600),
+            ],
+          ),
         ),
       ),
     );
