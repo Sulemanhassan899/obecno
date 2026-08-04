@@ -1,16 +1,9 @@
 // lib/core/validators/validators.dart
 import '../constants/app_enums.dart';
 
-/// Centralized form-validation helpers.
-///
-/// All methods return `null` when the value is valid, or a user-facing
-/// error `String` when it isn't — the standard `FormFieldValidator<String>`
-/// contract, so these can be dropped straight into a `TextFormField`'s
-/// `validator:` parameter.
 class Validators {
   Validators._();
 
-  /// Generic "field must not be empty" check.
   static String? required(String? value, {String? label}) {
     if (value == null || value.trim().isEmpty) {
       return '${label ?? 'This field'} is required.';
@@ -55,10 +48,6 @@ class Validators {
     return null;
   }
 
-  /// Classifies password strength as weak / medium / strong.
-  ///
-  /// Scoring is based on length plus the variety of character classes
-  /// present (lowercase, uppercase, digits, symbols).
   static PasswordStrength passwordStrength(String? value) {
     if (value == null || value.isEmpty) return PasswordStrength.weak;
 

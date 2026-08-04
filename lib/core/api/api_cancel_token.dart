@@ -1,19 +1,26 @@
-/// Replaces `package:dio`'s `CancelToken` now that the api layer no longer
-/// depends on Dio. Semantics are the same as before: it doesn't forcibly
-/// abort an in-flight `http` request (the `http` package has no built-in
-/// abort primitive), but `BaseProvider.safeCall` already only used the
-/// token to check "is this result stale?" after the await — so a rapid
-/// second tap still cancels the *previous* call's effect on state, it
-/// just doesn't stop the first request's bytes from finishing on the wire.
+import 'dart:async';
+
 class ApiCancelToken {
+  ApiCancelToken() : createdAt = DateTime.now();
+
   bool _isCancelled = false;
   String? _reason;
+  final Completer<void> _cancelled = Completer<void>();
+
+  final DateTime createdAt;
 
   bool get isCancelled => _isCancelled;
   String? get reason => _reason;
 
+  /// Completes the instant [cancel] is called. Race a request against this
+  /// (rather than polling [isCancelled]) to abandon it immediately instead
+  /// of waiting for the next poll point -- e.g. mid backoff-sleep.
+  Future<void> get whenCancelled => _cancelled.future;
+
   void cancel([String? reason]) {
+    if (_isCancelled) return;
     _isCancelled = true;
     _reason = reason;
+    _cancelled.complete();
   }
 }

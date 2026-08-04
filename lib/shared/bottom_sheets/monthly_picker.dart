@@ -1,7 +1,7 @@
 import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class MonthYearContent extends StatefulWidget {
@@ -100,19 +100,27 @@ class MonthYearContentState extends State<MonthYearContent> {
   final ScrollController _scrollController = ScrollController();
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _scrollController,
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(25),
-            topRight: Radius.circular(25),
-          ),
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(25),
+          topRight: Radius.circular(25),
         ),
+      ),
+      child: SafeArea(
+        top: false,
         child: Column(
+          mainAxisSize: MainAxisSize.max, // 🔥 important
+    
           children: [
             const SizedBox(height: 20),
             Row(
@@ -125,9 +133,9 @@ class MonthYearContentState extends State<MonthYearContent> {
                 ),
               ],
             ),
-
+    
             const SizedBox(height: 40),
-
+    
             Row(
               spacing: 50,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -141,10 +149,7 @@ class MonthYearContentState extends State<MonthYearContent> {
                   loop: false,
                   onChanged: (v) => selectedMonth = v,
                 ),
-
-                /// Year (NOT looping)
-                /// 🔥 CHANGED: max capped to the current year — no future
-                /// years selectable (was hardcoded to 4000).
+    
                 wheel(
                   min: 1800,
                   max: DateTime.now().year,
@@ -154,9 +159,9 @@ class MonthYearContentState extends State<MonthYearContent> {
                 ),
               ],
             ),
-
+    
             const SizedBox(height: 40),
-
+    
             Row(
               spacing: 10,
               children: [
@@ -178,18 +183,13 @@ class MonthYearContentState extends State<MonthYearContent> {
                   child: MyButton(
                     buttonText: "Done",
                     onTap: () async {
-                      // 🔥 NEW: the month wheel loops freely within a year,
-                      // so a future month can still be spun to even though
-                      // the year wheel is capped — clamp here as the final
-                      // guard so only the current month/year or earlier is
-                      // ever returned.
                       var picked = DateTime(selectedYear, selectedMonth + 1);
                       final now = DateTime.now();
                       final currentMonth = DateTime(now.year, now.month);
                       if (picked.isAfter(currentMonth)) {
                         picked = currentMonth;
                       }
-
+    
                       widget.onSelected(picked);
                       Navigator.pop(context);
                     },
@@ -197,7 +197,7 @@ class MonthYearContentState extends State<MonthYearContent> {
                 ),
               ],
             ),
-            const SizedBox(height: 40),
+            // const SizedBox(height: 60),
           ],
         ),
       ),

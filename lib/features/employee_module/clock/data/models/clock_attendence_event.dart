@@ -1,59 +1,59 @@
 import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:Obecno/shared/location/service/geofence_helper.dart';
 
-/// ============================================================
-/// ATTENDANCE EVENT MODELS
-/// ------------------------------------------------------------
-/// A single source of truth for every clock action the user
-/// performs in a day. Everything else (First Check-In,
-/// Last Check-Out, Total Working Duration, Total Break Duration,
-/// current status) is DERIVED from this list by AttendanceEngine.
-/// ============================================================
-
-/// Type of a single attendance event.
-
-/// A single timestamped attendance action.
 class AttendanceEvent {
+  final String id;
   final AttendanceEventType type;
   final DateTime time;
   final String? location;
-  
+
+  final bool isValidLocation;
 
   const AttendanceEvent({
+    required this.id,
     required this.type,
     required this.time,
     this.location,
+    this.isValidLocation = true,
   });
 
   AttendanceEvent copyWith({
+    String? id,
     AttendanceEventType? type,
     DateTime? time,
     String? location,
+    bool? isValidLocation,
   }) {
     return AttendanceEvent(
+      id: id ?? this.id,
       type: type ?? this.type,
       time: time ?? this.time,
       location: location ?? this.location,
+      isValidLocation: isValidLocation ?? this.isValidLocation,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        'time': time.toIso8601String(),
-        'location': location,
-      };
+    'id': id,
+    'type': type.name,
+    'time': time.toIso8601String(),
+    'location': location,
+    'is_valid_location': isValidLocation,
+  };
 
   factory AttendanceEvent.fromJson(Map<String, dynamic> json) {
     return AttendanceEvent(
+      id: json['id'] as String? ?? "${DateTime.now().microsecondsSinceEpoch}",
       type: AttendanceEventType.values.firstWhere(
         (e) => e.name == json['type'],
         orElse: () => AttendanceEventType.checkIn,
       ),
       time: DateTime.parse(json['time'] as String),
       location: json['location'] as String?,
+      isValidLocation: json['is_valid_location'] as bool? ?? true,
     );
   }
 
-  /// Human readable label, e.g. "Check-In", "Break Start"
   String get label {
     switch (type) {
       case AttendanceEventType.checkIn:
@@ -68,11 +68,6 @@ class AttendanceEvent {
   }
 }
 
-/// ------------------------------------------------------------
-/// Shared formatting helpers used across ClockScreen,
-/// AttendanceCard and AttendanceDetailsSheet so time/duration
-/// text is always consistent.
-/// ------------------------------------------------------------
 class AttendanceFormat {
   AttendanceFormat._();
 
@@ -87,12 +82,11 @@ class AttendanceFormat {
   static String duration(Duration d) {
     if (d.isNegative) return "0m";
     final hours = d.inHours;
-    final minutes = d.inMinutes % 60;
-
-    if (hours == 0 && minutes == 0) return "0m";
-    if (hours == 0) return "${minutes}m";
-    if (minutes == 0) return "${hours}h";
-    return "${hours}h ${minutes}m";
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    return "${hours}h ${mm}m ";
   }
 
   static const List<String> _days = [
@@ -124,8 +118,60 @@ class AttendanceFormat {
     return "${_days[d.weekday % 7]}, ${d.day} ${_months[d.month - 1]}";
   }
 
-  /// e.g. "17 October 2025" (used as the bottom sheet header)
   static String fullDate(DateTime d) {
     return "${d.day} ${_months[d.month - 1]} ${d.year}";
   }
+
+  static final RegExp _coordinatePattern = RegExp(
+    r'^-?\d{1,3}(\.\d+)?,\s*-?\d{1,3}(\.\d+)?$',
+  );
+
+  static bool isRawCoordinates(String? location) {
+    if (location == null) return false;
+    final trimmed = location.trim();
+    if (trimmed.isEmpty) return false;
+    return _coordinatePattern.hasMatch(trimmed);
+  }
+
+  static String displayLocation(String? location) {
+    if (location == null || location.trim().isEmpty) return "--";
+    if (isRawCoordinates(location)) return "--";
+    return location.trim();
+  }
+
+  static String resolvedDisplayLocation(
+    String? location,
+    List<KnownLocation> knownLocations,
+  ) {
+    if (location == null || location.trim().isEmpty) {
+      return "Location unavailable";
+    }
+    if (!isRawCoordinates(location)) return location.trim();
+
+    final point = GeoPoint.tryParse(location);
+    if (point == null) return "Location unavailable";
+
+    String? bestName;
+    var bestDistance = double.infinity;
+    for (final known in knownLocations) {
+      final knownPoint = GeoPoint.tryParse(known.latLon);
+      if (knownPoint == null) continue;
+      final distance = GeofenceHelper.distanceMeters(point, knownPoint);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestName = known.name;
+      }
+    }
+
+    if (bestName != null && bestDistance <= kDefaultGeofenceRadiusMeters) {
+      return bestName;
+    }
+    return "Location unavailable";
+  }
+}
+
+class KnownLocation {
+  const KnownLocation({required this.name, required this.latLon});
+  final String name;
+  final String? latLon;
 }

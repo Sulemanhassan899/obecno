@@ -5,9 +5,6 @@ import 'package:Obecno/core/api/base_repository.dart';
 
 import '../data/models/book_demo_ticket_model.dart';
 
-/// Talks to the SAME endpoint the employee ticketing module uses --
-/// [ApiEndpoints.tickets] ("/api/employee/tickets") -- since a
-/// "Book a Demo" submission is just a guest ticket on the backend.
 class BookDemoRepository extends BaseRepository {
   BookDemoRepository(super.apiClient);
 

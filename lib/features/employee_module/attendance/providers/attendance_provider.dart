@@ -17,29 +17,18 @@ class AttendanceProvider extends BaseProvider {
 
   DateTime selectedMonth;
 
-  /// "July 2026" — straight from the calendar API.
   String monthLabel = '';
 
-  /// Computed working-days / absents / late counters for [selectedMonth].
   MonthSummary? summary;
 
-  /// UI-ready rows for `AttendanceDayTile`, latest date first.
   List<AttendanceDayRecord> records = const [];
 
-  /// Normalized attendance rows for [selectedMonth] — the spec-mandated
-  /// `attendanceList`. Kept around (rather than only exposing `records`)
-  /// so a details view can pull the full check-in/out/break data for a
-  /// tapped day without another round trip.
   List<AttendanceDay> attendanceList = const [];
 
-  /// Dates the calendar API reports as having attendance this month.
   List<DateTime> calendarDates = const [];
 
   static DateTime _monthOnly(DateTime d) => DateTime(d.year, d.month);
 
-  /// Human-readable error message for the current failed state, if any.
-  /// (Alias of [BaseProvider.errorMessage] so this matches the field name
-  /// requested in the spec — `error`.)
   String? get error => errorMessage;
 
   Future<bool> loadMonth() {
@@ -75,9 +64,6 @@ class AttendanceProvider extends BaseProvider {
     loadMonth();
   }
 
-  /// Normalized record for a specific calendar day, or null if there's no
-  /// attendance for it in the currently loaded month. Used to feed the
-  /// existing `AttendanceDetailsSheet` when a tile is tapped.
   AttendanceDay? dayFor(DateTime date) {
     for (final day in attendanceList) {
       if (day.date.year == date.year &&

@@ -3,12 +3,12 @@
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 
 class LinkedDevices extends StatefulWidget {
   const LinkedDevices({super.key});
@@ -178,7 +178,7 @@ class _LinkedDevicesState extends State<LinkedDevices> {
                   width: 140,
                   height: 40,
                   buttonText: "Delete Request",
-                  onTap: () async{},
+                  onTap: () async {},
                   fontSize: 12,
                   backgroundColor: kWhite,
                   fontColor: Colors.red,

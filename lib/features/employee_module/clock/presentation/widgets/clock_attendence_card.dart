@@ -1,24 +1,32 @@
-
+// clock_attendence_card.dart
 import 'dart:async';
+import 'package:Obecno/core/api/api_client.dart';
+import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
 import 'package:Obecno/shared/bottom_sheets/clock_attendance_details_sheet.dart';
+import 'package:Obecno/widgets/resolved_location_text.dart';
+import 'package:Obecno/main.dart';
 
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 
 class AttendanceCard extends StatefulWidget {
   final DateTime day;
   final List<AttendanceEvent> events;
+  final ApiClient apiClient;
+  final String userEmail;
   final VoidCallback? onEditAttendance;
 
   const AttendanceCard({
     super.key,
     required this.day,
     required this.events,
+    required this.apiClient,
+    required this.userEmail,
     this.onEditAttendance,
   });
 
@@ -69,17 +77,28 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   String formatTime(DateTime? time) => AttendanceFormat.time(time);
 
-  // CHANGED: was `AttendanceFormat.duration(d)` -- now formatted locally
-  // as "Hh Mm Ss", e.g. "2h 05m 09s", so it always reads as
-  // hour / minutes / seconds regardless of what AttendanceFormat.duration
-  // used to produce.
   String formatDuration(Duration d) {
     final hours = d.inHours;
     final minutes = d.inMinutes.remainder(60);
     final seconds = d.inSeconds.remainder(60);
     final mm = minutes.toString().padLeft(2, '0');
     final ss = seconds.toString().padLeft(2, '0');
-    return "${hours}h ${mm}m ${ss}s";
+    return "${hours}h ${mm}m";
+  }
+
+  String? get _firstCheckInLocation {
+    for (final e in widget.events) {
+      if (e.type == AttendanceEventType.checkIn) return e.location;
+    }
+    return null;
+  }
+
+  String? get _lastCheckOutLocation {
+    String? location;
+    for (final e in widget.events) {
+      if (e.type == AttendanceEventType.checkOut) location = e.location;
+    }
+    return location;
   }
 
   void _openDetails() {
@@ -88,6 +107,8 @@ class _AttendanceCardState extends State<AttendanceCard> {
       day: widget.day,
       events: widget.events,
       summary: _summary,
+      apiClient: widget.apiClient,
+      userEmail: widget.userEmail,
       onEditAttendance: widget.onEditAttendance,
     );
   }
@@ -96,6 +117,9 @@ class _AttendanceCardState extends State<AttendanceCard> {
   Widget build(BuildContext context) {
     final firstCheckIn = _summary.firstCheckIn;
     final lastCheckOut = _summary.lastCheckOut;
+    final knownLocations = bindings.authProvider.locations
+        .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
+        .toList();
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -109,6 +133,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 /// FIRST CHECK-IN
                 Expanded(
@@ -120,6 +145,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       AppText.h4(
                         formatTime(firstCheckIn),
                         color: kPrimaryColor,
+                                align: TextAlign.left,
                       ),
                       const SizedBox(height: 6),
                       Row(
@@ -130,12 +156,28 @@ class _AttendanceCardState extends State<AttendanceCard> {
                           ),
                           const SizedBox(width: 6),
                           Expanded(
-                            child: AppText.p2(
-                              "Head Office",
-                              color: kGreyColor,
-                              weight: FontWeight.w500,
-                              align: TextAlign.left,
-                            ),
+                            child: firstCheckIn == null
+                                ? AppText.p2(
+                                    "--",
+                                    color: kGreyColor,
+                                    overflow: TextOverflow.fade,
+                                    weight: FontWeight.w500,
+                                    align: TextAlign.left,
+                                  )
+                                : ResolvedLocationText(
+                                    rawLocation: _firstCheckInLocation,
+                                    knownLocations: knownLocations,
+                                    onlyKnownLocations: true,
+                                    builder: (context, text) => AppText.p2(
+                                      text,
+                                      color: kGreyColor,
+                                      overflow: TextOverflow
+                                          .ellipsis, // 🔥 better UX than fade
+                                      maxLines: 1, // 🔥 REQUIRED
+                                      weight: FontWeight.w500,
+                                      align: TextAlign.left,
+                                    ),
+                                  ),
                           ),
                         ],
                       ),
@@ -152,7 +194,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       color: kGreyColor.withOpacity(0.3),
                     ),
                     Container(
-                      width: 20,
+                      width: 15,
                       height: 2,
                       color: kGreyColor.withOpacity(0.3),
                     ),
@@ -163,7 +205,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                     ),
                     const SizedBox(width: 6),
                     Container(
-                      width: 20,
+                      width: 15,
                       height: 2,
                       color: kGreyColor.withOpacity(0.3),
                     ),
@@ -182,18 +224,34 @@ class _AttendanceCardState extends State<AttendanceCard> {
                     children: [
                       AppText.p2("Check-Out", color: kredColor),
                       const SizedBox(height: 4),
-                      AppText.h4(formatTime(lastCheckOut), color: kredColor),
+                      AppText.h4(formatTime(lastCheckOut), color: kredColor,         align: TextAlign.right,),
                       const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Expanded(
-                            child: AppText.p2(
-                              lastCheckOut == null ? "--" : "Head Office",
-                              color: kGreyColor,
-                              weight: FontWeight.w500,
-                              align: TextAlign.right,
-                            ),
+                            child: lastCheckOut == null
+                                ? AppText.p2(
+                                    "--",
+                                    color: kGreyColor,
+                                    overflow: TextOverflow.fade,
+                                    weight: FontWeight.w500,
+                                    align: TextAlign.right,
+                                  )
+                                : ResolvedLocationText(
+                                    rawLocation: _lastCheckOutLocation,
+                                    knownLocations: knownLocations,
+                                    onlyKnownLocations: true,
+                                    builder: (context, text) => AppText.p2(
+                                      text,
+                                      color: kGreyColor,
+                                      overflow: TextOverflow
+                                          .ellipsis, // 🔥 better UX than fade
+                                      maxLines: 1, // 🔥 REQUIRED
+                                      weight: FontWeight.w500,
+                                      align: TextAlign.left,
+                                    ),
+                                  ),
                           ),
                           const SizedBox(width: 6),
                           CommonImageView(
@@ -212,21 +270,21 @@ class _AttendanceCardState extends State<AttendanceCard> {
           const SizedBox(height: 16),
           Divider(color: kBorderColor),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    CommonImageView(imagePath: Assets.imagesPen, height: 12),
-                    const SizedBox(width: 6),
-                    AppText.p2("Fix time"),
-                  ],
-                ),
-                InkWell(
-                  onTap: _openDetails,
-                  child: Row(
+          InkWell(
+            onTap: _openDetails,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      CommonImageView(imagePath: Assets.imagesPen, height: 12),
+                      const SizedBox(width: 6),
+                      AppText.p2("Fix time"),
+                    ],
+                  ),
+                  Row(
                     children: [
                       AppText.p2("View details"),
                       const SizedBox(width: 6),
@@ -236,8 +294,8 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

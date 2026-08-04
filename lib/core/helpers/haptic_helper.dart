@@ -1,7 +1,5 @@
 import 'package:flutter/services.dart';
 
-/// Thin wrapper around [HapticFeedback] (Flutter SDK, no plugin required)
-/// so call sites use one consistent, semantic API.
 class HapticHelper {
   HapticHelper._();
 

@@ -1,5 +1,3 @@
-
-
 import 'package:Obecno/core/constants/app_enums.dart';
 
 class AttendanceDayRecord {
@@ -14,14 +12,12 @@ class AttendanceDayRecord {
   });
 
   final int day;
-  final String weekday; // e.g. "Fri"
+  final String weekday;
   final DateTime date;
-  final String? checkIn; // e.g. "09:40 AM", null if not checked in
-  final String? checkOut; // e.g. "05:12 PM", null if not checked out
+  final String? checkIn;
+  final String? checkOut;
   final AttendanceDayStatus status;
 
-  /// Only used when [status] is [AttendanceDayStatus.weekend], e.g.
-  /// "Sat, 10 Oct 2025 & Sun, 11 Oct 2025".
   final String? weekendLabel;
 }
 

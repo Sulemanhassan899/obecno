@@ -2,12 +2,6 @@ import 'package:Obecno/core/api/api_response.dart';
 import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 import 'package:Obecno/features/employee_module/more/repositories/profile_repository.dart';
 
-/// Thin orchestration layer between [ProfileProvider] and
-/// [ProfileRepository] -- kept as its own class (matching the
-/// repository/service/provider split used by [AuthService] and every
-/// other feature) rather than having the provider call the repository
-/// directly, so any future local caching of the profile can be added here
-/// without touching the UI layer.
 class ProfileService {
   ProfileService(this._repository);
 

@@ -5,9 +5,9 @@ import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/custom_textfield.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/custom_textfield.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class ChangePassword extends StatefulWidget {
@@ -28,10 +28,6 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   String? _error;
 
-  /// Local, client-side validation only -- checked before we ever hit the
-  /// API. Server-side failures (e.g. wrong current password) come back
-  /// through [AuthProvider.changePasswordMessage] and are shown the same
-  /// way via [_error].
   bool _validate() {
     String current = _currentController.text.trim();
     String newPass = _newController.text.trim();
@@ -70,10 +66,6 @@ class _ChangePasswordState extends State<ChangePassword> {
   bool get hasUpper => RegExp(r'[A-Z]').hasMatch(_newController.text);
   bool get hasNumber => RegExp(r'[0-9]').hasMatch(_newController.text);
 
-  /// Wires the button into POST /api/auth/change-password via
-  /// [AuthProvider.changePassword]. On success, pops back to Account
-  /// Settings; on failure, surfaces the server's message inline the same
-  /// way local validation errors are shown.
   Future<void> _submit() async {
     if (!_validate()) return;
 
@@ -118,10 +110,6 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   @override
   Widget build(BuildContext context) {
-    // Grabbed once via `context.read` (the accessor already proven out by
-    // every other screen in this codebase) and then rebuilt reactively
-    // with Flutter's own `ListenableBuilder`, rather than assuming this
-    // module's provider wrapper also exposes a `context.watch`.
     final authProvider = context.read<AuthProvider>();
 
     return ListenableBuilder(
@@ -145,10 +133,7 @@ class _ChangePasswordState extends State<ChangePassword> {
                 buttonText: isLoading ? "Saving..." : "Save New Password",
                 backgroundColor: kBlack,
                 fontColor: kWhite,
-                // `MyButton.onTap` isn't nullable in this codebase (see how
-                // every other screen uses it), so guard re-entry inside the
-                // callback instead of passing null while a request is in
-                // flight.
+
                 onTap: () async {
                   if (_validate()) {
                     isLoading ? () {} : _submit();

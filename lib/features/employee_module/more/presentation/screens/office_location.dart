@@ -1,13 +1,19 @@
 // ignore_for_file: non_constant_identifier_names
 
+import 'dart:async';
+
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
+import 'package:Obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/auth/data/models/auth_location_model.dart';
+import 'package:Obecno/features/auth/providers/auth_provider.dart';
+import 'package:Obecno/shared/location/service/location_provider.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 
 class OfficeLocation extends StatefulWidget {
   const OfficeLocation({super.key});
@@ -18,91 +24,105 @@ class OfficeLocation extends StatefulWidget {
 
 class _OfficeLocationState extends State<OfficeLocation> {
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(context.read<LocationProvider>().refreshUserLocation());
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final authProvider = context.read<AuthProvider>();
+    final locationProvider = context.read<LocationProvider>();
+
     return Scaffold(
       backgroundColor: kWhite,
       body: Padding(
         padding: AppSizes.HORIZONTAL,
-        child: ListView(
-          children: [
-            const SizedBox(height: 20),
+        child: ListenableBuilder(
+          listenable: Listenable.merge([authProvider, locationProvider]),
+          builder: (context, _) {
+            final locations = authProvider.locations;
+            final selectedId = authProvider.selectedLocation?.id;
 
-            /// HEADER
-            BackButtonBg(title: "Offices & Locations"),
+            return ListView(
+              children: [
+                const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
+                /// HEADER
+                BackButtonBg(title: "Offices & Locations"),
 
-            _officeCard(
-              title: "Head Office",
-              address: "100 Stour St, Birmingham B3 1DG, UK",
-              image: Assets.imagesLocation1, // your asset
-              isDefault: true,
-            ),
+                const SizedBox(height: 20),
 
-            const SizedBox(height: 16),
+                if (locations.isEmpty)
+                  _emptyState()
+                else
+                  for (int i = 0; i < locations.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 16),
+                    _officeCard(
+                      location: locations[i],
+                      isDefault: locations[i].id == selectedId,
+                      onTap: () => authProvider.selectLocation(locations[i]),
+                      liveStatus: locations[i].id == selectedId
+                          ? _liveStatusFor(locationProvider)
+                          : null,
+                    ),
+                  ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
-            _officeCard(
-              title: "North Office",
-              address: "Bailey St, Stafford ST17 4BG, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
+  String? _liveStatusFor(LocationProvider locationProvider) {
+    if (locationProvider.isRefreshing) return "Checking your location…";
+    if (locationProvider.rangeMessage != null &&
+        locationProvider.geofenceResult == null) {
+      return locationProvider.rangeMessage;
+    }
+    final result = locationProvider.geofenceResult;
+    if (result == null) return null;
+    final distance = result.distanceMeters.round();
+    return result.isInside
+        ? "You're ${distance}m away — in range"
+        : "You're ${distance}m away — out of range";
+  }
 
-            const SizedBox(height: 16),
-
-            _officeCard(
-              title: "South Office",
-              address: "14 - 20 Elizabeth St, London SW1W 9RB, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
-            const SizedBox(height: 16),
-
-            _officeCard(
-              title: "North Office",
-              address: "Bailey St, Stafford ST17 4BG, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
-
-            const SizedBox(height: 16),
-
-            _officeCard(
-              title: "South Office",
-              address: "14 - 20 Elizabeth St, London SW1W 9RB, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
-            const SizedBox(height: 16),
-
-            _officeCard(
-              title: "North Office",
-              address: "Bailey St, Stafford ST17 4BG, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
-
-            const SizedBox(height: 16),
-
-            _officeCard(
-              title: "South Office",
-              address: "14 - 20 Elizabeth St, London SW1W 9RB, United Kingdom",
-              image: Assets.imagesLocation1, // your asset
-            ),
-          ],
+  Widget _emptyState() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 80),
+      child: Center(
+        child: AppText.p2(
+          "No offices or locations available",
+          color: kGreyColor,
         ),
       ),
     );
   }
 
   Widget _officeCard({
-    required String title,
-    required String address,
-    required String image,
+    required AuthLocationModel location,
+    required VoidCallback onTap,
     bool isDefault = false,
+    String? liveStatus,
   }) {
+    final image = location.image ?? '';
+    final address = location.displayAddress;
+
     return ButtonAnimations.press(
-      onTap: () {},
+      onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: kWhite,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kBorderColor),
+          border: Border.all(
+            color: isDefault ? kPrimaryColor : kBorderColor,
+            width: isDefault ? 1.5 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,11 +131,13 @@ class _OfficeLocationState extends State<OfficeLocation> {
             Stack(
               children: [
                 CommonImageView(
-                  imagePath: image,
+                  url: image.isNotEmpty ? image : null,
+                  errorImage: Assets.imagesDummyMaps,
                   height: 160,
                   width: double.infinity,
                   topLeftRadius: 16,
                   topRightRadius: 16,
+                  fit: BoxFit.cover,
                 ),
 
                 if (isDefault)
@@ -143,7 +165,7 @@ class _OfficeLocationState extends State<OfficeLocation> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppText.h6(title, weight: FontWeight.w600),
+                  AppText.h6(location.name, weight: FontWeight.w600),
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -153,10 +175,17 @@ class _OfficeLocationState extends State<OfficeLocation> {
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: AppText.small(address, align: TextAlign.left),
+                        child: AppText.small(
+                          address.isNotEmpty ? address : "--",
+                          align: TextAlign.left,
+                        ),
                       ),
                     ],
                   ),
+                  if (liveStatus != null) ...[
+                    const SizedBox(height: 6),
+                    AppText.small(liveStatus, color: kGreyColor),
+                  ],
                 ],
               ),
             ),

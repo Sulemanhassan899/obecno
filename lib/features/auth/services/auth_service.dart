@@ -1,21 +1,11 @@
-
-
 import 'package:Obecno/core/api/api_response.dart';
 import 'package:Obecno/core/services/token_service.dart';
+import 'package:Obecno/features/auth/data/models/auth_company_model.dart';
+import 'package:Obecno/features/auth/data/models/auth_location_model.dart';
 import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:Obecno/features/auth/repositories/auth_repository.dart';
 
-/// Thin orchestration layer between [AuthProvider] (UI state) and
-/// [AuthRepository] (network I/O). Owns session bookkeeping via
-/// [TokenService] -- [AuthRepository] never touches local storage itself.
-///
-/// FIXED: previously took an optional `SessionCookieStore` and cleared it
-/// on [logout], a leftover from the old `HttpApiClient` flow
-/// (`core/api/session_cookie_store.dart`). That store isn't what
-/// [ApiClient] actually reads cookies from -- `TokenService.clearSession()`
-/// already wipes the real cookie jar via `CookieService.instance.clear()`
-/// -- so keeping it here was dead code that also referenced a client this
-/// class no longer depends on. Removed.
 class AuthService {
   AuthService(this._repository, this._tokenService);
 
@@ -33,37 +23,114 @@ class AuthService {
     required String password,
     bool rememberMe = true,
   }) async {
-    final response = await _repository.login(email: email, password: password, rememberMe: rememberMe);
+    final response = await _repository.login(
+      email: email,
+      password: password,
+      rememberMe: rememberMe,
+    );
 
     if (response.success && response.data != null) {
       final user = response.data!;
       await _tokenService.setRememberMe(rememberMe);
       await _tokenService.markSessionActive(userId: user.id, role: user.role);
+
+      if (rememberMe) {
+        await _tokenService.saveLastEmail(email);
+      } else {
+        await _tokenService.clearSavedEmail();
+      }
+
+      await _cacheEverythingFromEnvelope(user, resetSelection: true);
     }
 
     return response;
   }
 
+  Future<String?> getSavedEmail() => _tokenService.lastEmail;
+
+  Future<void> _cacheEverythingFromEnvelope(
+    AuthUserModel user, {
+    bool resetSelection = false,
+  }) async {
+    if (user.token != null) {
+      await _tokenService.saveToken(user.token!);
+    }
+
+    if (user.permissions.isNotEmpty) {
+      await _tokenService.cachePermissions(
+        user.permissions.map((p) => p.toJson()).toList(),
+      );
+    }
+
+    if (user.company != null) {
+      await _tokenService.cacheCompany(user.company!.toJson());
+    }
+
+    if (user.permissionLocation != null) {
+      await _tokenService.cachePermissionLocation(
+        user.permissionLocation!.toJson(),
+      );
+    }
+
+    if (user.locations.isEmpty) return;
+    await _tokenService.cacheLocations(
+      user.locations.map((l) => l.toJson()).toList(),
+    );
+
+    final existingId = await _tokenService.selectedLocationId;
+    final stillValid =
+        existingId != null && user.locations.any((l) => l.id == existingId);
+
+    if (resetSelection || !stillValid) {
+      await _tokenService.setSelectedLocationId(user.locations.first.id);
+    }
+  }
+
+  Future<AuthCompanyModel?> getCachedCompany() async {
+    final raw = await _tokenService.cachedCompany;
+    return raw == null ? null : AuthCompanyModel.fromJsonOrNull(raw);
+  }
+
+  Future<AuthLocationModel?> getCachedPermissionLocation() async {
+    final raw = await _tokenService.cachedPermissionLocation;
+    return raw == null ? null : AuthLocationModel.fromJsonOrNull(raw);
+  }
+
+  Future<List<AuthLocationModel>> getCachedLocations() async {
+    final raw = await _tokenService.cachedLocations;
+    return raw.map(AuthLocationModel.fromJson).toList(growable: false);
+  }
+
+  Future<String?> getCachedSelectedLocationId() =>
+      _tokenService.selectedLocationId;
+
+  Future<void> setSelectedLocationId(String locationId) =>
+      _tokenService.setSelectedLocationId(locationId);
+
   Future<bool> isRememberMe() => _tokenService.isRememberMe;
+
+  Future<String?> getCachedRole() => _tokenService.userRole;
 
   Future<ApiResponse<void>> forgotPassword(String email) {
     return _repository.forgotPassword(email);
   }
 
-  // ================= CURRENT USER =================
-  /// Refreshes the session user from `/api/auth/me` and re-persists the
-  /// (possibly changed) role. Callers get the same [AuthUserModel] shape
-  /// as [login] so it can be dropped straight into [AuthProvider]'s
-  /// `_user` field.
   Future<ApiResponse<AuthUserModel>> getCurrentUser() async {
     final response = await _repository.getCurrentUser();
 
     if (response.success && response.data != null) {
       final user = response.data!;
       await _tokenService.markSessionActive(userId: user.id, role: user.role);
+
+      await _cacheEverythingFromEnvelope(user, resetSelection: false);
     }
 
     return response;
+  }
+
+  Future<List<PermissionItemModel>> getCachedPermissions() async {
+    final raw = await _tokenService.cachedPermissions;
+    return raw.map(PermissionItemModel.fromJson).toList(growable: false);
   }
 
   // ================= CHANGE PASSWORD =================
@@ -81,7 +148,13 @@ class AuthService {
 
   // ================= LOGOUT =================
   Future<void> logout() async {
+    final remembered = await _tokenService.isRememberMe;
+
     await _tokenService.clearSession();
+
+    if (!remembered) {
+      await _tokenService.clearSavedEmail();
+    }
   }
 
   Future<bool> isLoggedIn() {

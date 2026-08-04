@@ -5,19 +5,6 @@ import './api_cancel_token.dart';
 
 enum ViewStatus { idle, loading, success, error }
 
-/// Common ChangeNotifier scaffolding every feature provider builds on
-/// (AttendanceProvider, MonthlyAttendanceProvider, ...). Centralizes:
-///
-///  - loading / error / data status flags the UI binds to
-///  - a single in-flight [ApiCancelToken] per named operation, so rapid
-///    double-taps cancel the previous call instead of racing it
-///  - a `safeCall` wrapper that repositories' [ApiResponse] plugs into
-///    directly, keeping feature providers free of try/catch boilerplate
-///
-/// FIXED: uses [ApiCancelToken] instead of `package:dio`'s `CancelToken`
-/// now that the api layer no longer depends on Dio. Behavior is
-/// unchanged — `safeCall` still discards a response if a newer call under
-/// the same key superseded it.
 abstract class BaseProvider extends ChangeNotifier {
   ViewStatus _status = ViewStatus.idle;
   String? _errorMessage;
@@ -50,11 +37,6 @@ abstract class BaseProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Returns a fresh [ApiCancelToken] for [operationKey], cancelling any
-  /// previous in-flight call under the same key first. Pass the returned
-  /// token into the repository call so a rapid second tap on, say, the
-  /// clock-in button discards the stale first request's result instead of
-  /// both racing to update state.
   @protected
   ApiCancelToken newCancelToken(String operationKey) {
     _activeCalls[operationKey]?.cancel('Superseded by a newer request.');
@@ -63,42 +45,66 @@ abstract class BaseProvider extends ChangeNotifier {
     return token;
   }
 
-  /// Wraps a repository call: flips loading on, awaits the [ApiResponse],
-  /// then routes to [onSuccess] or [setError] automatically. Returns
-  /// whether the call succeeded, in case the caller needs to chain logic
-  /// (e.g. navigate away after a successful clock-in).
+  static const Duration _staleCallTimeout = Duration(seconds: 30);
+
   @protected
   Future<bool> safeCall<T>({
     required String operationKey,
-    required Future<ApiResponse<T>> Function(ApiCancelToken cancelToken) request,
+    required Future<ApiResponse<T>> Function(ApiCancelToken cancelToken)
+    request,
     required void Function(T data) onSuccess,
     bool guardAgainstDuplicate = true,
   }) async {
-    if (guardAgainstDuplicate && isLoading) {
-      // A call under a *different* key would set loading too; if stricter
-      // per-key duplicate prevention is needed, track a Set<String> of
-      // in-flight keys instead of the single global status flag.
-      return false;
+    if (guardAgainstDuplicate) {
+      final existing = _activeCalls[operationKey];
+      if (existing != null && !existing.isCancelled) {
+        final age = DateTime.now().difference(existing.createdAt);
+        if (age < _staleCallTimeout) {
+          debugPrint(
+            '[BaseProvider] "$operationKey" blocked -- another call under '
+            'this key is still in flight (age: ${age.inSeconds}s).',
+          );
+          return false;
+        }
+
+        debugPrint(
+          '[BaseProvider] "$operationKey" had a stale token '
+          '(${age.inSeconds}s old) -- treating as stuck, not blocking.',
+        );
+      }
     }
 
     setLoading();
     final cancelToken = newCancelToken(operationKey);
+    debugPrint('[BaseProvider] -> "$operationKey" request starting');
 
-    final response = await request(cancelToken);
+    try {
+      final response = await request(cancelToken);
 
-    if (cancelToken.isCancelled) {
-      // A newer call superseded this one; don't overwrite its state.
+      if (cancelToken.isCancelled) {
+        debugPrint(
+          '[BaseProvider] "$operationKey" superseded/cancelled, skipping.',
+        );
+        return false;
+      }
+
+      if (response.success && response.data != null) {
+        debugPrint('[BaseProvider] <- "$operationKey" succeeded');
+        onSuccess(response.data as T);
+        setSuccess();
+        return true;
+      }
+
+      debugPrint(
+        '[BaseProvider] <- "$operationKey" failed: ${response.message}',
+      );
+      setError(response.message ?? 'Something went wrong. Please try again.');
       return false;
+    } finally {
+      if (identical(_activeCalls[operationKey], cancelToken)) {
+        _activeCalls.remove(operationKey);
+      }
     }
-
-    if (response.success && response.data != null) {
-      onSuccess(response.data as T);
-      setSuccess();
-      return true;
-    }
-
-    setError(response.message ?? 'Something went wrong. Please try again.');
-    return false;
   }
 
   void cancelAll() {

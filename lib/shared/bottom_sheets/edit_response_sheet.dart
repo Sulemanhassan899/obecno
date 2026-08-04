@@ -4,8 +4,8 @@ import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/bottom_sheet.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/bottom_sheet.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 enum TicketResponseStatus { pending, approved, rejected }
@@ -40,7 +40,7 @@ class ReponseBottomSheet {
           time: time,
           eventLabel: eventLabel,
           location: location,
-          requestedAt: requestedAt ?? now, 
+          requestedAt: requestedAt ?? now,
           originalTime: originalTime,
           newTime: newTime,
           actionedBy: actionedBy,

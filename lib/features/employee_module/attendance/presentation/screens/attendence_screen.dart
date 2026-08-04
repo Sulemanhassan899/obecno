@@ -1,3 +1,5 @@
+
+
 import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     as normalized;
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_event.dart';
@@ -15,8 +17,9 @@ import 'package:Obecno/features/employee_module/attendance/presentation/widgets/
 import 'package:Obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_details_sheet.dart';
+import 'package:Obecno/shared/bottom_sheets/hoilday_detail_sheet.dart';
 
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
@@ -30,60 +33,55 @@ class MonthlyAttendanceScreen extends StatefulWidget {
 }
 
 class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
-  // 🔥 CHANGED: no longer pinned to a fixed demo month — defaults to the
-  // current month now that data is real. `initialMonth` is still accepted
-  // if you want to open on a specific month.
   final MonthlyAttendanceController _controller = MonthlyAttendanceController();
 
-  /// 🔥 NEW: processed list with WEEKEND injection
   List<AttendanceDayRecord> get processedRecords {
-    final original = _controller.records;
+    final ascending = List<AttendanceDayRecord>.from(_controller.records)
+      ..sort((a, b) => a.date.compareTo(b.date));
+
     final List<AttendanceDayRecord> result = [];
+    // Collect consecutive non-working days (weekend/holiday) to group them.
+    List<AttendanceDayRecord> nonWorkingRun = [];
 
-    List<AttendanceDayRecord> currentWeek = [];
-
-    for (final record in original) {
-      if (record.status == AttendanceDayStatus.weekend) continue;
-
-      currentWeek.add(record);
-      result.add(record);
-
-      if (currentWeek.length == 5) {
-        final start = currentWeek.first.date;
-        final end = currentWeek.last.date;
-
-        result.add(
-          AttendanceDayRecord(
-            day: end.day,
-            weekday: '',
-            date: end,
-            status: AttendanceDayStatus.weekend,
-            weekendLabel:
-                "Weekend, ${_formatDate(start)} - ${_formatDate(end)}",
-          ),
-        );
-
-        currentWeek.clear();
-      }
-    }
-
-    /// LAST PARTIAL WEEK
-    if (currentWeek.isNotEmpty) {
-      final start = currentWeek.first.date;
-      final end = currentWeek.last.date;
-
+    void flushNonWorkingRun() {
+      if (nonWorkingRun.isEmpty) return;
+      final start = nonWorkingRun.first.date;
+      final end = nonWorkingRun.last.date;
+      // Determine the label based on whether these are holidays or weekends.
+      final hasHoliday = nonWorkingRun.any(
+        (r) => r.status == AttendanceDayStatus.holiday,
+      );
+      final label = hasHoliday ? 'Holiday' : 'Weekend';
       result.add(
         AttendanceDayRecord(
           day: end.day,
           weekday: '',
           date: end,
           status: AttendanceDayStatus.weekend,
-          weekendLabel: "Weekend, ${_formatDate(start)} - ${_formatDate(end)}",
+          weekendLabel: "$label, ${_formatDate(start)} - ${_formatDate(end)}",
         ),
       );
+      nonWorkingRun.clear();
     }
 
-    return result;
+    for (final record in ascending) {
+      final isNonWorking =
+          record.status == AttendanceDayStatus.weekend ||
+          record.status == AttendanceDayStatus.holiday;
+
+      if (isNonWorking) {
+        // Accumulate consecutive non-working days.
+        nonWorkingRun.add(record);
+      } else {
+        // Flush any accumulated non-working days before this working day.
+        flushNonWorkingRun();
+        result.add(record);
+      }
+    }
+    // Flush any trailing non-working days.
+    flushNonWorkingRun();
+
+    return result.reversed.toList();
   }
 
   String _formatDate(DateTime date) {
@@ -104,6 +102,25 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
     return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
+  String _formatFullWeekdayDate(DateTime date) {
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return "${weekdays[date.weekday - 1]}, ${date.day} ${months[date.month - 1]} ${date.year}";
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -113,13 +130,14 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
   List<HistoryAttendanceEvent> _eventsFor(normalized.AttendanceDay? day) {
     if (day == null) return [];
 
-    final events = <HistoryAttendanceEvent>[]; 
+    final events = <HistoryAttendanceEvent>[];
 
     if (day.firstCheckIn != null) {
       events.add(
         HistoryAttendanceEvent(
           time: _combine(day.date, day.firstCheckIn!),
           type: AttendanceHisotryEventType.checkIn,
+          location: day.firstCheckInLocation,
         ),
       );
     }
@@ -129,12 +147,14 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
         HistoryAttendanceEvent(
           time: _combine(day.date, b.breakIn),
           type: AttendanceHisotryEventType.breakStart,
+          location: b.breakInLocation,
         ),
       );
       events.add(
         HistoryAttendanceEvent(
           time: _combine(day.date, b.breakOut),
           type: AttendanceHisotryEventType.breakEnd,
+          location: b.breakOutLocation,
         ),
       );
     }
@@ -144,6 +164,7 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
         HistoryAttendanceEvent(
           time: _combine(day.date, day.lastCheckOut!),
           type: AttendanceHisotryEventType.checkOut,
+          location: day.lastCheckOutLocation,
         ),
       );
     }
@@ -159,24 +180,47 @@ class _MonthlyAttendanceScreenState extends State<MonthlyAttendanceScreen> {
     final s = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
     return DateTime(date.year, date.month, date.day, h, m, s);
   }
-void _onDayTap(AttendanceDayRecord record) {
-  final day = record.date;
 
-  final normalizedDay = _controller.dayFor(day);
-  final dayEvents = _eventsFor(normalizedDay);
+  void _onDayTap(AttendanceDayRecord record) {
+    // 1. On Leave -> DO NOT open any bottom sheet
+    if (record.status == AttendanceDayStatus.onLeave ||
+        record.checkIn == "Leave" ||
+        record.checkOut == "Leave") {
+      return;
+    }
 
-  final summary = HistoryAttendanceEngine.compute(dayEvents);
+    // 2. Holiday or Weekend -> Open HolidayBottomSheet
+    if (record.status == AttendanceDayStatus.holiday ||
+        record.status == AttendanceDayStatus.weekend) {
+      HolidayBottomSheet.show(
+        context,
+        day: record.date,
+        title: record.status == AttendanceDayStatus.holiday
+            ? (record.weekendLabel ?? "Public Holiday")
+            : "Weekend Holiday",
+        apiClient: _controller.apiClient,
+        userEmail: _controller.userEmail,
+      );
+      return;
+    }
 
-  AttendanceDetailsSheet.show(
-    context: context,
-    day: day,
-    events: dayEvents,
-    summary: summary,
-    apiClient: _controller.apiClient,
-    userEmail: _controller.userEmail, 
-    onEditAttendance: () {},
-  );
-}
+    final day = record.date;
+
+    final normalizedDay = _controller.dayFor(day);
+    final dayEvents = _eventsFor(normalizedDay);
+
+    final summary = HistoryAttendanceEngine.compute(dayEvents);
+
+    AttendanceDetailsSheet.show(
+      context: context,
+      day: day,
+      events: dayEvents,
+      summary: summary,
+      apiClient: _controller.apiClient,
+      userEmail: _controller.userEmail,
+      onEditAttendance: () {},
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,32 +254,39 @@ void _onDayTap(AttendanceDayRecord record) {
                   ),
                   const SizedBox(height: 20),
                   Expanded(
-                    child: _controller.isLoading || summary == null
+                    child: RefreshIndicator(
+                      onRefresh: _controller.refresh,
+                      color: kPrimaryColor,
+                      child: _controller.isLoading || summary == null
                         ? _buildLoadingShimmer()
                         : _controller.records.isEmpty
-                        // 🔥 NEW: "No Record" empty state per spec
-                        // (functional requirement #1). Summary card still
-                        // renders above it so absents/late counts stay
-                        // visible even on a record-free month.
-                        ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        ? ListView(
                             children: [
-                              Icon(
-                                Icons.dataset_outlined,
-                                size: 60,
-                                color: kGreyColor.withOpacity(0.7),
-                              ),
-                              const SizedBox(height: 12),
-                              AppText.p2(
-                                "No Record",
-                                color: kGreyColor,
-                                weight: FontWeight.w600,
-                              ),
-                              const SizedBox(height: 6),
-                              AppText.p2(
-                                "You don’t have any records yet",
-                                color: kGreyColor.withOpacity(0.7),
-                                weight: FontWeight.w400,
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.6,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.dataset_outlined,
+                                      size: 60,
+                                      color: kGreyColor.withOpacity(0.7),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    AppText.p2(
+                                      "No Record",
+                                      color: kGreyColor,
+                                      weight: FontWeight.w600,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    AppText.p2(
+                                      "You don’t have any records yet",
+                                      color: kGreyColor.withOpacity(0.7),
+                                      weight: FontWeight.w400,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           )
@@ -244,8 +295,23 @@ void _onDayTap(AttendanceDayRecord record) {
                               AttendanceSummaryCard(summary: summary),
                               const SizedBox(height: 20),
 
-                              /// 🔥 USE PROCESSED LIST (ONLY CHANGE)
                               ...processedRecords.map((record) {
+                                if (record.status ==
+                                    AttendanceDayStatus.holiday) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                    ),
+                                    child: AttendanceHolidayCard(
+                                      title:
+                                          record.weekendLabel ??
+                                          "Public Holiday",
+                                      date: _formatFullWeekdayDate(record.date),
+                                      onTap: () => _onDayTap(record),
+                                    ),
+                                  );
+                                }
+
                                 if (record.status ==
                                     AttendanceDayStatus.weekend) {
                                   return Padding(
@@ -264,22 +330,11 @@ void _onDayTap(AttendanceDayRecord record) {
                                   onTap: () => _onDayTap(record),
                                 );
                               }),
-                              // 🔥 NEW: bottom-only loader while paginating
-                              // to a month that isn't cached yet — never a
-                              // full-screen loader for pagination.
-                              if (_controller.isPaginating)
-                                 Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Center(
-                                    child: SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: _shimmerBox(height: 20, width: 80),
-                                    ),
-                                  ),
-                                ),
+                             
+                           
                             ],
                           ),
+                    ),
                   ),
                 ],
               );

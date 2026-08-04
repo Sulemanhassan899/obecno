@@ -4,7 +4,7 @@ import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -123,12 +123,27 @@ class AttendanceDayTile extends StatelessWidget {
   final AttendanceDayRecord record;
   final VoidCallback? onTap;
 
-  /// ✅ check invalid checkout
   bool _isInvalidCheckOut(String? value) {
     return value == null || value.trim() == "--:-- PM";
   }
 
+  bool get _isOnLeave =>
+      record.status == AttendanceDayStatus.onLeave ||
+      record.checkIn == "Leave" ||
+      record.checkOut == "Leave";
+
+  bool _isHolidayOrLeave() {
+    return _isOnLeave ||
+        record.status == AttendanceDayStatus.holiday ||
+        record.checkIn == "Holiday" ||
+        record.checkOut == "Holiday";
+  }
+
   Widget? _statusIcon() {
+    if (_isHolidayOrLeave()) {
+      return null;
+    }
+
     /// ✅ PRIORITY: show warning if checkout is invalid
     if (_isInvalidCheckOut(record.checkOut)) {
       return CommonImageView(
@@ -148,6 +163,8 @@ class AttendanceDayTile extends StatelessWidget {
         return CommonImageView(imagePath: Assets.imagesUserPen, height: 20);
       case AttendanceDayStatus.normal:
       case AttendanceDayStatus.weekend:
+      case AttendanceDayStatus.onLeave:
+      case AttendanceDayStatus.holiday:
         return null;
       default:
         return null;
@@ -191,41 +208,73 @@ class AttendanceDayTile extends StatelessWidget {
 
             const SizedBox(width: 30),
 
-            /// TIME ROW
+            /// TIME / ON LEAVE ROW
             Expanded(
               child: Row(
-                spacing: 10,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  /// CHECK-IN
-                  AppText.p1(
-                    record.checkIn ?? "--:-- AM",
-                    weight: FontWeight.w400,
-                    color:
-                        (record.checkIn == null ||
-                            record.checkIn!.trim() == "--:-- AM")
-                        ? kredColor
-                        : kSubText,
-                  ),
+                  if (_isOnLeave) ...[
+                    Icon(
+                      Icons.circle,
+                      size: 7,
+                      color: kGreyColor.withOpacity(0.3),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F1FF),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: AppText.p2(
+                        "On Leave",
+                        color: Color(0xFF6B9EFF),
+                        weight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 18,
+                      color: kGreyColor,
+                    ),
+                  ] else ...[
+                    /// CHECK-IN
+                    AppText.p1(
+                      record.checkIn ?? "--:-- AM",
+                      weight: FontWeight.w400,
+                      color:
+                          (record.checkIn == null ||
+                              record.checkIn!.trim() == "--:-- AM")
+                          ? kredColor
+                          : kSubText,
+                    ),
 
-                  Row(children: [const _Dot()]),
+                    const SizedBox(width: 10),
+                    const _Dot(),
+                    const SizedBox(width: 10),
 
-                  /// CHECK-OUT
-                  AppText.p1(
-                    record.checkOut ?? "--:-- PM",
-                    weight: FontWeight.w400,
-                    color:
-                        (record.checkOut == null ||
-                            record.checkOut!.trim() == "--:-- PM")
-                        ? kredColor
-                        : kSubText,
-                  ),
+                    /// CHECK-OUT
+                    AppText.p1(
+                      record.checkOut ?? "--:-- PM",
+                      weight: FontWeight.w400,
+                      color:
+                          (record.checkOut == null ||
+                              record.checkOut!.trim() == "--:-- PM")
+                          ? kredColor
+                          : kSubText,
+                    ),
 
-                  const Icon(
-                    CupertinoIcons.chevron_right,
-                    size: 18,
-                    color: kGreyColor,
-                  ),
+                    const SizedBox(width: 10),
+                    const Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 18,
+                      color: kGreyColor,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -272,6 +321,45 @@ class AttendanceWeekendCard extends StatelessWidget {
           SizedBox(height: 6),
           AppText.p5(label.split(",").last.trim(), color: kSubText),
         ],
+      ),
+    );
+  }
+}
+
+class AttendanceHolidayCard extends StatelessWidget {
+  const AttendanceHolidayCard({
+    super.key,
+    required this.title,
+    required this.date,
+    this.onTap,
+  });
+
+  final String title;
+  final String date;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ButtonAnimations.press(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            AppText.h5(
+              title,
+              weight: FontWeight.w700,
+              color: const Color(0xFF1E293B),
+            ),
+            const SizedBox(height: 6),
+            AppText.p2(date, color: kSubText, weight: FontWeight.w400),
+          ],
+        ),
       ),
     );
   }

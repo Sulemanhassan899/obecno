@@ -1,5 +1,3 @@
-
-
 import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
@@ -7,8 +5,8 @@ import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:Obecno/shared/bottom_sheets/monthly_picker.dart';
 
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +17,7 @@ class AttendanceMonthHeader extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.onTapDropdown,
-    this.isNextEnabled = true, // 🔥 NEW — defaults true so existing callers keep working
+    this.isNextEnabled = true,
   });
 
   final DateTime month;
@@ -27,8 +25,6 @@ class AttendanceMonthHeader extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback? onTapDropdown;
 
-  /// 🔥 NEW — false when [month] is the current month, so the user can
-  /// never navigate forward into the future.
   final bool isNextEnabled;
 
   static const _monthNames = [
@@ -76,8 +72,6 @@ class AttendanceMonthHeader extends StatelessWidget {
             ],
           ),
         ),
-        // 🔥 CHANGED — disabled (dimmed, non-tappable) once on the current
-        // month so the user can never page into the future.
         Opacity(
           opacity: isNextEnabled ? 1 : 0.3,
           child: IgnorePointer(
@@ -103,11 +97,15 @@ class MonthYearPickerSheet {
   }) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: kWhite,
+      backgroundColor: Colors.transparent, // important for rounded corners
+      isScrollControlled: true, // 🔥 REQUIRED
       builder: (_) {
-        return MonthYearContent(
-          initialDate: initialDate,
-          onSelected: onSelected,
+        return FractionallySizedBox(
+          heightFactor: 0.55, 
+          child: MonthYearContent(
+            initialDate: initialDate,
+            onSelected: onSelected,
+          ),
         );
       },
     );

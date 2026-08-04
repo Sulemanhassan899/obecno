@@ -65,6 +65,7 @@ class _WaterRippleEffectState extends State<WaterRippleEffect>
   double _calcOpacity(double progress) {
     return (1 - progress) * widget.opacityFactor;
   }
+
   double _calcScale(double progress) {
     return widget.minScale + (widget.maxScale - widget.minScale) * progress;
   }

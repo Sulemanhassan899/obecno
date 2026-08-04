@@ -1,6 +1,9 @@
 // ignore_for_file: non_constant_identifier_names
 
+import 'dart:io';
+
 import 'package:Obecno/core/animations/app_animations.dart';
+
 import 'package:Obecno/features/launch/onboarding/onboarding.dart';
 import 'package:Obecno/generated/assets.dart';
 import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
@@ -11,14 +14,17 @@ import 'package:Obecno/features/employee_module/more/presentation/screens/office
 import 'package:Obecno/features/employee_module/more/presentation/screens/policy.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/terms.dart';
 import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
+import 'package:Obecno/widgets/dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -31,9 +37,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    // GET /api/employee/profile as soon as this tab is entered. Runs after
-    // the first frame so `context.read` is safe even if this screen is
-    // itself the very first widget built under ProfileProvider.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileProvider>().loadProfile();
     });
@@ -41,12 +44,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Grabbed once via `context.read` (the accessor already proven out by
-    // every other screen in this codebase) and then rebuilt reactively
-    // with Flutter's own `ListenableBuilder`, rather than assuming this
-    // module's provider wrapper also exposes a `context.watch`.
     final profileProvider = context.read<ProfileProvider>();
-
+    final authProvider = context.read<AuthProvider>();
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
@@ -107,26 +106,31 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       () => context.read<ProfileProvider>().loadProfile(),
                     )
                   else
-                    _profileHeader(profile),
+                    _profileHeader(profile, profileProvider),
 
                   const SizedBox(height: 18),
 
                   /// ================= OFFICE CARD =================
-                  _tile(
-                    title: "Offices & Locations",
-                    count: "02",
-                    icon: Assets.imagesOfficeLocationIcon,
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OfficeLocation(),
-                        ),
-                        (route) => true,
+                  ListenableBuilder(
+                    listenable: authProvider,
+                    builder: (context, _) {
+                      final count = authProvider.locations.length;
+                      return _tile(
+                        title: "Offices & Locations",
+                        count: count.toString().padLeft(2, '0'),
+                        icon: Assets.imagesOfficeLocationIcon,
+                        onTap: () {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const OfficeLocation(),
+                            ),
+                            (route) => true,
+                          );
+                        },
                       );
                     },
                   ),
-
                   const SizedBox(height: 20),
 
                   /// ================= SETTINGS =================
@@ -161,6 +165,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         (route) => true,
                       );
                     }),
+
+                    //   _divider(),
+                    // _settingTile("Permission", Assets.imagesInfo, () {
+                    //   Navigator.pushAndRemoveUntil(
+                    //     context,
+                    //     MaterialPageRoute(
+                    //       builder: (_) => const PermissionScreen(),
+                    //     ),
+                    //     (route) => true,
+                    //   );
+                    // }),
                   ]),
 
                   const SizedBox(height: 14),
@@ -190,16 +205,27 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   /// LOGOUT
                   ButtonAnimations.press(
                     onTap: () async {
-                      await context.read<AuthProvider>().logout();
-                      if (!context.mounted) return;
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OnBoardingScreen(),
-                        ),
-                        (route) => false,
+                      DialogHelper.show(
+                        context: context,
+                        imagePath: Assets.imagesRedBgTriangleExclamation,
+                        heightImage: 100,
+                        subtitle: "Are you sure you want to logout?",
+
+                        cancelButtonText: "No",
+                        buttonText: "Yes",
+                        ButtonBg: kredColor,
+                        onButtonTap: () async {
+                          await context.read<AuthProvider>().logout();
+
+                          if (!context.mounted) return;
+
+                          context.go('/onboarding');
+                        },
+
+                        barrierDismissible: true,
                       );
                     },
+
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: kBorderColor),
@@ -218,7 +244,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 40),
                 ],
               );
@@ -229,26 +254,71 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     );
   }
 
-  Widget _profileHeader(EmployeeProfileModel? profile) {
-    final photoUrl = profile?.photoUrl;
+  Future<File?> pickProfileImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+
+      // Pick image from gallery
+      final XFile? pickedImage = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85, // optional compression
+      );
+
+      if (pickedImage == null) {
+        return null;
+      }
+
+      return File(pickedImage.path);
+    } catch (e) {
+      print('Error picking image: $e');
+      return null;
+    }
+  }
+
+  Widget _profileHeader(
+    EmployeeProfileModel? profile,
+    ProfileProvider profileProvider,
+  ) {
+    final photoUrl = profileProvider.displayPhotoUrl;
     final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
     return Column(
       children: [
         Center(
-          child: hasPhoto
-              ? CommonImageView(
-                  url: photoUrl,
-                  height: 110,
-                  width: 110,
-                  radius: 500,
-                  fit: BoxFit.cover,
-                )
-              : CommonImageView(
-                  imagePath: Assets.imagesProfileImage,
-                  height: 110,
-                  width: 110,
-                  fit: BoxFit.contain,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              hasPhoto
+                  ? CommonImageView(
+                      url: photoUrl,
+                      height: 110,
+                      width: 110,
+                      radius: 500,
+                      fit: BoxFit.cover,
+
+                      /// Optional custom error image
+                      errorImage: Assets.imagesUserimage,
+                    )
+                  : CommonImageView(
+                      imagePath: Assets.imagesUserimage,
+                      height: 110,
+                      width: 110,
+                      fit: BoxFit.contain,
+                    ),
+
+              // ADDED (Task 6): edit overlay, bottom-right of the avatar.
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: ButtonAnimations.press(
+                  onTap: () => _onEditProfilePhoto(profileProvider),
+                  child: CommonImageView(
+                    imagePath: Assets.imagesProfileEditPen,
+                    height: 40,
+                  ),
                 ),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 14),
@@ -268,6 +338,25 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _onEditProfilePhoto(ProfileProvider profileProvider) async {
+    debugPrint('[ProfileSettingsScreen] Edit-photo tapped, opening picker...');
+    final File? picked = await pickProfileImage();
+    if (picked == null) {
+      debugPrint('[ProfileSettingsScreen] No image selected, aborting upload.');
+      return;
+    }
+    final bytes = await picked.readAsBytes();
+    debugPrint(
+      '[ProfileSettingsScreen] Image picked (${picked.path}), '
+      'calling ProfileProvider.updatePhoto()...',
+    );
+    final ok = await profileProvider.updatePhoto(
+      photoBytes: bytes,
+      fileName: picked.path.split('/').last,
+    );
+    debugPrint('[ProfileSettingsScreen] updatePhoto() result: $ok');
   }
 
   Widget _errorState(String message, VoidCallback onRetry) {

@@ -1,17 +1,19 @@
 import 'dart:async';
 
+import 'package:Obecno/core/constants/app_strings.dart';
+import 'package:Obecno/features/auth/services/auth_service.dart';
 import 'package:Obecno/features/employee_module/clock/domain/controllers/clock_controller.dart';
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/services/connectivity_service.dart';
 import 'package:Obecno/core/services/permission_helper.dart';
+import 'package:Obecno/widgets/dialog.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:Obecno/core/constants/app_enums.dart'
     hide AttendanceActionResult;
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/helpers/snackbar_helper.dart';
-import 'package:Obecno/core/utils/demo_list.dart';
 import 'package:Obecno/features/employee_module/clock/domain/controllers/synced_clock_screen_controller.dart';
 import 'package:Obecno/features/employee_module/clock/repositories/clock_attendance_repository.dart';
 import 'package:Obecno/generated/assets.dart';
@@ -21,9 +23,11 @@ import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock
 
 import 'package:Obecno/shared/bottom_sheets/company_detail_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/location_detail_sheet.dart';
+import 'package:Obecno/shared/location/service/attendance_permission_service.dart';
+import 'package:Obecno/shared/location/service/geofence_helper.dart';
 
-import 'package:Obecno/shared/widgets/check_in_button.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/check_in_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -31,29 +35,24 @@ class ClockScreen extends StatefulWidget {
   const ClockScreen({super.key});
 
   @override
-  State<ClockScreen> createState() => _ClockScreenState();
+  State<ClockScreen> createState() => ClockScreenState();
 }
 
-// ADDED: TickerProviderStateMixin so we can drive the staggered
-// one-by-one entrance animation below (kept alongside RouteAware,
-// nothing else about the class signature changed).
-class _ClockScreenState extends State<ClockScreen>
+class ClockScreenState extends State<ClockScreen>
     with RouteAware, TickerProviderStateMixin {
   late final ClockScreenController _controller;
   final ClockTicker _ticker = ClockTicker();
   bool _isActive = true;
+  late final AuthService authService;
 
-  // ADDED: real-time monitoring (Clock tab only) -- internet, location and
-  // notification permissions. Guarded by `_isActive` throughout so nothing
-  // fires while another tab/screen is on top.
   StreamSubscription<bool>? _connectivitySub;
   bool _isOffline = false;
-  Timer? _permissionPollTimer; // ADDED: continuous permission polling
-  bool _permissionDialogShowing = false; // ADDED: avoid dialog/toast spam
+  Timer? _permissionPollTimer;
+  bool _permissionDialogShowing = false;
+  bool _notificationNudgeShown = false;
 
-  // ADDED: drives the staggered "one item after another, sliding down
-  // into place" entrance animation for the body. Plain AnimationController
-  // + Interval per item -- no AnimatedList involved.
+  VoidCallback? _authPolicyListener;
+
   late final AnimationController _entranceController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -63,15 +62,57 @@ class _ClockScreenState extends State<ClockScreen>
   void initState() {
     super.initState();
 
+    final currentUserId = bindings.authProvider.user?.id;
+    assert(
+      currentUserId != null && currentUserId.isNotEmpty,
+      'ClockScreen requires an authenticated user',
+    );
+
     _controller = SyncedClockScreenController(
       repository: bindings.clockAttendanceRepository,
+      companyPolicyService: bindings.companyPolicyService,
+      syncService: bindings.clockSyncService,
+      userId: currentUserId ?? '',
     );
+
+    _controller.addListener(_maybeShowLocationAlert);
+    _controller.hydrateFromAuth(
+      companyName: bindings.authProvider.companyName,
+      locationName: bindings.authProvider.selectedLocationName,
+    );
+
+    unawaited(_controller.loadPolicyFrom(bindings.companyPolicyService));
+
+    _authPolicyListener = () {
+      if (!mounted) return;
+      _controller.hydrateFromAuth(
+        companyName: bindings.authProvider.companyName,
+        locationName: bindings.authProvider.selectedLocationName,
+      );
+    };
+    bindings.authProvider.addListener(_authPolicyListener!);
+
     _ticker.start();
+
     _startMonitoring();
-    _entranceController.forward(); // ADDED: play the entrance once on load
+    _entranceController.forward();
   }
 
-  // ADDED: internet monitoring, scoped to the Clock tab.
+  void _maybeShowLocationAlert() {
+    if (!mounted) return;
+    final controller = _controller;
+    if (controller is! SyncedClockScreenController) return;
+    final message = controller.lastLocationAlertMessage;
+    if (message == null) return;
+    controller.lastLocationAlertMessage = null;
+    SnackbarHelper.showTopToast(
+      context,
+      message: message,
+      backgroundColor: message == AppStrings.synced ? kBlack : kredColor,
+      textColor: message == AppStrings.synced ? kWhite : kWhite,
+    );
+  }
+
   void _startMonitoring() {
     ConnectivityService.start();
     _connectivitySub = ConnectivityService.stream.listen((online) {
@@ -80,78 +121,119 @@ class _ClockScreenState extends State<ClockScreen>
         _isOffline = true;
         SnackbarHelper.showTopToast(
           context,
-          message:
-              "No internet connection. Your action will be saved and synced automatically once you're back online.",
+          message: "No internet connection.",
           backgroundColor: kredColor,
         );
       } else if (_isOffline) {
         _isOffline = false;
         SnackbarHelper.showTopToast(
           context,
-          message: "Back online. Syncing pending attendance...",
+          message: AppStrings.syncing,
           backgroundColor: kBlack,
           textColor: kWhite,
         );
       }
     });
     _checkPermissions();
-    // ADDED: keep checking continuously while this tab is active, not just
-    // once -- every check still no-ops immediately if `_isActive` is false.
     _permissionPollTimer?.cancel();
     _permissionPollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _checkPermissions();
     });
   }
 
-  // ADDED: location + notification permission monitoring, Clock tab only.
-  // Checks both the runtime permission grant AND whether location
-  // services (GPS) are switched on at the OS level -- same two things
-  // `AttendancePermissionService` checks before an actual clock action,
-  // so the passive monitor can't say "fine" when a real check-in would
-  // still fail.
-  Future<void> _checkPermissions() async {
-    final permissionsGranted =
-        await PermissionService.areAllPermissionsAllowed();
-    final gpsEnabled = await Geolocator.isLocationServiceEnabled();
-    final allowed = permissionsGranted && gpsEnabled;
-    if (!mounted || !_isActive) return;
-    if (!allowed && !_permissionDialogShowing) {
-      SnackbarHelper.showTopToast(
-        context,
-        message: !gpsEnabled
-            ? "Please turn on location services to record attendance."
-            : "Location and notification permissions are required.",
-        backgroundColor: kredColor,
-      );
-      _showPermissionDialog();
+  void notifyTabResumed() {
+    if (!mounted) return;
+    _checkPermissions();
+    final controller = _controller;
+    if (controller is SyncedClockScreenController) {
+      unawaited(controller.refreshGeofenceStatus());
     }
   }
 
-  void _showPermissionDialog() {
+  Future<void> _checkPermissions() async {
+    final criticalAllowed =
+        await PermissionService.areCriticalPermissionsAllowed();
+    final gpsEnabled = await Geolocator.isLocationServiceEnabled();
+    final blocked = !criticalAllowed || !gpsEnabled;
+    if (!mounted || !_isActive) return;
+
+    if (blocked) {
+      if (!_permissionDialogShowing) {
+        final missing = await PermissionService.missingPermissions();
+        if (!mounted || !_isActive) return;
+
+        final missingCritical = missing
+            .where((p) => p != AppPermission.notification)
+            .map(PermissionService.label)
+            .toList();
+
+        final message = !gpsEnabled
+            ? AppStrings.turnOnLocationServices
+            : "${missingCritical.join(' and ')} permission${missingCritical.length > 1 ? 's are' : ' is'} required to record attendance.";
+
+        SnackbarHelper.showTopToast(
+          context,
+          message: message,
+          backgroundColor: kredColor,
+        );
+        _showPermissionDialog(message);
+      }
+      return;
+    }
+
+    final controller = _controller;
+    if (controller is SyncedClockScreenController) {
+      unawaited(controller.refreshGeofenceStatus());
+    }
+
+    if (!_notificationNudgeShown) {
+      final notifStatus = await PermissionService.status(
+        AppPermission.notification,
+      );
+      if (!mounted || !_isActive) return;
+      if (!PermissionService.isAllowed(notifStatus)) {
+        _notificationNudgeShown = true;
+        SnackbarHelper.showTopToast(
+          context,
+          message: "Turn on notifications to get check-in/check-out reminders.",
+          backgroundColor: kOrangeColor,
+        );
+      }
+    }
+  }
+
+  Future<void> _showPermissionDialog(String message) async {
     if (!mounted || _permissionDialogShowing) return;
+
     _permissionDialogShowing = true;
-    showDialog(
+
+    DialogHelper.show(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Permissions required"),
-        content: const Text(
-          "Location and notification permissions are needed to record your attendance accurately. Please enable them in settings.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Later"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              PermissionService.openSettings();
-            },
-            child: const Text("Open Settings"),
-          ),
-        ],
-      ),
-    ).then((_) => _permissionDialogShowing = false); // ADDED: allow re-check
+      heightImage: 100,
+      imagePath: Assets.imagesRedBgTriangleExclamation,
+
+      title: "Permissions required",
+      subtitle: message,
+
+      cancelButtonText: "Later",
+      onCancelTap: () {
+        _permissionDialogShowing = false;
+      },
+      width: 90,
+      height: 50,
+      buttonText: "Open Settings",
+      ButtonBg: kredColor,
+
+      onButtonTap: () {
+        PermissionService.openSettings();
+      },
+
+      barrierDismissible: true,
+    );
+
+    if (mounted) {
+      _permissionDialogShowing = false;
+    }
   }
 
   @override
@@ -173,19 +255,15 @@ class _ClockScreenState extends State<ClockScreen>
   void didPopNext() {
     setState(() => _isActive = true);
     _ticker.start();
+    _notificationNudgeShown = false;
     _checkPermissions();
 
-    // ✅ ADD THIS: re-check server truth whenever the user comes back to
-    // this tab, not just on the very first load. Cheap no-op if nothing
-    // drifted; self-heals the button if something changed while the
-    // user was elsewhere (another device, an admin edit, a queued
-    // action finally syncing, etc).
     final controller = _controller;
     if (controller is SyncedClockScreenController) {
       unawaited(controller.reconcileWithServer());
+      unawaited(controller.refreshGeofenceStatus());
     }
 
-    // ADDED: replay the staggered entrance whenever we come back to this tab.
     _entranceController
       ..reset()
       ..forward();
@@ -194,11 +272,16 @@ class _ClockScreenState extends State<ClockScreen>
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    if (_authPolicyListener != null) {
+      bindings.authProvider.removeListener(_authPolicyListener!);
+      _authPolicyListener = null;
+    }
+    _controller.removeListener(_maybeShowLocationAlert);
     _ticker.dispose();
     _controller.dispose();
     _connectivitySub?.cancel();
     _permissionPollTimer?.cancel();
-    _entranceController.dispose(); // ADDED
+    _entranceController.dispose();
     super.dispose();
   }
 
@@ -209,74 +292,98 @@ class _ClockScreenState extends State<ClockScreen>
   }
 
   void _openLocationSheet() async {
+    // 1. Permission Gate (Check & Request Permissions)
+    final permissionService = const AttendancePermissionService();
+    final hasPermission = await permissionService.checkAndRequestPermissions();
+    if (!hasPermission) {
+      if (mounted) {
+        SnackbarHelper.showTopToast(
+          context,
+          message:
+              "Location permissions and GPS are required to view office locations.",
+          backgroundColor: kredColor,
+        );
+      }
+      return;
+    }
+
+    // 2. Offline Restore & Network Data Refresh
+    if (bindings.authProvider.locations.isEmpty) {
+      await bindings.authProvider.restoreCompanyAndLocationsFromCache();
+    }
+
+    await bindings.companyPolicyService.refreshFromNetwork().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => false,
+    );
+    await _controller.loadPolicyFrom(bindings.companyPolicyService);
+    try {
+      await bindings.authProvider.refreshCurrentUser().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    // 3. UI Rendering (Get fresh locations & open bottom sheet)
+    final authLocations = bindings.authProvider.locations;
+    final locations = authLocations.map((l) {
+      final point = GeoPoint.tryParse(l.latLon);
+      return LocationModel(
+        name: l.name,
+        address: l.displayAddress,
+        image: l.image ?? '',
+        latitude: point?.lat,
+        longitude: point?.lon,
+      );
+    }).toList();
+
     final result = await showModalBottomSheet<LocationModel>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => LocationBottomSheet(
-        locations: ClockScreenDemoData.locations,
+        locations: locations,
         selected: _controller.selectedLocationName,
       ),
     );
-    if (result != null) {
-      _controller.selectLocation(
-        result.name,
-        inRange: result.address != "No Location",
-      );
+    if (result == null || !mounted) return;
+
+    // Local controller selection
+    _controller.selectLocation(result.name, inRange: true);
+
+    for (final loc in authLocations) {
+      if (loc.name == result.name) {
+        await bindings.authProvider.selectLocation(loc);
+        break;
+      }
+    }
+
+    // Refresh geofence status
+    final controller = _controller;
+    if (controller is SyncedClockScreenController) {
+      await controller.refreshGeofenceStatus();
     }
   }
 
-  void _openCompanySheet() async {
-    final result = await showModalBottomSheet<CompanyModel>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => CompanyBottomSheet(
-        companys: ClockScreenDemoData.companys,
-        selected: _controller.selectedCompanyName,
-      ),
-    );
-    if (result != null) {
-      _controller.selectCompany(
-        result.name,
-        isCompany: result.address != "No Location",
-      );
-    }
+  bool _isCheckInTap() {
+    return _controller.effectiveStatus == AttendanceDayStatus.checkedOut;
   }
 
-  Future<void> _onMainTap() async {
-    final result = await _controller.handleMainTap();
-
-    final syncedController = _controller as SyncedClockScreenController;
-
-    // 🔥 PRIORITY: Show server error first
-    if (syncedController.lastServerMessage != null) {
-      SnackbarHelper.showTopToast(
-        context,
-        message: syncedController.lastServerMessage!,
-        backgroundColor: kredColor,
-      );
-
-      // clear after showing
-      syncedController.lastServerMessage = null;
-      return;
-    }
-
-    _showResultToast(result);
-  }
-
-  Future<void> _onBreakTap() async {
-    final result = await _controller.handleBreakTap();
-    _showResultToast(result);
+  bool _isCheckoutTap() {
+    final status = _controller.effectiveStatus;
+    return status == AttendanceDayStatus.checkedIn ||
+        status == AttendanceDayStatus.endedBreak;
   }
 
   void _showResultToast(AttendanceActionResult result) {
     if (!mounted) return;
+
     switch (result) {
       case AttendanceActionResult.checkedIn:
         SnackbarHelper.showTopToast(
           context,
-          message: "Checked In Successfully",
+          message: AppStrings.checkedIn,
           backgroundColor: kBlack,
           textColor: kWhite,
           imagePath: Assets.imagesCircleCheckDown,
@@ -285,7 +392,7 @@ class _ClockScreenState extends State<ClockScreen>
       case AttendanceActionResult.checkedOut:
         SnackbarHelper.showTopToast(
           context,
-          message: "Checked Out Successfully",
+          message: AppStrings.checkedOut,
           backgroundColor: kBlack,
           textColor: kWhite,
           imagePath: Assets.imagesCircleCheckUp,
@@ -294,7 +401,7 @@ class _ClockScreenState extends State<ClockScreen>
       case AttendanceActionResult.breakStarted:
         SnackbarHelper.showTopToast(
           context,
-          message: "Break Started Successfully",
+          message: AppStrings.breakStarted,
           backgroundColor: kBlack,
           textColor: kWhite,
           imagePath: Assets.imagesMugHotWhite,
@@ -303,21 +410,72 @@ class _ClockScreenState extends State<ClockScreen>
       case AttendanceActionResult.breakEnded:
         SnackbarHelper.showTopToast(
           context,
-          message: "Break End Successfully",
+          message: AppStrings.breakEnded,
           backgroundColor: kBlack,
           textColor: kWhite,
           imagePath: Assets.imagesCircleCheckTick,
         );
         break;
-      case AttendanceActionResult.outOfRange:
+
+      case AttendanceActionResult.nonWorkingDay:
         SnackbarHelper.showTopToast(
           context,
-          message: "You are out of range",
+          message: AppStrings.nonWorkingDay,
           backgroundColor: kredColor,
         );
         break;
+      case AttendanceActionResult.breakLimitReached:
+        SnackbarHelper.showTopToast(
+          context,
+          message: "Break limit reached",
+          backgroundColor: kredColor,
+        );
+        break;
+      case AttendanceActionResult.outOfRange:
       case AttendanceActionResult.none:
         break;
+    }
+  }
+
+  Future<void> _onMainTap() async {
+    final result = await _controller.handleMainTap();
+    _showResultToast(result);
+
+    final syncedController = _controller as SyncedClockScreenController;
+    if (syncedController.lastServerMessage != null) {
+      final msg = syncedController.lastServerMessage!;
+      syncedController.lastServerMessage = null;
+      if (msg == AppStrings.locationPermissionRequired ||
+          msg == AppStrings.turnOnLocationServices ||
+          msg == AppStrings.permissionsRequired ||
+          msg.contains('Unable to get your location')) {
+        SnackbarHelper.showTopToast(
+          context,
+          message: msg,
+          backgroundColor: kredColor,
+        );
+      }
+    }
+  }
+
+  Future<void> _onBreakTap() async {
+    final result = await _controller.handleBreakTap();
+    _showResultToast(result);
+
+    final syncedController = _controller as SyncedClockScreenController;
+    if (syncedController.lastServerMessage != null) {
+      final msg = syncedController.lastServerMessage!;
+      syncedController.lastServerMessage = null;
+      if (msg == AppStrings.locationPermissionRequired ||
+          msg == AppStrings.turnOnLocationServices ||
+          msg == AppStrings.permissionsRequired ||
+          msg.contains('Unable to get your location')) {
+        SnackbarHelper.showTopToast(
+          context,
+          message: msg,
+          backgroundColor: kredColor,
+        );
+      }
     }
   }
 
@@ -332,24 +490,11 @@ class _ClockScreenState extends State<ClockScreen>
         return (color: kredColor, text: "Check Out", showBreakBadge: true);
       case AttendanceDayStatus.onBreak:
         return (color: kYellowColor, text: "End Break", showBreakBadge: false);
-      case AttendanceDayStatus.outofRange:
-        return (
-          color: kGreyContainerGreyColor2,
-          text: "Out of Range",
-          showBreakBadge: false,
-        );
       default:
-        return (
-          color: kGreyContainerGreyColor2,
-          text: "Unavailable",
-          showBreakBadge: false,
-        );
+        return (color: kPrimaryColor, text: "Check In", showBreakBadge: false);
     }
   }
 
-  // ADDED: wraps a child so it fades in + slides down into place, delayed
-  // according to its position in the list (index/total). This is what
-  // produces the "one after another" staggered effect without AnimatedList.
   Widget _staggered(int index, int total, Widget child) {
     final safeTotal = total <= 1 ? 1 : total;
     final start = (index / safeTotal) * 0.6;
@@ -365,12 +510,43 @@ class _ClockScreenState extends State<ClockScreen>
         return Opacity(
           opacity: animation.value,
           child: Transform.translate(
-            // Slides DOWN into place: starts slightly above, settles at 0.
             offset: Offset(0, (1 - animation.value) * -18),
             child: child,
           ),
         );
       },
+    );
+  }
+
+  Widget _buildBreakDurationInfo(SyncedClockScreenController syncedController) {
+    final hasPolicy = syncedController.hasPolicyBreakDuration;
+    final isOnBreak = syncedController.isOnBreak;
+
+    // ✅ Backend policy duration
+    final durationLabel = hasPolicy
+        ? AttendanceFormat.duration(syncedController.policyBreakDuration)
+        : "--";
+
+    // ✅ Backend-derived break end time
+    final endsAtLabel = isOnBreak
+        ? (syncedController.breakEndsAtLabel ?? "--")
+        : "--";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        AppText.p2(
+          "Break duration: $durationLabel",
+          color: kYellowColorLight,
+          weight: FontWeight.w400,
+        ),
+        const SizedBox(height: 4),
+        AppText.p2(
+          "Break ends at: $endsAtLabel",
+          color: kYellowColorLight,
+          weight: FontWeight.w400,
+        ),
+      ],
     );
   }
 
@@ -385,44 +561,34 @@ class _ClockScreenState extends State<ClockScreen>
             final status = _controller.effectiveStatus;
             final config = _configFor(status);
             final isOnBreak = _controller.isOnBreak;
+            final syncedController = _controller as SyncedClockScreenController;
 
-            // ADDED: build the raw list of items first (unchanged content),
-            // then wrap each one with `_staggered` right before returning it
-            // from the ListView -- this is the only structural change.
             final List<Widget> items = [
+              if (isOnBreak) ...[
+                const SizedBox(height: 40),
+                AppText.p1(
+                  "Break started at ${_formattedTime(syncedController.breakStartedAt ?? _ticker.value)}",
+                  color: kYellowColorLight,
+                  weight: FontWeight.w400,
+                ),
+                const SizedBox(height: 4),
+              ],
+
               ButtonAnimations.press(
-                onTap: _openCompanySheet,
+                onTap: () {},
                 child: Row(
                   spacing: 5,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     AppText.p3(
                       _controller.selectedCompanyName,
-                      color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
+                      color: isOnBreak ? kWhite : kBlack,
                       weight: FontWeight.w600,
-                    ),
-                    const SizedBox(height: 6),
-                    Icon(
-                      size: 20,
-                      weight: 3,
-                      CupertinoIcons.chevron_down,
-                      color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
                     ),
                   ],
                 ),
               ),
-              if (isOnBreak) ...[
-                const SizedBox(height: 40),
-                // Only this label rebuilds every second.
-                ValueListenableBuilder<DateTime>(
-                  valueListenable: _ticker,
-                  builder: (context, now, _) => AppText.p1(
-                    "Break started at ${_formattedTime(now)}",
-                    color: kYellowColorLight,
-                    weight: FontWeight.w400,
-                  ),
-                ),
-              ],
+
               const SizedBox(height: 40),
               ValueListenableBuilder<DateTime>(
                 valueListenable: _ticker,
@@ -454,17 +620,12 @@ class _ClockScreenState extends State<ClockScreen>
                 onTap: _onMainTap,
                 onBreakTap: _onBreakTap,
                 isOnBreak: status == AttendanceDayStatus.onBreak,
-                isActive: _isActive && status != AttendanceDayStatus.outofRange,
+                isActive: _isActive,
                 isLoading: _controller.isProcessing,
               ),
               const SizedBox(height: 30),
-              if (isOnBreak) ...[
-                AppText.p1(
-                  "Break time end’s at - 02:00 PM",
-                  weight: FontWeight.w400,
-                ),
-                const SizedBox(height: 20),
-              ],
+
+              if (isOnBreak) _buildBreakDurationInfo(syncedController),
               if (!isOnBreak) ...[
                 ButtonAnimations.press(
                   onTap: _openLocationSheet,
@@ -481,7 +642,9 @@ class _ClockScreenState extends State<ClockScreen>
                       AppText.p2(
                         _controller.isInRange
                             ? _controller.selectedLocationName
-                            : "Not in office range",
+                            : _controller.selectedLocationName.isNotEmpty
+                            ? "Not in [${_controller.selectedLocationName}] range"
+                            : "Not in range",
                         color: _controller.isInRange
                             ? kPrimaryColor
                             : kredColor,
@@ -503,6 +666,8 @@ class _ClockScreenState extends State<ClockScreen>
                   ? AttendanceCard(
                       day: _ticker.value,
                       events: _controller.events,
+                      apiClient: bindings.apiClient,
+                      userEmail: bindings.userEmail,
                       onEditAttendance: () {},
                     )
                   : const SizedBox.shrink(),

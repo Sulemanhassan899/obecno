@@ -2,12 +2,13 @@ import 'package:Obecno/features/auth/presentation/screens/enable_permission.dart
 import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:Obecno/features/auth/presentation/screens/login_pass.dart';
 import 'package:Obecno/features/auth/wrapper/auth_wrapper.dart';
+
 import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';
 import 'package:Obecno/features/launch/onboarding/onboarding.dart';
 import 'package:Obecno/features/launch/splash/splash.dart';
 import 'package:Obecno/main.dart';
-import 'package:Obecno/shared/bottom_nav_bars/employee_nav.dart';
-import 'package:Obecno/shared/bottom_nav_bars/manager_nav.dart';
+import 'package:Obecno/widgets/bottom_nav_bars/employee_nav.dart';
+import 'package:Obecno/widgets/bottom_nav_bars/manager_nav.dart';
 
 import 'package:go_router/go_router.dart';
 

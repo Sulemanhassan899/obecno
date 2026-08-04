@@ -1,16 +1,21 @@
+import 'dart:async';
 import 'package:Obecno/core/animations/app_animations.dart';
+import 'package:Obecno/core/api/api_client.dart';
 import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendence_card.dart';
+import 'package:Obecno/shared/bottom_sheets/add_attendance_bottom_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/hoilday_detail_sheet.dart';
+import 'package:Obecno/main.dart';
+import 'package:Obecno/widgets/resolved_location_text.dart';
 
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 
 class ClockAttendanceDetailsSheet {
   ClockAttendanceDetailsSheet._();
@@ -20,6 +25,8 @@ class ClockAttendanceDetailsSheet {
     required DateTime day,
     required List<AttendanceEvent> events,
     required AttendanceSummary summary,
+    required ApiClient apiClient,
+    required String userEmail,
     VoidCallback? onEditAttendance,
   }) {
     return showModalBottomSheet(
@@ -31,6 +38,8 @@ class ClockAttendanceDetailsSheet {
           day: day,
           events: events,
           summary: summary,
+          apiClient: apiClient,
+          userEmail: userEmail,
           onEditAttendance: onEditAttendance,
         );
       },
@@ -38,18 +47,83 @@ class ClockAttendanceDetailsSheet {
   }
 }
 
-class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
+class _ClockAttendanceDetailsSheetBody extends StatefulWidget {
   final DateTime day;
   final List<AttendanceEvent> events;
   final AttendanceSummary summary;
+  final ApiClient apiClient;
+  final String userEmail;
   final VoidCallback? onEditAttendance;
 
   const _ClockAttendanceDetailsSheetBody({
     required this.day,
     required this.events,
     required this.summary,
+    required this.apiClient,
+    required this.userEmail,
     required this.onEditAttendance,
   });
+
+  @override
+  State<_ClockAttendanceDetailsSheetBody> createState() =>
+      _ClockAttendanceDetailsSheetBodyState();
+}
+
+class _ClockAttendanceDetailsSheetBodyState
+    extends State<_ClockAttendanceDetailsSheetBody> {
+  Timer? _timer;
+  late AttendanceSummary _summary;
+  late Duration _workingDuration;
+
+  @override
+  void initState() {
+    super.initState();
+    _recompute();
+    _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ClockAttendanceDetailsSheetBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _recompute();
+  }
+
+  void _recompute() {
+    _summary = AttendanceEngine.compute(widget.events);
+    _workingDuration = _summary.liveWorkingDuration();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _summary = AttendanceEngine.compute(widget.events);
+        _workingDuration = _summary.liveWorkingDuration();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String? get _firstCheckInLocation {
+    for (final e in widget.events) {
+      if (e.type == AttendanceEventType.checkIn) return e.location;
+    }
+    return null;
+  }
+
+  String? get _lastCheckOutLocation {
+    String? location;
+    for (final e in widget.events) {
+      if (e.type == AttendanceEventType.checkOut) location = e.location;
+    }
+    return location;
+  }
 
   Color _colorFor(AttendanceEventType type) {
     switch (type) {
@@ -65,8 +139,12 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeline = AttendanceEngine.sortedNewestFirst(events);
-    final workingDuration = summary.liveWorkingDuration();
+    final timeline = AttendanceEngine.sortedNewestFirst(widget.events);
+    final workingDuration = _workingDuration;
+
+    final knownLocations = bindings.authProvider.locations
+        .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
+        .toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -88,7 +166,7 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     AppText.h5(
-                      AttendanceFormat.fullDate(day),
+                      AttendanceFormat.fullDate(widget.day),
                       weight: FontWeight.w600,
                     ),
                     ButtonAnimations.press(
@@ -109,12 +187,14 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                 child: Container(
                   color: kbackground2,
                   child: ListView(
+                    shrinkWrap: true,
                     controller: scrollController,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
                       vertical: 20,
                     ),
                     children: [
+                      /// ================= BottomSheet card HEADER =================
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -142,8 +222,9 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                                       const SizedBox(height: 6),
                                       AppText.h3(
                                         AttendanceFormat.time(
-                                          summary.firstCheckIn,
+                                          _summary.firstCheckIn,
                                         ),
+                                        align: TextAlign.left,
                                         color: kPrimaryColor,
                                         weight: FontWeight.w700,
                                       ),
@@ -182,8 +263,9 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                                       const SizedBox(height: 6),
                                       AppText.h3(
                                         AttendanceFormat.time(
-                                          summary.lastCheckOut,
+                                          _summary.lastCheckOut,
                                         ),
+                                        align: TextAlign.right,
                                         color: kredColor,
                                         weight: FontWeight.w700,
                                       ),
@@ -199,8 +281,28 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _location("Head Office"),
-                                _location("Head Office", isRight: true),
+                                Expanded(
+                                  child: _summary.firstCheckIn == null
+                                      ? _location("--")
+                                      : ResolvedLocationText(
+                                          rawLocation: _firstCheckInLocation,
+                                          knownLocations: knownLocations,
+                                          onlyKnownLocations: true,
+                                          builder: (context, text) =>
+                                              _location(text),
+                                        ),
+                                ),
+                                Expanded(
+                                  child: _summary.lastCheckOut == null
+                                      ? _location("--", isRight: true)
+                                      : ResolvedLocationText(
+                                          rawLocation: _lastCheckOutLocation,
+                                          knownLocations: knownLocations,
+                                          onlyKnownLocations: true,
+                                          builder: (context, text) =>
+                                              _location(text, isRight: true),
+                                        ),
+                                ),
                               ],
                             ),
                           ],
@@ -258,7 +360,12 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
                           onTap: () {
                             Navigator.pop(context);
                             Future.delayed(Duration.zero, () {
-                              AddAttendanceBottomSheet.show(context);
+                              AddAttendanceBottomSheet.show(
+                                context,
+                                day: widget.day,
+                                apiClient: widget.apiClient,
+                                userEmail: widget.userEmail,
+                              );
                             });
                           },
                           child: Container(
@@ -310,7 +417,7 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
   }
 
   Widget _line() {
-    return Container(width: 18, height: 2, color: kGreyColor.withOpacity(0.3));
+    return Container(width: 13, height: 2, color: kGreyColor.withOpacity(0.3));
   }
 
   Widget _location(String text, {bool isRight = false}) {
@@ -319,7 +426,16 @@ class _ClockAttendanceDetailsSheetBody extends StatelessWidget {
         if (!isRight)
           CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
         if (!isRight) const SizedBox(width: 6),
-        AppText.p2(text, color: kGreyColor, weight: FontWeight.w500),
+        Expanded(
+          child: AppText.caption(
+            text,
+            color: kGreyColor,
+            weight: FontWeight.w500,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            align: isRight ? TextAlign.right : TextAlign.left,
+          ),
+        ),
         if (isRight) const SizedBox(width: 6),
         if (isRight)
           CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
@@ -336,6 +452,10 @@ class _TimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final knownLocations = bindings.authProvider.locations
+        .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
+        .toList();
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
@@ -360,23 +480,33 @@ class _TimelineTile extends StatelessWidget {
             children: [
               AppText.h5(event.label, color: color, weight: FontWeight.w700),
               const SizedBox(width: 12),
-              CommonImageView(imagePath: Assets.imagesUserPen, height: 18),
+              // CommonImageView(imagePath: Assets.imagesUserPen, height: 18),
             ],
           ),
 
           const SizedBox(height: 8),
 
           /// LOCATION
-          Row(
-            children: [
-              CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
-              const SizedBox(width: 6),
-              AppText.p2(
-                event.location ?? "--",
-                color: kGreyColor,
-                weight: FontWeight.w500,
-              ),
-            ],
+          ResolvedLocationText(
+            rawLocation: event.location,
+            knownLocations: knownLocations,
+            onlyKnownLocations: true,
+            builder: (context, text) => Row(
+              children: [
+                CommonImageView(
+                  imagePath: Assets.imagesLocationDot,
+                  height: 12,
+                ),
+                const SizedBox(width: 6),
+                AppText.p2(
+                  text,
+                  color: kGreyColor,
+                  weight: FontWeight.w500,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -1,6 +1,3 @@
-/// Centralized app-wide constants.
-/// Keep environment-specific values (base URL, timeouts) here so they are
-/// never hardcoded inside the api client or repositories.
 class AppConstants {
   AppConstants._();
 
@@ -12,6 +9,11 @@ class AppConstants {
     defaultValue: 'https://app.obecno.com/',
   );
 
+static const String apiVersion = String.fromEnvironment(
+  'OBECNO_API_VERSION',
+  defaultValue: '/api/v1', 
+);
+
   // ---------------------------------------------------------------------
   // Timeouts
   // ---------------------------------------------------------------------
@@ -22,20 +24,28 @@ class AppConstants {
   // ---------------------------------------------------------------------
   // Retry
   // ---------------------------------------------------------------------
-  static const int maxRetries = 3;
-  static const Duration retryBaseDelay = Duration(milliseconds: 600);
+  static const int maxRetries = 5;
+  static const Duration retryBaseDelay = Duration(milliseconds: 500);
 
   // ---------------------------------------------------------------------
   // Storage keys
   // ---------------------------------------------------------------------
-  static const String cookieDirName = 'obecno_cookies';
   static const String keySessionActive = 'session_active';
   static const String keyUserId = 'session_user_id';
   static const String keyUserRole = 'session_user_role';
 
-  // ---------------------------------------------------------------------
-  // Misc
-  // ---------------------------------------------------------------------
+  static const String keySavedEmail = 'saved_login_email';
+
+  static const String keyCompanyJson = 'session_company_json';
+  static const String keyLocationsJson = 'session_locations_json';
+  static const String keySelectedLocationId = 'session_selected_location_id';
+
+  static const String keyPermissionLocationJson =
+      'session_permission_location_json';
+
+  static const String keyTokenJson = 'session_token_json';
+  static const String keyPermissionsJson = 'session_permissions_json';
+
   static const bool enableApiLogging = bool.fromEnvironment(
     'OBECNO_DEBUG_LOGS',
     defaultValue: true,

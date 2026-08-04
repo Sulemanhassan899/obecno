@@ -1,7 +1,5 @@
 import 'package:Obecno/core/api/constants.dart';
 
-/// A single (id, name) option from one of the profile endpoint's lookup
-/// lists -- `countries`, `cities`, `departments`.
 class LookupItem {
   const LookupItem({required this.id, required this.name});
 
@@ -15,9 +13,6 @@ class LookupItem {
     );
   }
 
-  /// Tolerant list parser -- returns `const []` instead of throwing if
-  /// [raw] is missing, null, or not a list (mirrors the defensive style
-  /// used by `AuthUserModel.fromJson`).
   static List<LookupItem> listFrom(dynamic raw) {
     if (raw is! List) return const [];
     return raw
@@ -25,15 +20,22 @@ class LookupItem {
         .map((e) => LookupItem.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
   }
-
-  @override
-  String toString() => 'LookupItem(id: $id, name: $name)';
 }
 
-/// Response model for `GET /api/employee/profile` and
-/// `PUT /api/employee/profile` -- both return the same "profile data with
-/// countries, cities, and departments" shape per the API docs, so one
-/// model covers both.
+class ProfileField {
+  const ProfileField({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  factory ProfileField.fromJson(Map<String, dynamic> json) {
+    return ProfileField(
+      label: (json['label'] ?? json['title'] ?? json['name'] ?? '').toString(),
+      value: (json['value'] ?? json['display'] ?? '—').toString(),
+    );
+  }
+}
+
 class EmployeeProfileModel {
   const EmployeeProfileModel({
     required this.id,
@@ -50,6 +52,7 @@ class EmployeeProfileModel {
     this.countries = const [],
     this.cities = const [],
     this.departments = const [],
+    this.profileFields = const [],
   });
 
   final String id;
@@ -64,151 +67,205 @@ class EmployeeProfileModel {
   final String? cityId;
   final String? departmentId;
 
-  /// Dropdown options for the edit-profile form. Empty on responses that
-  /// don't include them (e.g. after a photo-only update, if the backend
-  /// omits the lookup lists there).
   final List<LookupItem> countries;
   final List<LookupItem> cities;
   final List<LookupItem> departments;
 
-  factory EmployeeProfileModel.fromJson(Map<String, dynamic> json) {
-    // The actual profile fields may be nested under "profile" or "user",
-    // or sit flat at the top level -- same defensive unwrap pattern as
-    // AuthUserModel.fromJson, since this backend isn't consistent about it.
-    final profile = json['profile'] is Map<String, dynamic>
-        ? json['profile'] as Map<String, dynamic>
-        : (json['user'] is Map<String, dynamic>
-              ? json['user'] as Map<String, dynamic>
-              : json);
+  final List<ProfileField> profileFields;
 
-    // 🔥 FIX: `GET /api/employee/profile` puts the employer's info in a
-    // sibling "company" object next to "user", not on the user record
-    // itself -- that's where the real Company ID / office address live
-    // (an employee has no company_id/address field of their own).
+  factory EmployeeProfileModel.fromJson(Map<String, dynamic> json) {
+    final profile = json['user'] is Map<String, dynamic>
+        ? json['user'] as Map<String, dynamic>
+        : json;
+
     final company = json['company'] is Map<String, dynamic>
         ? json['company'] as Map<String, dynamic>
         : const <String, dynamic>{};
 
-    // 🔥 FIX: the role shown under the name on the profile header comes
-    // back as "job_title" ("Flutter Developer"), not "designation" or
-    // "position" -- those keys don't exist in the real response, which is
-    // why it rendered blank. Falls back to the first entry of "roles"
-    // (e.g. "employee") only if job_title is ever missing.
-    String? designation =
-        (profile['job_title'] ?? profile['designation'] ?? profile['position'])
-            ?.toString();
-    if (designation == null || designation.isEmpty) {
-      final roles = profile['roles'];
-      if (roles is List && roles.isNotEmpty) {
-        designation = roles.first.toString();
-      }
-    }
+    final reportsTo = json['reports_to'] is Map<String, dynamic>
+        ? json['reports_to'] as Map<String, dynamic>
+        : const <String, dynamic>{};
 
-    // 🔥 FIX: the photo path the backend sends is host-relative
-    // ("uploads/users/24-....jpg" on `user.photo`, or "/uploads/..." on
-    // the sibling top-level `photo_url`) -- never a full URL. Handing that
-    // straight to `Image.network` fails silently, which is why the photo
-    // never showed. `photo_url` is preferred since it's the field this
-    // endpoint documents for direct display; `_absoluteUrl` resolves
-    // whichever one is present against the API's base URL.
-    final rawPhoto =
-        (json['photo_url'] ??
-                profile['photo'] ??
-                profile['photo_url'] ??
-                profile['avatar'])
-            ?.toString();
+    String? designation = (profile['job_title'] ?? profile['designation'])
+        ?.toString();
+
+    final rawPhoto = (json['photo_url'] ?? profile['photo'])?.toString();
+
+    final countries = LookupItem.listFrom(json['countries']);
+    final cities = LookupItem.listFrom(json['cities']);
+    final departments = LookupItem.listFrom(json['departments']);
+
+    final profileFields = _buildProfileFields(
+      json: json,
+      profile: profile,
+      company: company,
+      reportsTo: reportsTo,
+      lookups: {
+        'country_id': countries,
+        'city_id': cities,
+        'department_id': departments,
+      },
+    );
 
     return EmployeeProfileModel(
-      id: (profile['id'] ?? profile['user_id'] ?? profile['employee_id'] ?? '')
-          .toString(),
-      name: (profile['name'] ?? profile['title'] ?? profile['full_name'] ?? '')
-          .toString(),
+      id: (profile['id'] ?? '').toString(),
+      name: (profile['name'] ?? profile['title'] ?? '').toString(),
       email: (profile['email'] ?? '').toString(),
-      phone: (profile['phone'] ?? profile['phone_number'])?.toString(),
+      phone: profile['phone']?.toString(),
       photoUrl: _absoluteUrl(rawPhoto),
       designation: designation,
-      // 🔥 FIX: "Company ID" on the Account Info screen is the employer's
-      // id (`company.id`), not a field on the user record -- the old
-      // `employee_code`/`company_id` keys don't exist on `user`, which is
-      // why it always showed "-".
-      employeeCode:
-          (company['id'] ?? profile['employee_code'] ?? profile['company_id'])
-              ?.toString(),
-      // 🔥 FIX: same story for "Address" -- it's the company's address,
-      // not a field the employee record carries.
-      address:
-          (company['address'] ??
-                  company['office_address'] ??
-                  company['location'] ??
-                  profile['address'])
-              ?.toString(),
-      countryId: (profile['country_id'] ?? json['selected_country_id'])
-          ?.toString(),
-      cityId: (profile['city_id'] ?? json['selected_city_id'])?.toString(),
-      departmentId: (profile['department_id'] ?? json['selected_department_id'])
-          ?.toString(),
-      countries: LookupItem.listFrom(json['countries']),
-      cities: LookupItem.listFrom(json['cities']),
-      departments: LookupItem.listFrom(json['departments']),
+      employeeCode: company['id']?.toString(),
+      address: company['address']?.toString(),
+      countryId: profile['country_id']?.toString(),
+      cityId: profile['city_id']?.toString(),
+      departmentId: profile['department_id']?.toString(),
+      countries: countries,
+      cities: cities,
+      departments: departments,
+      profileFields: profileFields,
     );
   }
 
-  /// Resolves a host-relative backend path ("uploads/..." or
-  /// "/uploads/...") into an absolute URL `Image.network` can load.
-  /// Leaves an already-absolute URL (http/https) untouched, and returns
-  /// null for a missing/empty path instead of building a bare base URL.
+  static List<ProfileField> _buildProfileFields({
+    required Map<String, dynamic> json,
+    required Map<String, dynamic> profile,
+    required Map<String, dynamic> company,
+    required Map<String, dynamic> reportsTo,
+    required Map<String, List<LookupItem>> lookups,
+  }) {
+    final rawFields = json['profile_fields'] ?? json['fields'];
+
+    if (rawFields is List) {
+      return rawFields
+          .whereType<Map>()
+          .map((e) => ProfileField.fromJson(Map<String, dynamic>.from(e)))
+          .toList(growable: false);
+    }
+
+    final merged = _merge(profile, company, reportsTo);
+    final flat = _flatten(merged);
+    final orderedKeys = _applyOrdering(flat, json['field_order']);
+
+    final fields = <ProfileField>[];
+
+    for (final key in orderedKeys) {
+      if (_hiddenProfileKeys.contains(key)) continue;
+
+      final value = flat[key];
+      if (value == null || value.toString().trim().isEmpty) continue;
+
+      String display;
+
+      if (lookups.containsKey(key)) {
+        final resolved = _resolveIdToLabel(value.toString(), lookups[key]!);
+        if (resolved == null) continue;
+        display = resolved;
+      } else if (value is List) {
+        display = value.join(', ');
+      } else {
+        display = value.toString();
+      }
+
+      fields.add(ProfileField(label: _humanizeKey(key), value: display));
+    }
+
+    return fields;
+  }
+
+  static Map<String, dynamic> _merge(
+    Map<String, dynamic> user,
+    Map<String, dynamic> company,
+    Map<String, dynamic> reportsTo,
+  ) {
+    final Map<String, dynamic> merged = {};
+
+    void add(String prefix, Map<String, dynamic> map) {
+      map.forEach((k, v) {
+        final key = prefix.isEmpty ? k : '${prefix}_$k';
+        merged[key] = v;
+      });
+    }
+
+    add('', user);
+    add('company', company);
+    add('reports_to', reportsTo);
+
+    return merged;
+  }
+
+  static Map<String, dynamic> _flatten(Map<String, dynamic> input) {
+    final Map<String, dynamic> flat = {};
+
+    input.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        value.forEach((k, v) {
+          flat['${key}_$k'] = v;
+        });
+      } else {
+        flat[key] = value;
+      }
+    });
+
+    return flat;
+  }
+
+  static List<String> _applyOrdering(
+    Map<String, dynamic> data,
+    List<dynamic>? order,
+  ) {
+    final keys = data.keys.toList();
+
+    if (order == null) return keys;
+
+    final ordered = <String>[];
+
+    for (var k in order) {
+      if (keys.contains(k)) ordered.add(k.toString());
+    }
+
+    for (var k in keys) {
+      if (!ordered.contains(k)) ordered.add(k);
+    }
+
+    return ordered;
+  }
+
+  static String? _resolveIdToLabel(String? id, List<LookupItem> list) {
+    if (id == null) return null;
+    for (final item in list) {
+      if (item.id == id) return item.name;
+    }
+    return null;
+  }
+
   static String? _absoluteUrl(String? path) {
     if (path == null || path.isEmpty) return null;
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (path.startsWith('http')) return path;
 
-    final base = AppConstants.baseUrl.endsWith('/')
-        ? AppConstants.baseUrl.substring(0, AppConstants.baseUrl.length - 1)
-        : AppConstants.baseUrl;
-    final normalizedPath = path.startsWith('/') ? path : '/$path';
-    return '$base$normalizedPath';
+    final base = AppConstants.baseUrl.replaceAll(RegExp(r'/$'), '');
+    return '$base/${path.replaceFirst(RegExp(r'^/'), '')}';
   }
 
-  /// Used by `ProfileProvider.updatePhoto` so a photo-only response (which
-  /// may omit the lookup lists) doesn't wipe out the countries/cities/
-  /// departments already loaded from the last full `getProfile()` call.
-  EmployeeProfileModel copyWith({
-    String? name,
-    String? email,
-    String? phone,
-    String? photoUrl,
-    String? designation,
-    String? employeeCode,
-    String? address,
-    String? countryId,
-    String? cityId,
-    String? departmentId,
-    List<LookupItem>? countries,
-    List<LookupItem>? cities,
-    List<LookupItem>? departments,
-  }) {
-    return EmployeeProfileModel(
-      id: id,
-      name: name ?? this.name,
-      email: email ?? this.email,
-      phone: phone ?? this.phone,
-      photoUrl: photoUrl ?? this.photoUrl,
-      designation: designation ?? this.designation,
-      employeeCode: employeeCode ?? this.employeeCode,
-      address: address ?? this.address,
-      countryId: countryId ?? this.countryId,
-      cityId: cityId ?? this.cityId,
-      departmentId: departmentId ?? this.departmentId,
-      countries: (countries != null && countries.isNotEmpty)
-          ? countries
-          : this.countries,
-      cities: (cities != null && cities.isNotEmpty) ? cities : this.cities,
-      departments: (departments != null && departments.isNotEmpty)
-          ? departments
-          : this.departments,
-    );
-  }
+  static const Set<String> _hiddenProfileKeys = {
+    'id',
+    'name',
+    'title',
+    'photo',
+    'photo_url',
+    'avatar',
+    'roles',
+    'role_ids',
+    'created_at',
+    'updated_at',
+    'deleted_at',
+    'status',
+  };
 
-  @override
-  String toString() =>
-      'EmployeeProfileModel(id: $id, name: $name, email: $email)';
+  static String _humanizeKey(String key) {
+    return key
+        .replaceAll('-', '_')
+        .split('_')
+        .map((w) => w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1))
+        .join(' ');
+  }
 }

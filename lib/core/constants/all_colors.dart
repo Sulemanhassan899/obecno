@@ -31,7 +31,7 @@ const kBlackBg = Color(0xff222222);
 
 //! ================== PRIMARY COLORS ==================
 const kPrimaryColor = Color(0xFF0ED574);
-const kPrimaryColor2= Color(0xFFACF2D0);
+const kPrimaryColor2 = Color(0xFFACF2D0);
 
 //! ================== SECONDARY COLORS ==================
 const kSecondaryColor = Color(0xFF56CCF2); // replace

@@ -1,47 +1,60 @@
+
 import 'package:sqflite/sqflite.dart';
 
 import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'attendance_db.dart';
 
-/// Data-access layer over [AttendanceDb]. Knows nothing about the API or
-/// UI models — only [AttendanceDay] in, [AttendanceDay] out.
-///
-/// One month is written in a single transaction (`upsertMonth`) so a
-/// crash/kill mid-write can never leave a month half-cached.
 class AttendanceDao {
   AttendanceDao({AttendanceDb? db}) : _db = db ?? AttendanceDb.instance;
 
   final AttendanceDb _db;
-
-  // ---------------------------------------------------------------------
-  // Writes
-  // ---------------------------------------------------------------------
-
-  /// UPSERTs every day of [days] plus the month's synced/empty flag.
-  /// Safe to call repeatedly for the same month — never duplicates rows,
-  /// never clears unrelated months.
-  Future<void> upsertMonth(DateTime month, List<AttendanceDay> days) async {
+  Future<void> upsertMonth(
+    String userId,
+    DateTime month,
+    List<AttendanceDay> days,
+  ) async {
     final db = await _db.database;
     final monthKey = _monthKey(month);
 
     await db.transaction((txn) async {
+      // Wipe the previous fetch for this month before storing the new one.
+      final staleDates = await txn.query(
+        AttendanceDb.daysTable,
+        columns: ['date'],
+        where: 'month = ? AND user_id = ?',
+        whereArgs: [monthKey, userId],
+      );
+      for (final row in staleDates) {
+        await txn.delete(
+          AttendanceDb.eventsTable,
+          where: 'date = ? AND user_id = ?',
+          whereArgs: [row['date'], userId],
+        );
+      }
+      await txn.delete(
+        AttendanceDb.daysTable,
+        where: 'month = ? AND user_id = ?',
+        whereArgs: [monthKey, userId],
+      );
+
       for (final day in days) {
-        await _upsertDay(txn, day);
+        await _upsertDay(txn, userId, day);
       }
 
-      await txn.insert(
-        AttendanceDb.monthMetaTable,
-        {
-          'month': monthKey,
-          'is_empty': days.isEmpty ? 1 : 0,
-          'synced_at': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert(AttendanceDb.monthMetaTable, {
+        'month': monthKey,
+        'user_id': userId,
+        'is_empty': days.isEmpty ? 1 : 0,
+        'synced_at': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
   }
 
-  Future<void> _upsertDay(Transaction txn, AttendanceDay day) async {
+  Future<void> _upsertDay(
+    Transaction txn,
+    String userId,
+    AttendanceDay day,
+  ) async {
     final dateKey = _dateKey(day.date);
     final monthKey = _monthKey(day.date);
 
@@ -54,45 +67,52 @@ class AttendanceDao {
               totalBreak
         : Duration.zero;
 
-    await txn.insert(
-      AttendanceDb.daysTable,
-      {
-        'date': dateKey,
-        'month': monthKey,
-        'record_id': day.recordId,
-        'first_check_in': day.firstCheckIn,
-        'last_check_out': day.lastCheckOut,
-        'total_work_duration': totalWork.isNegative ? 0 : totalWork.inSeconds,
-        'total_break_duration': totalBreak.inSeconds,
-        'is_edited': day.isEdited ? 1 : 0,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    await txn.insert(AttendanceDb.daysTable, {
+      'date': dateKey,
+      'user_id': userId,
+      'month': monthKey,
+      'record_id': day.recordId,
+      'first_check_in': day.firstCheckIn,
+      'last_check_out': day.lastCheckOut,
+      'total_work_duration': totalWork.isNegative ? 0 : totalWork.inSeconds,
+      'total_break_duration': totalBreak.inSeconds,
+      'is_edited': day.isEdited ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    await txn.delete(
+      AttendanceDb.eventsTable,
+      where: 'date = ? AND user_id = ?',
+      whereArgs: [dateKey, userId],
     );
 
-    // Replace this day's events wholesale — simplest way to guarantee no
-    // stale/duplicate events survive a re-sync of the same day.
-    await txn.delete(AttendanceDb.eventsTable, where: 'date = ?', whereArgs: [dateKey]);
-
     var index = 0;
-    Future<void> insertEvent(String type, String time) {
+    Future<void> insertEvent(String type, String time, String? location) {
       final id = '${dateKey}_${type}_${index++}';
       return txn.insert(AttendanceDb.eventsTable, {
         'id': id,
+        'user_id': userId,
         'date': dateKey,
         'type': type,
         'timestamp': _combine(day.date, time).toIso8601String(),
+        'location': location,
       });
     }
 
-    for (final t in day.checkIns) {
-      await insertEvent('check_in', t);
+    for (var i = 0; i < day.checkIns.length; i++) {
+      final loc = i < day.checkInLocations.length
+          ? day.checkInLocations[i]
+          : null;
+      await insertEvent('check_in', day.checkIns[i], loc);
     }
     for (final b in day.breaks) {
-      await insertEvent('break_start', b.breakIn);
-      await insertEvent('break_end', b.breakOut);
+      await insertEvent('break_start', b.breakIn, b.breakInLocation);
+      await insertEvent('break_end', b.breakOut, b.breakOutLocation);
     }
-    for (final t in day.checkOuts) {
-      await insertEvent('check_out', t);
+    for (var i = 0; i < day.checkOuts.length; i++) {
+      final loc = i < day.checkOutLocations.length
+          ? day.checkOutLocations[i]
+          : null;
+      await insertEvent('check_out', day.checkOuts[i], loc);
     }
   }
 
@@ -100,52 +120,62 @@ class AttendanceDao {
   // Reads
   // ---------------------------------------------------------------------
 
-  Future<bool> isMonthSynced(DateTime month) async {
+  Future<bool> isMonthSynced(String userId, DateTime month) async {
     final db = await _db.database;
     final rows = await db.query(
       AttendanceDb.monthMetaTable,
-      where: 'month = ?',
-      whereArgs: [_monthKey(month)],
+      where: 'month = ? AND user_id = ?',
+      whereArgs: [_monthKey(month), userId],
       limit: 1,
     );
     return rows.isNotEmpty;
   }
 
-  Future<bool> isMonthEmpty(DateTime month) async {
+  Future<bool> isMonthEmpty(String userId, DateTime month) async {
     final db = await _db.database;
     final rows = await db.query(
       AttendanceDb.monthMetaTable,
-      where: 'month = ?',
-      whereArgs: [_monthKey(month)],
+      where: 'month = ? AND user_id = ?',
+      whereArgs: [_monthKey(month), userId],
       limit: 1,
     );
     if (rows.isEmpty) return true;
     return (rows.first['is_empty'] as int? ?? 0) == 1;
   }
 
-  Future<bool> hasAnyData() async {
+  Future<bool> hasAnyData(String userId) async {
     final db = await _db.database;
-    final rows = await db.query(AttendanceDb.monthMetaTable, limit: 1);
+    final rows = await db.query(
+      AttendanceDb.monthMetaTable,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
     return rows.isNotEmpty;
   }
 
-  Future<List<String>> getLoadedMonths() async {
+  Future<List<String>> getLoadedMonths(String userId) async {
     final db = await _db.database;
     final rows = await db.query(
       AttendanceDb.monthMetaTable,
       columns: ['month'],
+      where: 'user_id = ?',
+      whereArgs: [userId],
       orderBy: 'month DESC',
     );
     return rows.map((r) => r['month'] as String).toList();
   }
 
-  Future<List<AttendanceDay>> getDaysForMonth(DateTime month) async {
+  Future<List<AttendanceDay>> getDaysForMonth(
+    String userId,
+    DateTime month,
+  ) async {
     final db = await _db.database;
 
     final dayRows = await db.query(
       AttendanceDb.daysTable,
-      where: 'month = ?',
-      whereArgs: [_monthKey(month)],
+      where: 'month = ? AND user_id = ?',
+      whereArgs: [_monthKey(month), userId],
       orderBy: 'date DESC',
     );
 
@@ -157,37 +187,51 @@ class AttendanceDao {
 
       final eventRows = await db.query(
         AttendanceDb.eventsTable,
-        where: 'date = ?',
-        whereArgs: [dateKey],
+        where: 'date = ? AND user_id = ?',
+        whereArgs: [dateKey, userId],
         orderBy: 'timestamp ASC',
       );
 
       final checkIns = <String>[];
+      final checkInLocations = <String?>[];
       final checkOuts = <String>[];
+      final checkOutLocations = <String?>[];
       final breakStarts = <String>[];
+      final breakStartLocations = <String?>[];
       final breakEnds = <String>[];
+      final breakEndLocations = <String?>[];
 
       for (final e in eventRows) {
         final time = _timeOnly(e['timestamp'] as String);
+        final location = e['location'] as String?;
         switch (e['type'] as String) {
           case 'check_in':
             checkIns.add(time);
+            checkInLocations.add(location);
             break;
           case 'check_out':
             checkOuts.add(time);
+            checkOutLocations.add(location);
             break;
           case 'break_start':
             breakStarts.add(time);
+            breakStartLocations.add(location);
             break;
           case 'break_end':
             breakEnds.add(time);
+            breakEndLocations.add(location);
             break;
         }
       }
 
       final breaks = <BreakSession>[
         for (var i = 0; i < breakStarts.length && i < breakEnds.length; i++)
-          BreakSession(breakIn: breakStarts[i], breakOut: breakEnds[i]),
+          BreakSession(
+            breakIn: breakStarts[i],
+            breakOut: breakEnds[i],
+            breakInLocation: breakStartLocations[i],
+            breakOutLocation: breakEndLocations[i],
+          ),
       ];
 
       days.add(
@@ -196,6 +240,8 @@ class AttendanceDao {
           recordId: row['record_id'] as int?,
           checkIns: checkIns,
           checkOuts: checkOuts,
+          checkInLocations: checkInLocations,
+          checkOutLocations: checkOutLocations,
           breaks: breaks,
           isEdited: (row['is_edited'] as int? ?? 0) == 1,
         ),

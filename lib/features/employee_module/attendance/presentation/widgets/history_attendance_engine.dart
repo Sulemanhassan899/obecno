@@ -10,8 +10,6 @@ class HistoryAttendanceSummary {
   final bool isCheckedIn;
   final bool isOnBreak;
 
-  /// Start time of whichever session (work or break) is currently
-  /// open/running. Null if nothing is currently open (checked out).
   final DateTime? openSessionStart;
 
   const HistoryAttendanceSummary({
@@ -34,8 +32,6 @@ class HistoryAttendanceSummary {
     openSessionStart: null,
   );
 
-  /// Live working duration "as of now" -- adds the still-running
-  /// work session (if any) on top of the completed sessions.
   Duration liveWorkingDuration({DateTime? now}) {
     if (!isCheckedIn || isOnBreak || openSessionStart == null) {
       return totalWorkingDuration;
@@ -44,8 +40,6 @@ class HistoryAttendanceSummary {
     return totalWorkingDuration + current.difference(openSessionStart!);
   }
 
-  /// Live break duration "as of now" -- adds the still-running
-  /// break (if any) on top of completed breaks.
   Duration liveBreakDuration({DateTime? now}) {
     if (!isOnBreak || openSessionStart == null) {
       return totalBreakDuration;

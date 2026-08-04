@@ -1,25 +1,15 @@
+import 'dart:convert';
 
 import 'package:Obecno/core/api/constants.dart';
-import 'package:Obecno/core/api/cookie_service.dart';
 import 'package:Obecno/core/services/logger.dart';
+import 'package:Obecno/features/auth/data/models/token_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenService {
   TokenService({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
-
-  static const _cookieKey = 'session_cookie';
-
-  Future<void> saveCookie(String rawCookie) async {
-    if (rawCookie.isEmpty) return;
-    await _storage.write(key: _cookieKey, value: rawCookie);
-  }
-
-  Future<String?> getCookie() async {
-    return await _storage.read(key: _cookieKey);
-  }
 
   Future<void> markSessionActive({required String userId, String? role}) async {
     await _storage.write(key: AppConstants.keySessionActive, value: 'true');
@@ -36,8 +26,7 @@ class TokenService {
 
   Future<String?> get userId => _storage.read(key: AppConstants.keyUserId);
 
-  Future<String?> get userRole =>
-      _storage.read(key: AppConstants.keyUserRole);
+  Future<String?> get userRole => _storage.read(key: AppConstants.keyUserRole);
 
   Future<void> markOnboardingCompleted() async {
     await _storage.write(key: 'onboarding_completed', value: 'true');
@@ -49,8 +38,7 @@ class TokenService {
   }
 
   Future<void> setRememberMe(bool value) async {
-    await _storage.write(
-        key: 'remember_me', value: value ? 'true' : 'false');
+    await _storage.write(key: 'remember_me', value: value ? 'true' : 'false');
   }
 
   Future<bool> get isRememberMe async {
@@ -58,12 +46,141 @@ class TokenService {
     return flag != 'false';
   }
 
+  Future<void> saveLastEmail(String email) async {
+    await _storage.write(key: AppConstants.keySavedEmail, value: email);
+  }
+
+  Future<String?> get lastEmail =>
+      _storage.read(key: AppConstants.keySavedEmail);
+
+  Future<void> clearSavedEmail() async {
+    await _storage.delete(key: AppConstants.keySavedEmail);
+  }
+
+  Future<void> cacheCompany(Map<String, dynamic>? company) async {
+    if (company == null) return;
+    await _storage.write(
+      key: AppConstants.keyCompanyJson,
+      value: jsonEncode(company),
+    );
+  }
+
+  Future<Map<String, dynamic>?> get cachedCompany async {
+    final raw = await _storage.read(key: AppConstants.keyCompanyJson);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> cacheLocations(List<Map<String, dynamic>> locations) async {
+    await _storage.write(
+      key: AppConstants.keyLocationsJson,
+      value: jsonEncode(locations),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> get cachedLocations async {
+    final raw = await _storage.read(key: AppConstants.keyLocationsJson);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> setSelectedLocationId(String id) async {
+    await _storage.write(key: AppConstants.keySelectedLocationId, value: id);
+  }
+
+  Future<String?> get selectedLocationId =>
+      _storage.read(key: AppConstants.keySelectedLocationId);
+
+  Future<void> cachePermissionLocation(Map<String, dynamic>? location) async {
+    if (location == null) return;
+    await _storage.write(
+      key: AppConstants.keyPermissionLocationJson,
+      value: jsonEncode(location),
+    );
+  }
+
+  Future<Map<String, dynamic>?> get cachedPermissionLocation async {
+    final raw = await _storage.read(
+      key: AppConstants.keyPermissionLocationJson,
+    );
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveToken(TokenModel token) async {
+    await _storage.write(
+      key: AppConstants.keyTokenJson,
+      value: jsonEncode(token.toStorageJson()),
+    );
+  }
+
+  Future<TokenModel?> get accessToken async {
+    final raw = await _storage.read(key: AppConstants.keyTokenJson);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic>
+          ? TokenModel.fromStorageJson(decoded)
+          : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> get authorizationHeader async =>
+      (await accessToken)?.authorizationHeader;
+
+  Future<void> cachePermissions(List<Map<String, dynamic>> permissions) async {
+    await _storage.write(
+      key: AppConstants.keyPermissionsJson,
+      value: jsonEncode(permissions),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> get cachedPermissions async {
+    final raw = await _storage.read(key: AppConstants.keyPermissionsJson);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> clearSession() async {
     await _storage.delete(key: AppConstants.keySessionActive);
     await _storage.delete(key: AppConstants.keyUserId);
     await _storage.delete(key: AppConstants.keyUserRole);
-    await _storage.delete(key: _cookieKey);
-    await CookieService.instance.clear();
+    await _storage.delete(key: AppConstants.keyCompanyJson);
+    await _storage.delete(key: AppConstants.keyLocationsJson);
+    await _storage.delete(key: AppConstants.keySelectedLocationId);
+    await _storage.delete(key: AppConstants.keyPermissionLocationJson);
+    await _storage.delete(key: AppConstants.keyTokenJson);
+    await _storage.delete(key: AppConstants.keyPermissionsJson);
     AppLogger.info('TokenService: session cleared.');
   }
 

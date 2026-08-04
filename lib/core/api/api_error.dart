@@ -3,8 +3,6 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
-/// Classification of failures so the UI layer can decide *how* to react
-/// (retry button, login redirect, generic toast) without parsing strings.
 enum ApiErrorType {
   network,
   timeout,
@@ -28,13 +26,8 @@ class ApiError implements Exception {
   final String message;
   final int? statusCode;
 
-  /// Backend validation errors keyed by field name, e.g. {"email": "invalid"}.
   final Map<String, dynamic>? fieldErrors;
 
-  /// Converts any thrown object into an [ApiError]. This is the single
-  /// funnel every failure (network, timeout, or the guard's own
-  /// status-code check) routes exceptions through — mirrors what the old
-  /// Dio-based `fromException` did with `DioException`.
   factory ApiError.fromException(Object error) {
     if (error is ApiError) return error;
 
@@ -68,16 +61,6 @@ class ApiError implements Exception {
       );
     }
 
-    // FIXED: package:http's IOClient wraps connection-level failures
-    // (server closed the socket mid-response, dropped connection, reset,
-    // etc. -- e.g. "Connection closed before full header was received")
-    // in its own `http.ClientException`, which is neither a
-    // `SocketException` nor a `HttpException`. Every branch above missed
-    // it, so this was falling through to `ApiErrorType.unknown` with the
-    // raw exception text as the message -- and, critically, skipping
-    // whatever retry-on-network-error logic keys off `ApiErrorType
-    // .network`. Classified as `network` here so it's both retried and
-    // shown to the user the same way any other dropped connection is.
     if (error is http.ClientException) {
       return const ApiError(
         type: ApiErrorType.network,
@@ -88,9 +71,6 @@ class ApiError implements Exception {
     return ApiError(type: ApiErrorType.unknown, message: error.toString());
   }
 
-  /// Builds an [ApiError] from a completed HTTP response whose status code
-  /// signals failure (>= 400). [decodedBody] is the already-safely-parsed
-  /// JSON map, or null if the body wasn't valid JSON.
   factory ApiError.fromResponse({
     required int? statusCode,
     Map<String, dynamic>? decodedBody,
@@ -105,11 +85,6 @@ class ApiError implements Exception {
       if (errors is Map<String, dynamic>) fieldErrors = errors;
     }
 
-    // FIXED: 419 (session/CSRF timeout -- the code this backend uses
-    // alongside 401 for an expired session, per the spec's "IF statusCode
-    // == 401 OR 419" interceptor rule) was falling through to the generic
-    // `unknown` branch below and surfacing a confusing raw message instead
-    // of "Your session has expired. Please log in again."
     if (statusCode == 401 || statusCode == 403 || statusCode == 419) {
       return ApiError(
         type: ApiErrorType.unauthorized,
