@@ -5,10 +5,10 @@ import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
 
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -20,15 +20,6 @@ class DemoRequestScreen extends StatefulWidget {
 }
 
 class _DemoRequestScreenState extends State<DemoRequestScreen> {
-  /// This screen is reached via `Navigator.push` from `BookDemoScreen`,
-  /// which itself sits on a route entered with `context.go('/bookdemo')`.
-  /// Relying on `BackButtonBg`'s default `Navigator.pop(context)` is what
-  /// made this button appear dead: depending on how deep/shallow the
-  /// pushed stack is at the time this builds, there can be nothing left
-  /// for a plain pop to reveal, so Flutter just no-ops instead of
-  /// throwing anything visible. Sending it straight back to onboarding
-  /// (same destination as the form's own back button) removes that
-  /// ambiguity entirely.
   void _backToOnboarding(BuildContext context) {
     if (!context.mounted) return;
     try {

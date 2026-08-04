@@ -36,7 +36,6 @@ class AppAnimations {
     return ScrollAnimations.fadeSlide(child: child, duration: duration);
   }
 
-
   /// Loading spinner (delegates to [LoadingAnimations.spinner]).
   static Widget loading({Color? color}) {
     return LoadingAnimations.spinner(color: color);

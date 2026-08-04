@@ -2,7 +2,7 @@ import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class CompanyModel {
@@ -33,6 +33,8 @@ class CompanyBottomSheet extends StatefulWidget {
 
 class _CompanyBottomSheetState extends State<CompanyBottomSheet> {
   String? selectedName;
+
+  bool _hasPopped = false;
 
   @override
   void initState() {
@@ -79,13 +81,14 @@ class _CompanyBottomSheetState extends State<CompanyBottomSheet> {
 
               return ButtonAnimations.press(
                 onTap: () {
+                  if (_hasPopped) return;
+                  _hasPopped = true;
+
                   setState(() {
                     selectedName = item.name;
                   });
 
-                  Future.delayed(const Duration(milliseconds: 1500), () {
-                    Navigator.pop(context, item);
-                  });
+                  Navigator.pop(context, item);
                 },
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 14),

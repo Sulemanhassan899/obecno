@@ -1,8 +1,9 @@
 import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/employee_module/more/repositories/privacy_provider.dart';
+import 'package:Obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 
 class PolicyScreen extends StatefulWidget {
@@ -14,139 +15,105 @@ class PolicyScreen extends StatefulWidget {
 
 class _PolicyScreenState extends State<PolicyScreen> {
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PrivacyProvider>().load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final privacyProvider = context.read<PrivacyProvider>();
+
     return Scaffold(
-      body: ListView(
-        padding: AppSizes.DEFAULT,
-        children: [
-          const SizedBox(height: 20),
+      body: ListenableBuilder(
+        listenable: privacyProvider,
+        builder: (context, _) {
+          final privacy = privacyProvider.privacy;
+          final isInitialLoad = privacyProvider.isLoading && privacy == null;
+          final showFallback =
+              !isInitialLoad && privacy == null && privacyProvider.hasError;
 
-          /// HEADER
-          BackButtonBg(),
+          return RefreshIndicator(
+            onRefresh: () => privacyProvider.load(),
+            child: ListView(
+              padding: AppSizes.DEFAULT,
+              children: [
+                const SizedBox(height: 20),
 
-          const SizedBox(height: 20),
+                BackButtonBg(),
 
-          /// TITLE
-          AppText.h1("Privacy Policy", align: TextAlign.left),
+                const SizedBox(height: 20),
 
-          const SizedBox(height: 6),
+                /// ✅ Title (same spacing as Terms)
+                AppText.h1("Privacy Policy", align: TextAlign.left),
 
-          /// DATE
-          AppText.p2(
-            "Last updated: [Insert date]",
-            color: kGreyColor,
-            align: TextAlign.left,
-          ),
+                const SizedBox(height: 6),
 
-          const SizedBox(height: 16),
+                /// ✅ Last Updated (same structure)
+                AppText.p2(
+                  privacy?.updatedAt != null
+                      ? "Last updated: ${privacy!.updatedAt}"
+                      : "Last updated: [Insert date]",
+                  color: kGreyColor,
+                  align: TextAlign.left,
+                ),
 
-          _privacyContent(),
-          const SizedBox(height: 100),
-        ],
+                const SizedBox(height: 20),
+
+                /// ✅ Loading
+                if (isInitialLoad)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 60),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                /// ✅ Fallback
+                else if (showFallback)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 60),
+                    child: Center(
+                      child: AppText.h6(
+                        "Content not available",
+                        align: TextAlign.center,
+                        color: kGreyColor,
+                      ),
+                    ),
+                  )
+                /// ✅ Content
+                else
+                  _privacyContent(privacy?.content ?? ''),
+
+                const SizedBox(height: 100),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
+  Widget _privacyContent(String content) {
+    final paragraphs = content
+        .split(RegExp(r'\n{2,}'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
 
+    if (paragraphs.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-  Widget _privacyContent() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppText.h6(
-          weight: FontWeight.w400,
-          "This Privacy Policy explains how we collect, use, disclose, and protect your information when you use our attendance management application (“App”, “we”, “our”, or “us”). By using this App, you agree to the collection and use of information in accordance with this policy.",
-          align: TextAlign.left,
-        ),
-
-        _sectionTitle("1. Information We Collect"),
-
-        _subSection("a. Personal Information", [
-          "Name",
-          "Email address",
-          "Phone number",
-          "Employee ID",
-          "Profile photo (if uploaded)",
-        ]),
-        const SizedBox(height: 16),
-        _subSection("b. Attendance & Work Data", [
-          "Check-in and check-out times",
-          "Break times",
-          "Attendance corrections",
-          "Leave requests and approvals",
-          "Assigned office/location",
-        ]),
-        const SizedBox(height: 16),
-        _subSection("c. Device Information", [
-          "Device type and operating system",
-          "Unique device identifiers",
-          "App usage information",
-        ]),
-
-        _subSection(
-          "d. Location Information",
-          [
-            "Location-based check-in and check-out",
-            "Office/site verification",
-            "Entry/exit reminders",
-          ],
-          description:
-              "Location data is collected only when required and based on your permissions.",
-        ),
-        const SizedBox(height: 16),
-        _subSection("e. Notifications", [
-          "Attendance reminders",
-          "Alerts for missed actions",
-        ]),
-      ],
-    );
-  }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 8),
-      child: AppText.h5(text, align: TextAlign.left, weight: FontWeight.w600),
-    );
-  }
-
-  Widget _subSection(
-    String title,
-    List<String> bullets, {
-    String? description,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppText.h6(title, align: TextAlign.left),
-        const SizedBox(height: 6),
-        if (description != null) AppText.p2(description, align: TextAlign.left),
-        _bulletList(bullets),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
-  Widget _bulletList(List<String> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: items
+      children: paragraphs
           .map(
-            (e) => Padding(
-              padding: const EdgeInsets.only(bottom: 5, top: 5),
-              child: Row(
-                spacing: 6,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(Icons.circle, size: 6),
-
-                  Expanded(
-                    child: AppText.h6(
-                      e,
-                      align: TextAlign.left,
-                      weight: FontWeight.w400,
-                    ),
-                  ),
-                ],
+            (p) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: AppText.h6(
+                p,
+                align: TextAlign.left,
+                weight: FontWeight.w400,
               ),
             ),
           )

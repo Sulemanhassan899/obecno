@@ -2,7 +2,7 @@ name: Obecno
 description: ""
 
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+1
 
 environment:
   sdk: ^3.10.4
@@ -30,6 +30,7 @@ dependencies:
   sqflite:
   shared_preferences : 
   shimmer:
+  image_picker:
 
 dev_dependencies:
   flutter_test:

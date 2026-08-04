@@ -70,8 +70,9 @@ class AppShimmer extends StatelessWidget {
       decoration: BoxDecoration(
         color: baseColor,
         shape: shape,
-        borderRadius:
-            shape == BoxShape.circle ? null : borderRadius ?? BorderRadius.zero,
+        borderRadius: shape == BoxShape.circle
+            ? null
+            : borderRadius ?? BorderRadius.zero,
       ),
     );
 
@@ -87,15 +88,11 @@ class AppShimmer extends StatelessWidget {
 
   /// Default smooth gradient
   Gradient get _defaultGradient => LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          baseColor,
-          highlightColor,
-          baseColor,
-        ],
-        stops: const [0.25, 0.5, 0.75],
-      );
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [baseColor, highlightColor, baseColor],
+    stops: const [0.25, 0.5, 0.75],
+  );
 }
 
 /// ===============================================================
@@ -144,9 +141,9 @@ class AppShimmerOverlay extends StatelessWidget {
   }
 
   Gradient get _defaultGradient => LinearGradient(
-        colors: [baseColor, highlightColor, baseColor],
-        stops: const [0.25, 0.5, 0.75],
-      );
+    colors: [baseColor, highlightColor, baseColor],
+    stops: const [0.25, 0.5, 0.75],
+  );
 }
 
 /// ===============================================================
@@ -155,10 +152,7 @@ class AppShimmerOverlay extends StatelessWidget {
 
 class ShimmerPresets {
   /// Avatar shimmer (circle)
-  static Widget avatar({
-    required bool isLoading,
-    double size = 50,
-  }) {
+  static Widget avatar({required bool isLoading, double size = 50}) {
     return AppShimmer(
       isLoading: isLoading,
       height: size,
@@ -182,10 +176,7 @@ class ShimmerPresets {
   }
 
   /// Card shimmer
-  static Widget card({
-    required bool isLoading,
-    double height = 100,
-  }) {
+  static Widget card({required bool isLoading, double height = 100}) {
     return AppShimmer(
       isLoading: isLoading,
       height: height,

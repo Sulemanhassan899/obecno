@@ -6,9 +6,9 @@ import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -50,14 +50,6 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
 
         if (!mounted) return;
 
-        // ROLE-BASED NAVIGATION (SAFE INJECTION): role-selection screen
-        // removed from the flow -- go straight to the correct home based
-        // on AuthProvider.homeTarget (data.user.role).
-        //
-        // FIXED: was `Navigator.pushAndRemoveUntil(...)`, a raw
-        // imperative page pushed on top of GoRouter's stack -- see the
-        // matching fix + explanation in login_pass.dart. `context.go`
-        // keeps GoRouter's own page list in sync with what's on screen.
         final homeTarget = context.read<AuthProvider>().homeTarget;
         context.go(
           homeTarget == AuthHomeTarget.manager
@@ -88,12 +80,13 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
     }
   }
 
-  /// Checks current status first; only shows the OS dialog if not already granted
   Future<bool> _ensurePermission(Permission permission) async {
     final status = await permission.status;
+    debugPrint('[EnablePermissionsScreen] $permission current status: $status');
     if (status.isGranted) return true;
 
     final result = await permission.request();
+    debugPrint('[EnablePermissionsScreen] $permission request result: $result');
     return result.isGranted;
   }
 

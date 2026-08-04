@@ -4,11 +4,11 @@ import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/presentation/screens/forgot_password.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/custom_checkbox_widget.dart';
-import 'package:Obecno/shared/widgets/custom_textfield.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/custom_checkbox_widget.dart';
+import 'package:Obecno/widgets/custom_textfield.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -97,11 +97,6 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     super.dispose();
   }
 
-  /// This screen is always reached from onboarding via
-  /// `context.go('/login')`, which replaces the whole stack -- so it's
-  /// the root of its own Navigator with nothing to pop back to. Both the
-  /// tapped back arrow and the hardware/gesture back go to onboarding
-  /// instead of popping nothing (which would otherwise exit the app).
   void _backToOnboarding() {
     context.go('/onboarding');
   }
@@ -110,78 +105,93 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
-        if (!didPop) _backToOnboarding();
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _backToOnboarding();
       },
       child: Scaffold(
-      resizeToAvoidBottomInset: true,
-      backgroundColor: kWhite,
-      body: Padding(
-        padding: AppSizes.DEFAULT,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
+        resizeToAvoidBottomInset: true,
+        backgroundColor: kWhite,
 
-            Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: BackButtonBg(onTap: _backToOnboarding),
-            ),
+        body: Padding(
+          padding: AppSizes.DEFAULT,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 10),
 
-            const SizedBox(height: 60),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: BackButtonBg(onTap: _backToOnboarding),
+                      ),
 
-            Center(child: AppText.h4("Enter account details")),
+                      const SizedBox(height: 60),
 
-            const SizedBox(height: 40),
+                      Center(child: AppText.h4("Enter account details")),
 
-            CustomTextField(
-              bottom: 0,
-              controller: _emailController,
-              focusNode: _emailFocus,
-              labelText: "Email / Phone / ID",
-              haveLebelText: true,
-              radius: 14,
-              keyboardType: TextInputType.emailAddress,
-              errorBorderColor: _errorText == null ? kBorderColor : Colors.red,
-              focusedBorderColor: _errorText == null
-                  ? kPrimaryColor
-                  : Colors.red,
-              backgroundColor: kWhite,
-              txtColor: kBlack,
-              onChanged: (_) {
-                _isEdited = true; // ✅ TRACK EDIT
-                if (_errorText != null) {
-                  setState(() => _errorText = null);
-                }
-              },
-            ),
+                      const SizedBox(height: 40),
 
-            if (_errorText != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 10),
-                child: TextWidget(
-                  text: _errorText!,
-                  size: 12,
-                  color: Colors.red,
+                      CustomTextField(
+                        bottom: 0,
+                        controller: _emailController,
+                        focusNode: _emailFocus,
+                        labelText: "Email / Phone / ID",
+                        haveLebelText: true,
+                        hintText: "Enter Email Address",
+                        radius: 14,
+                        keyboardType: TextInputType.emailAddress,
+                        errorBorderColor: _errorText == null
+                            ? kBorderColor
+                            : Colors.red,
+                        focusedBorderColor: _errorText == null
+                            ? kPrimaryColor
+                            : Colors.red,
+                        backgroundColor: kWhite,
+                        txtColor: kBlack,
+                        onChanged: (_) {
+                          _isEdited = true; // ✅ TRACK EDIT
+                          if (_errorText != null) {
+                            setState(() => _errorText = null);
+                          }
+                        },
+                      ),
+
+                      if (_errorText != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 10),
+                          child: TextWidget(
+                            text: _errorText!,
+                            size: 12,
+                            color: Colors.red,
+                          ),
+                        ),
+
+                      const SizedBox(height: 12),
+                    ],
+                  ),
                 ),
               ),
 
-            const SizedBox(height: 12),
-
-            const Spacer(),
-
-            SafeArea(
-              top: false,
-              child: MyButton(
-                buttonText: "Continue",
-                backgroundColor: kBlack,
-                fontColor: kWhite,
-                onTap: _onContinue,
+              SafeArea(
+                top: false,
+                child: MyButton(
+                  mBottom: 0,
+                  buttonText: "Continue",
+                  backgroundColor: kBlack,
+                  fontColor: kWhite,
+                  onTap: _onContinue,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

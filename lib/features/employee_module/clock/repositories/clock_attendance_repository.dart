@@ -1,18 +1,18 @@
 
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api.dart';
+import 'package:Obecno/core/api/api_cancel_token.dart';
 import 'package:Obecno/core/api/api_client.dart';
 import 'package:Obecno/core/api/api_endpoints.dart';
+import 'package:Obecno/core/api/api_error.dart';
 import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/shared/location/service/attendance_connectivity_service.dart';
 import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
 import 'package:Obecno/shared/location/service/local_queue_service.dart';
+import 'package:flutter/foundation.dart';
 
-/// Transport/HTTP-level failure (bad status code, unparsable body,
-/// dropped connection, etc). These are treated as "we don't actually
-/// know if the server accepted the action" -- safe to queue for retry.
 class AttendanceApiException implements Exception {
   AttendanceApiException(this.message);
   final String message;
@@ -21,14 +21,32 @@ class AttendanceApiException implements Exception {
   String toString() => message;
 }
 
-/// Business-logic rejection: the request reached the server and the
-/// server explicitly said `success: false` (e.g. invalid action, out of
-/// range, duplicate check-in). Retrying this unchanged will just fail
-/// again, so it must NOT be queued -- it needs to surface to the user
-/// instead. Kept as a distinct type from [AttendanceApiException] so
-/// [AttendanceRepository.submitAttendance] can tell the two apart.
 class AttendanceBusinessException implements Exception {
   AttendanceBusinessException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AttendanceAuthException implements Exception {
+  AttendanceAuthException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AttendanceQueueException implements Exception {
+  AttendanceQueueException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AttendanceCancelledException implements Exception {
+  AttendanceCancelledException(this.message);
   final String message;
 
   @override
@@ -39,121 +57,246 @@ class AttendanceRepository {
   AttendanceRepository(
     this._client,
     this._connectivityService,
-    this._queueService, [
-    // ✅ ADD THIS: optional so every existing call site
-    // (`AttendanceRepository(httpClient, connectivityService, queueService)`)
-    // keeps compiling unchanged. When supplied, it powers
-    // `fetchTodayEvents()` below -- reuses the SAME `ApiClient` already
-    // built in AppBindings for the attendance-history GET calls, rather
-    // than adding a second HTTP stack.
-    this._statusClient,
-  ]);
+    this._queueService,
+  );
 
-  final HttpApiClient _client;
+  final ApiClient _client;
   final AttendanceConnectivityService _connectivityService;
   final LocalQueueService _queueService;
-  final ApiClient? _statusClient;
+  Future<void> Function()? _syncTrigger;
 
-  /// Submits one attendance event.
-  ///
-  /// - Offline, or a transport-level failure ([AttendanceApiException]):
-  ///   queued locally instead of being lost -- never thrown back to the
-  ///   caller.
-  /// - Business-logic rejection ([AttendanceBusinessException], i.e. the
-  ///   server responded with `success: false`): rethrown as-is. Queuing
-  ///   this would just replay the same rejected action forever, so the
-  ///   caller (AttendanceProvider / SyncedClockScreenController) needs to
-  ///   see it and surface the message instead.
-  Future<void> submitAttendance(AttendancePayloadModel payload) async {
+  void attachSyncTrigger(Future<void> Function() trigger) {
+    _syncTrigger = trigger;
+  }
+
+  void _triggerImmediateSync() {
+    final trigger = _syncTrigger;
+    if (trigger == null) return;
+    unawaited(trigger());
+  }
+
+  Future<({bool synced, String? notification})> submitAttendance(
+    AttendancePayloadModel payload, {
+    ApiCancelToken? cancelToken,
+  }) async {
     final online = await _connectivityService.isOnline();
 
     if (!online) {
-      await _queueService.insert(payload);
-      return;
+      debugPrint(
+        '[AttendanceRepository] submitAttendance: offline -> queuing '
+        '"${payload.action}" locally',
+      );
+      final queued = await _queueService.insert(payload);
+      if (!queued) {
+        throw AttendanceQueueException(
+          "Couldn't save this action locally. Please try again.",
+        );
+      }
+      return (synced: false, notification: null);
     }
 
     try {
-      await _sendToApi(payload);
+      final notification = await _sendToApi(payload, cancelToken: cancelToken);
+      return (synced: true, notification: notification);
     } on AttendanceBusinessException {
       rethrow;
-    } catch (_) {
-      // Connectivity check said online but the request itself failed
-      // (timeout, 5xx, dropped connection mid-flight, unparsable body,
-      // etc.) -- fall back to the offline queue instead of losing the
-      // event.
-      await _queueService.insert(payload);
+    } on AttendanceAuthException {
+      rethrow;
+    } on AttendanceCancelledException {
+      rethrow;
+    } catch (e) {
+      debugPrint(
+        '[AttendanceRepository] submitAttendance: online send failed ($e) '
+        '-> falling back to local queue for "${payload.action}"',
+      );
+      final queued = await _queueService.insert(payload);
+      if (!queued) {
+        throw AttendanceQueueException(
+          "Couldn't reach the server or save this action locally. "
+          'Please try again.',
+        );
+      }
+      _triggerImmediateSync();
+      return (synced: false, notification: null);
     }
   }
 
-  /// Sends one payload directly to the API. Used by [SyncService] when
-  /// replaying queued events -- unlike [submitAttendance], this DOES
-  /// throw on failure, so the FIFO sync loop knows to stop.
-  Future<void> sendQueuedPayload(AttendancePayloadModel payload) =>
-      _sendToApi(payload);
+  Future<String?> sendQueuedPayload(
+    AttendancePayloadModel payload, {
+    ApiCancelToken? cancelToken,
+  }) =>
+      _sendToApi(payload, cancelToken: cancelToken);
 
-  // ✅ ADD THIS: the actual fix for the "stuck on Check Out, every
-  // checkout gets 409" loop. Local `_events` was previously built ONLY
-  // from optimistic taps + SharedPreferences, with nothing to correct
-  // it if it ever drifted from the server (a stale persisted event from
-  // an earlier run, an action taken on another device, the server
-  // auto-closing a session, etc). Once local and server disagreed,
-  // every tap kept failing against the same server truth forever, and
-  // restarting the app didn't help because SharedPreferences just
-  // restored the same wrong state.
-  //
-  // Reuses the SAME endpoint (`ApiEndpoints.attendance`) and
-  // `date_from`/`date_to` query params already used elsewhere in the
-  // app for the attendance-history GET, via `ApiClient` (which already
-  // handles 409s, retries, and double-encoded bodies).
-  //
-  // Returns:
-  ///  - null  -> couldn't reach the server (offline, no `_statusClient`
-  ///             wired, unexpected shape) -- caller should keep
-  ///             whatever local/optimistic state it already has.
-  ///  - []    -> server confirms no attendance recorded today.
-  ///  - [...] -> reconstructed events matching the server's
-  ///             checkin/breakout/breakin/checkout times for today.
-  Future<List<AttendanceEvent>?> fetchTodayEvents() async {
-    final client = _statusClient;
-    if (client == null) return null;
-
+  Future<List<AttendanceEvent>?> fetchTodayEvents({
+    ApiCancelToken? cancelToken,
+  }) async {
     try {
       final today = _todayDateString();
-      final response = await client.get(
+      final response = await _client.get(
         ApiEndpoints.attendance,
         queryParameters: {'date_from': today, 'date_to': today},
+        cancelToken: cancelToken,
       );
 
       final container = _findTodayAttendanceContainer(response.data);
-      if (container == null) return null;
-
-      final todayAttendance = container['today_attendance'];
-      if (todayAttendance is! Map) return const [];
-
-      final events = <AttendanceEvent>[];
-      void addIfPresent(dynamic raw, AttendanceEventType type) {
-        final parsed = _parseTimeOfDay(raw?.toString());
-        if (parsed == null) return;
-        events.add(AttendanceEvent(type: type, time: parsed));
+      if (container == null) {
+        debugPrint(
+          '[AttendanceRepository] fetchTodayEvents: no today_attendance '
+          'container found in response',
+        );
+        return null;
       }
 
-      // Order matches the natural sequence of a day's session so the
-      // engine's chronological sort produces the right open/closed
-      // status even if two events share the same second.
-      addIfPresent(todayAttendance['checkin'], AttendanceEventType.checkIn);
-      addIfPresent(
-        todayAttendance['breakout'],
-        AttendanceEventType.breakStart,
+      final detailsRaw = container['attendance_details'];
+      if (detailsRaw is List && detailsRaw.isNotEmpty) {
+        final parsed =
+            detailsRaw
+                .whereType<Map>()
+                .map((raw) => _eventFromDetail(Map<String, dynamic>.from(raw)))
+                .whereType<AttendanceEvent>()
+                .toList()
+              ..sort((a, b) => a.time.compareTo(b.time));
+
+        final seen = <String>{};
+        final events = <AttendanceEvent>[];
+        for (final event in parsed) {
+          final key = '${event.type.name}|${event.time.toIso8601String()}';
+          if (seen.add(key)) events.add(event);
+        }
+
+        debugPrint(
+          '[AttendanceRepository] fetchTodayEvents: parsed '
+          '${events.length} event(s) from attendance_details '
+          '(${detailsRaw.length} raw row(s), '
+          '${parsed.length - events.length} duplicate(s) dropped)',
+        );
+        return events;
+      }
+
+      final todayAttendance = container['today_attendance'];
+
+      final sessionsRaw = container['today_sessions'];
+      final List<Map> sessionMaps;
+      if (sessionsRaw is List && sessionsRaw.isNotEmpty) {
+        sessionMaps = sessionsRaw.whereType<Map>().toList();
+      } else if (todayAttendance is Map) {
+        sessionMaps = [todayAttendance];
+      } else {
+        sessionMaps = const [];
+      }
+
+      if (sessionMaps.isEmpty) return const [];
+
+      final events = <AttendanceEvent>[];
+
+      for (final session in sessionMaps) {
+        final sessionLocation = _dayLevelLocation(session);
+
+        void addIfPresent(dynamic raw, AttendanceEventType type) {
+          final parsed = _parseTimeOfDay(raw?.toString());
+          if (parsed == null) return;
+          events.add(
+            AttendanceEvent(
+              id: 'server_${type.name}_${parsed.microsecondsSinceEpoch}',
+              type: type,
+              time: parsed,
+              location: sessionLocation,
+            ),
+          );
+        }
+
+        addIfPresent(session['checkin'], AttendanceEventType.checkIn);
+        addIfPresent(session['breakout'], AttendanceEventType.breakStart);
+        addIfPresent(session['breakin'], AttendanceEventType.breakEnd);
+        addIfPresent(session['checkout'], AttendanceEventType.checkOut);
+      }
+
+      events.sort((a, b) => a.time.compareTo(b.time));
+
+      debugPrint(
+        '[AttendanceRepository] fetchTodayEvents: parsed ${events.length} '
+        'event(s) from ${sessionMaps.length} session(s)',
       );
-      addIfPresent(todayAttendance['breakin'], AttendanceEventType.breakEnd);
-      addIfPresent(todayAttendance['checkout'], AttendanceEventType.checkOut);
 
       return events;
-    } catch (_) {
-      // Best-effort only -- never let a reconciliation failure crash or
-      // block the actual clock action.
+    } catch (e, st) {
+      debugPrint('[AttendanceRepository] fetchTodayEvents: failed -> $e\n$st');
       return null;
     }
+  }
+
+  AttendanceEvent? _eventFromDetail(Map<String, dynamic> detail) {
+    final type = _eventTypeFromApiType(detail['type']?.toString());
+    if (type == null) return null;
+
+    final time = _parseDetailTimestamp(detail);
+    if (time == null) return null;
+
+    return AttendanceEvent(
+      id:
+          detail['id']?.toString() ??
+          detail['name']?.toString() ??
+          'server_${type.name}_${time.microsecondsSinceEpoch}',
+      type: type,
+      time: time,
+      location: _dayLevelLocation(detail),
+    );
+  }
+
+  AttendanceEventType? _eventTypeFromApiType(String? raw) {
+    switch (raw?.trim().toLowerCase()) {
+      case 'check in':
+      case 'checkin':
+        return AttendanceEventType.checkIn;
+      case 'check out':
+      case 'checkout':
+        return AttendanceEventType.checkOut;
+      case 'break out':
+      case 'breakout':
+        return AttendanceEventType.breakStart;
+      case 'break in':
+      case 'breakin':
+        return AttendanceEventType.breakEnd;
+      default:
+        return null;
+    }
+  }
+
+  DateTime? _parseDetailTimestamp(Map<String, dynamic> detail) {
+    final iso = detail['occurred_at_iso']?.toString();
+    if (iso != null && iso.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(iso.trim());
+      if (parsed != null) return parsed.toLocal();
+    }
+
+    final timeStr = detail['attendance_time']?.toString();
+    if (timeStr == null || timeStr.trim().isEmpty) return null;
+
+    final dateStr = detail['attendance_date']?.toString();
+    final datePart = (dateStr != null && dateStr.trim().isNotEmpty)
+        ? DateTime.tryParse(dateStr.trim())
+        : null;
+    final base = datePart ?? DateTime.now();
+
+    final parts = timeStr.trim().split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
+
+    return DateTime(base.year, base.month, base.day, hour, minute, second);
+  }
+
+  String? _dayLevelLocation(Map todayAttendance) {
+    final raw = todayAttendance['current_location'];
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+
+    final lat = todayAttendance['lat'];
+    final lon = todayAttendance['lon'];
+    if (lat != null && lon != null) return '$lat,$lon';
+
+    return null;
   }
 
   String _todayDateString() {
@@ -163,9 +306,6 @@ class AttendanceRepository {
         '${now.day.toString().padLeft(2, '0')}';
   }
 
-  /// Parses a server "HH:mm:ss" (or "HH:mm") time-of-day string, applied
-  /// to today's date. Returns null for missing/empty/unparseable values
-  /// (e.g. `""` for a break that hasn't started).
   DateTime? _parseTimeOfDay(String? hms) {
     if (hms == null || hms.trim().isEmpty) return null;
     final parts = hms.split(':');
@@ -178,11 +318,6 @@ class AttendanceRepository {
     return DateTime(now.year, now.month, now.day, hour, minute, second);
   }
 
-  /// The backend wraps its real payload in nested `data` keys, and
-  /// sometimes double-encodes it as a JSON string (same quirk
-  /// `_safeDecode` below works around for POST responses). Walks into
-  /// `data` up to a few levels until it finds the map that actually has
-  /// `today_attendance`, instead of hardcoding one exact nesting depth.
   Map<String, dynamic>? _findTodayAttendanceContainer(dynamic raw) {
     dynamic current = raw;
     for (var i = 0; i < 4; i++) {
@@ -196,31 +331,41 @@ class AttendanceRepository {
     return null;
   }
 
-  Future<void> _sendToApi(AttendancePayloadModel payload) async {
-    final response = await _client.post(
-      ApiEndpoints.attendance,
-      payload.toApiJson(),
-    );
+  Future<String?> _sendToApi(
+    AttendancePayloadModel payload, {
+    ApiCancelToken? cancelToken,
+  }) async {
+    late final RawApiResponse response;
+    try {
+      response = await _client.post(
+        ApiEndpoints.attendance,
+        data: payload.toApiJson(),
+        cancelToken: cancelToken,
+      );
+    } on ApiError catch (e) {
+      if (e.type == ApiErrorType.cancelled) {
+        throw AttendanceCancelledException(e.message);
+      }
+      if (e.type == ApiErrorType.unauthorized) {
+        throw AttendanceAuthException(e.message);
+      }
+      throw AttendanceApiException(e.message);
+    }
 
-    final decoded = _safeDecode(response.body);
+    final decoded = _asDecodedMap(response.data);
 
     if (decoded == null) {
-      // Body wasn't valid/parseable JSON in either supported shape --
-      // fall back to the HTTP status code alone.
       if (response.statusCode != 200) {
         throw AttendanceApiException(
           'Attendance failed (${response.statusCode}).',
         );
       }
-      return;
+      return null;
     }
 
     final success = decoded['success'] == true;
 
     if (!success) {
-      // Server understood the request and explicitly rejected it --
-      // a business failure, NOT a transport failure. Must propagate as
-      // its own type so `submitAttendance` doesn't queue it for retry.
       final message = decoded['message']?.toString() ?? 'Request failed.';
       throw AttendanceBusinessException(message);
     }
@@ -230,39 +375,35 @@ class AttendanceRepository {
         'Attendance submit failed with status ${response.statusCode}.',
       );
     }
+
+    final data = decoded['data'];
+    if (data is Map && data['notification'] != null) {
+      final msg = data['notification'].toString().trim();
+      if (msg.isNotEmpty) return msg;
+    }
+    final topLevel = decoded['notification']?.toString().trim();
+    if (topLevel != null && topLevel.isNotEmpty) return topLevel;
+
+    return null;
   }
 
-  /// Safely parses the response body, supporting both shapes the backend
-  /// may return:
-  ///   Case A: `{"success": false, "message": "..."}`               (plain)
-  ///   Case B: `{"data": "{\"success\":false,\"message\":\"...\"}"}` (the
-  ///           real payload double-encoded as a string inside `data`)
-  /// Returns null (never throws) if the body doesn't match either shape,
-  /// so callers can fall back to the HTTP status code instead of crashing.
-  Map<String, dynamic>? _safeDecode(String rawBody) {
-    if (!rawBody.trim().startsWith('{')) return null;
+  Map<String, dynamic>? _asDecodedMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final decoded = Map<String, dynamic>.from(raw);
 
-    try {
-      final decoded = jsonDecode(rawBody);
-      if (decoded is! Map<String, dynamic>) return null;
+    if (decoded.containsKey('success')) return decoded;
 
-      // Case A: already the shape we want.
-      if (decoded.containsKey('success')) return decoded;
-
-      // Case B: the real object is stringified inside `data`.
-      final inner = decoded['data'];
-      if (inner is String) {
-        try {
-          final innerDecoded = jsonDecode(inner);
-          if (innerDecoded is Map<String, dynamic>) return innerDecoded;
-        } catch (_) {
-          return null;
-        }
+    final inner = decoded['data'];
+    if (inner is Map) return Map<String, dynamic>.from(inner);
+    if (inner is String) {
+      try {
+        final innerDecoded = jsonDecode(inner);
+        if (innerDecoded is Map<String, dynamic>) return innerDecoded;
+      } catch (_) {
+        return null;
       }
-
-      return decoded;
-    } catch (_) {
-      return null;
     }
+
+    return decoded;
   }
 }

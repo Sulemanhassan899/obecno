@@ -1,5 +1,3 @@
-
-
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
@@ -7,10 +5,10 @@ import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/shared/bottom_sheets/forgot_password_sheet.dart';
 
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/custom_textfield.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/custom_textfield.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {

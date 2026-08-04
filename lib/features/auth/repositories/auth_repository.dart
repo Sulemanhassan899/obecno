@@ -3,6 +3,7 @@ import 'package:Obecno/core/api/api_endpoints.dart';
 import 'package:Obecno/core/api/api_error.dart';
 import 'package:Obecno/core/api/api_response.dart';
 import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
 
 class AuthRepository {
   AuthRepository(this._client);
@@ -12,10 +13,6 @@ class AuthRepository {
   Map<String, dynamic>? _asMap(dynamic data) =>
       data is Map<String, dynamic> ? data : null;
 
-  // ================= CHECK EMAIL (STEP 1) =================
-  /// POSTs email ONLY to [ApiEndpoints.login]. Backend responds with
-  /// `data.exists` (bool). Used by [LoginEmailScreen] before moving to
-  /// [LoginPasswordScreen].
   Future<ApiResponse<bool>> checkEmail(String email) async {
     try {
       final response = await _client.post(
@@ -62,10 +59,6 @@ class AuthRepository {
     );
   }
 
-  // ================= SIGN IN (STEP 2) =================
-  /// POSTs email + password to [ApiEndpoints.login] in a single request.
-  /// The session cookie itself is captured by [ApiClient] from the
-  /// response headers; this method only worries about the response body.
   Future<ApiResponse<AuthUserModel>> login({
     required String email,
     required String password,
@@ -88,13 +81,12 @@ class AuthRepository {
     }
   }
 
-  // ================= CURRENT USER =================
-  /// GET /api/auth/me — refreshes the session user (name/email/role) from
-  /// the server. Used on app resume / session-restore instead of blindly
-  /// trusting whatever role was last persisted locally.
   Future<ApiResponse<AuthUserModel>> getCurrentUser() async {
     try {
-      final response = await _client.get(ApiEndpoints.currentUser);
+      final response = await _client.get(
+        ApiEndpoints.currentUser,
+        skipAuthInterceptor: true,
+      );
       return _parseUserEnvelope(
         response.data,
         response.statusCode,
@@ -107,9 +99,6 @@ class AuthRepository {
     }
   }
 
-  /// Shared parser for the two endpoints that return a `{success, data:
-  /// {...user...}, message}` envelope wrapping an [AuthUserModel] --
-  /// login and /api/auth/me.
   ApiResponse<AuthUserModel> _parseUserEnvelope(
     dynamic data,
     int statusCode, {
@@ -148,6 +137,53 @@ class AuthRepository {
     }
   }
 
+  Future<ApiResponse<List<Map<String, dynamic>>>> fetchPermissions() async {
+    try {
+      final response = await _client.get(ApiEndpoints.perimssion);
+      final decoded = _asMap(response.data);
+      if (decoded == null) {
+        return ApiResponse.failure(
+          'Unexpected response from server. Please try again.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final success = decoded['success'] != false;
+      if (!success) {
+        return ApiResponse.failure(
+          (decoded['message'] as String?) ?? 'Failed to load permissions.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final body = decoded['data'];
+      dynamic raw;
+      if (body is List) {
+        raw = body;
+      } else if (body is Map<String, dynamic>) {
+        raw = body['permissions'] ?? body;
+      }
+
+      final items = PermissionItemModel.listFromEnvelope(raw);
+      if (items.isEmpty) {
+        return ApiResponse.failure(
+          'Unexpected response from server. Please try again.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      return ApiResponse.success(
+        items.map((e) => e.toJson()).toList(growable: false),
+        message: decoded['message'] as String?,
+        statusCode: response.statusCode,
+      );
+    } on ApiError catch (e) {
+      return ApiResponse.failure(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResponse.failure('Something went wrong. Please try again.');
+    }
+  }
+
   // ================= FORGOT PASSWORD =================
   Future<ApiResponse<void>> forgotPassword(String email) async {
     try {
@@ -174,16 +210,6 @@ class AuthRepository {
     }
   }
 
-  // ================= CHANGE PASSWORD =================
-  /// POST /api/auth/change-password
-  ///
-  /// FIXED: the confirmation field was being sent as
-  /// `new_password_confirmation`, but the backend's validator actually
-  /// reads it as `new_password_confirm` (confirmed by the 422 body:
-  /// `{"errors":{"new_password_confirm":"Please confirm your new
-  /// password."}}`). Because the key never matched, the backend always
-  /// treated the confirmation as missing and rejected the request with a
-  /// 422 even when the user had typed a matching confirmation.
   Future<ApiResponse<void>> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -225,10 +251,6 @@ class AuthRepository {
     }
   }
 
-  /// Prefers a 422-style `errors.<field>` validation message over the
-  /// error's general `message`, mirroring the old manual
-  /// `_fieldErrorFrom`/`_messageFrom` helpers -- but now reading off the
-  /// already-parsed [ApiError] instead of re-decoding the raw body.
   String _fieldOrGeneralMessage(ApiError error, String field) {
     final fieldError = error.fieldErrors?[field];
     if (fieldError is String) return fieldError;
@@ -237,14 +259,6 @@ class AuthRepository {
     return error.message;
   }
 
-  /// FIXED: change-password validation can fail on *any* of three fields
-  /// (`current_password`, `new_password`, `new_password_confirm`), but the
-  /// old code only ever looked at `current_password` -- so a "New password
-  /// must be at least 8 characters" or "Please confirm your new password"
-  /// error from the server was silently swallowed, and the user either saw
-  /// nothing useful or an unrelated message. This checks all three, in the
-  /// order the user fills the form, and falls back to the error's general
-  /// `message` only if none of them have a field-specific error.
   String _changePasswordMessageFrom(ApiError error) {
     for (final field in const [
       'current_password',

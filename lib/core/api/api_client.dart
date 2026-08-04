@@ -1,13 +1,9 @@
-
-
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:Obecno/core/api/session_manager.dart';
 import 'package:Obecno/core/api/api_cancel_token.dart';
 import 'package:Obecno/core/api/api_error.dart';
 import 'package:Obecno/core/api/constants.dart';
-import 'package:Obecno/core/api/cookie_service.dart';
 import 'package:Obecno/core/services/interceptor.dart';
 import 'package:Obecno/core/services/logger.dart';
 import 'package:Obecno/core/services/network_checker.dart';
@@ -17,29 +13,30 @@ import 'package:http/http.dart' as http;
 
 class ApiClient {
   ApiClient({
-    required CookieService cookieService,
     required TokenService tokenService,
     required NetworkChecker networkChecker,
     Future<void> Function()? onUnauthorized,
     String? baseUrl,
     http.Client? httpClient,
-  }) : _cookieService = cookieService,
-       _tokenService = tokenService,
+
+    SessionManager? sessionManager,
+  }) : _tokenService = tokenService,
        _networkChecker = networkChecker,
        _baseUrl = baseUrl ?? AppConstants.baseUrl,
        _http = httpClient ?? http.Client(),
        _retryPolicy = RetryPolicy(),
+       _sessionManager = sessionManager,
        _authFailureHandler = AuthFailureHandler(
          tokenService: tokenService,
          onUnauthorized: onUnauthorized,
        );
 
-  final CookieService _cookieService;
   final TokenService _tokenService;
   final NetworkChecker _networkChecker;
   final String _baseUrl;
   final http.Client _http;
   final RetryPolicy _retryPolicy;
+  final SessionManager? _sessionManager;
   final AuthFailureHandler _authFailureHandler;
 
   Uri _resolve(String path, Map<String, dynamic>? queryParameters) {
@@ -47,7 +44,14 @@ class ApiClient {
         ? _baseUrl.substring(0, _baseUrl.length - 1)
         : _baseUrl;
 
-    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    var normalizedPath = path.startsWith('/') ? path : '/$path';
+    final version = AppConstants.apiVersion.trim();
+    if (version.isNotEmpty) {
+      final normalizedVersion = version.startsWith('/') ? version : '/$version';
+      if (!normalizedPath.startsWith(normalizedVersion)) {
+        normalizedPath = '$normalizedVersion$normalizedPath';
+      }
+    }
 
     final uri = Uri.parse('$base$normalizedPath');
 
@@ -72,9 +76,7 @@ class ApiClient {
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
           try {
             decoded['data'] = jsonDecode(inner);
-          } catch (_) {
-            // leave as is if parsing fails
-          }
+          } catch (_) {}
         }
       }
     }
@@ -88,35 +90,51 @@ class ApiClient {
       'Accept': 'application/json',
     };
 
-    // ✅ SINGLE SOURCE OF TRUTH FOR OUTGOING COOKIES
-    //
-    // `_cookieService.jar` is a PersistCookieJar that already parses each
-    // `Set-Cookie` value into a proper `Cookie(name, value)` pair (see the
-    // `saveFromResponse` call below). `loadForRequest` reassembles those
-    // into the only format a `Cookie:` request header is allowed to use:
-    // `name=value; name2=value2`.
-    //
-    // Previously this was overwritten with `_tokenService.getCookie()`,
-    // which stores the *raw* `Set-Cookie` response header verbatim
-    // (including `Path=`, `HttpOnly`, `Expires=...` attributes). Sending
-    // that raw string back as a `Cookie` request header is invalid and is
-    // what caused the first request after login to work (jar cookie was
-    // still in use) and every request after that to 401 (as soon as any
-    // response re-issued `Set-Cookie`, the malformed raw value took over).
-    final cookies = await _cookieService.jar.loadForRequest(uri);
+    final authHeader = await _tokenService.authorizationHeader;
 
-    if (cookies.isNotEmpty) {
-      headers['Cookie'] = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+    if (authHeader != null && authHeader.isNotEmpty) {
+      headers['Authorization'] = authHeader;
     }
 
     return headers;
   }
 
+  /// Races [body] against [token]'s cancellation so an already-started
+  /// attempt is abandoned (from this call site's perspective -- the
+  /// underlying socket read may still finish in the background, package:http
+  /// gives no lower-level abort) the instant cancel() fires, rather than
+  /// waiting for the current attempt/timeout to run its course.
+  Future<T> _runCancellable<T>(
+    Future<T> Function() body,
+    ApiCancelToken? token,
+  ) {
+    final future = body();
+    if (token == null) return future;
+    return Future.any([
+      future,
+      token.whenCancelled.then(
+        (_) => throw ApiError(
+          type: ApiErrorType.cancelled,
+          message: token.reason ?? 'Request cancelled',
+        ),
+      ),
+    ]);
+  }
+
   Future<RawApiResponse> _guard(
     String method,
     Uri uri,
-    Future<http.Response> Function() call,
-  ) async {
+    Future<http.Response> Function() call, {
+    bool skipAuthInterceptor = false,
+    ApiCancelToken? cancelToken,
+  }) async {
+    if (cancelToken?.isCancelled == true) {
+      throw ApiError(
+        type: ApiErrorType.cancelled,
+        message: cancelToken?.reason ?? 'Request cancelled',
+      );
+    }
+
     if (!await _networkChecker.isConnected) {
       throw const ApiError(
         type: ApiErrorType.network,
@@ -129,9 +147,14 @@ class ApiClient {
     late final http.Response response;
 
     try {
-      response = await _retryPolicy.run(
-        uri.path,
-        () => call().timeout(AppConstants.receiveTimeout),
+      response = await _runCancellable(
+        () => _retryPolicy.run(
+          uri.path,
+          () => call().timeout(AppConstants.receiveTimeout),
+          method: method,
+          cancelToken: cancelToken,
+        ),
+        cancelToken,
       );
     } catch (e) {
       final apiError = ApiError.fromException(e);
@@ -146,44 +169,68 @@ class ApiClient {
       response.body,
     );
 
-    if (kDebugMode) {
-      AppLogger.info('[URL] ${uri.toString()}');
-      AppLogger.info('[STATUS] ${response.statusCode}');
-      AppLogger.info('[BODY] ${response.body}');
-      AppLogger.info('[HEADERS] ${response.headers}');
-    }
-
-    // ✅ COOKIE HANDLING
-    final rawSetCookie = response.headers['set-cookie'];
-    if (rawSetCookie != null && rawSetCookie.isNotEmpty) {
-      final cookies = _splitSetCookieHeader(rawSetCookie)
-          .map(Cookie.fromSetCookieValue)
-          .toList();
-
-      // `saveFromResponse` merges into whatever's already in the jar for
-      // this host rather than blowing it away, so a response that only
-      // re-sends one cookie (e.g. just the session id) won't drop others.
-      await _cookieService.jar.saveFromResponse(uri, cookies);
-    }
-
-    if (response.statusCode == 401 || response.statusCode == 419) {
-      final hasSession = await _tokenService.isSessionActive;
-
-      if (hasSession) {
-        final retryResponse = await _retryPolicy.run(
-          uri.path,
-          () => call().timeout(AppConstants.receiveTimeout),
+    if (!skipAuthInterceptor &&
+        (response.statusCode == 401 || response.statusCode == 419)) {
+      if (_sessionManager != null) {
+        AppLogger.info(
+          '[Interceptor] Received ${response.statusCode} for ${uri.path} -- validating session',
         );
+        final isValid = await _sessionManager.handleUnauthorized();
 
-        return RawApiResponse(
-          statusCode: retryResponse.statusCode,
-          data: _tryDecode(retryResponse.body) ?? retryResponse.body,
-          headers: retryResponse.headers,
-        );
+        if (isValid) {
+          if (cancelToken?.isCancelled == true) {
+            throw ApiError(
+              type: ApiErrorType.cancelled,
+              message: cancelToken?.reason ?? 'Request cancelled',
+            );
+          }
+          AppLogger.info('[Interceptor] Retrying request for ${uri.path}');
+          final retryResponse = await _retryPolicy.run(
+            uri.path,
+            () => call().timeout(AppConstants.receiveTimeout),
+            method: method, // FIXED (issue #6)
+            cancelToken: cancelToken,
+          );
+
+          if (retryResponse.statusCode >= 400) {
+            throw ApiError.fromResponse(
+              statusCode: retryResponse.statusCode,
+              decodedBody: _tryDecode(retryResponse.body),
+            );
+          }
+
+          return RawApiResponse(
+            statusCode: retryResponse.statusCode,
+            data: _tryDecode(retryResponse.body) ?? retryResponse.body,
+            headers: retryResponse.headers,
+          );
+        }
+      } else {
+        final hasSession = await _tokenService.isSessionActive;
+
+        if (hasSession) {
+          if (cancelToken?.isCancelled == true) {
+            throw ApiError(
+              type: ApiErrorType.cancelled,
+              message: cancelToken?.reason ?? 'Request cancelled',
+            );
+          }
+          final retryResponse = await _retryPolicy.run(
+            uri.path,
+            () => call().timeout(AppConstants.receiveTimeout),
+            method: method, // FIXED (issue #6)
+            cancelToken: cancelToken,
+          );
+
+          return RawApiResponse(
+            statusCode: retryResponse.statusCode,
+            data: _tryDecode(retryResponse.body) ?? retryResponse.body,
+            headers: retryResponse.headers,
+          );
+        }
       }
     }
 
-    // ✅ BUSINESS ERRORS
     if (response.statusCode == 409 || response.body.contains('4001')) {
       AppLogger.info('[BUSINESS CONFLICT] ${response.body}');
       return RawApiResponse(
@@ -193,7 +240,6 @@ class ApiClient {
       );
     }
 
-    // ✅ 404 HANDLING
     if (response.statusCode == 404) {
       AppLogger.info('[404 ERROR] Endpoint not found');
       return RawApiResponse(
@@ -203,13 +249,18 @@ class ApiClient {
       );
     }
 
-    // ✅ ERROR HANDLING
     if (response.statusCode >= 400) {
-      // FIXED: 419 now routes through the same "session died" handler as
-      // 401/403 -- see AuthFailureHandler.onUnauthorized, wired in
-      // binding/app_binding.dart to AuthProvider.validateSessionOnUnauthorized.
-      if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 419) {
-        await _authFailureHandler.handleUnauthorized();
+      if (!skipAuthInterceptor &&
+          (response.statusCode == 401 ||
+              response.statusCode == 403 ||
+              response.statusCode == 419)) {
+        if (_sessionManager != null) {
+          if (response.statusCode == 403) {
+            await _sessionManager.handleUnauthorized();
+          }
+        } else {
+          await _authFailureHandler.handleUnauthorized();
+        }
       }
 
       throw ApiError.fromResponse(
@@ -239,13 +290,6 @@ class ApiClient {
     }
   }
 
-  /// The backend sometimes leaks a PHP warning/notice (HTML like
-  /// `<br />\n<b>Warning</b>: session_set_cookie_params(): ... <br />`)
-  /// in front of the actual JSON payload. A strict `startsWith('{')`
-  /// check rejects that whole response even though a valid JSON
-  /// object/array is sitting right there in the string. Instead, find
-  /// the outermost `{...}` or `[...]` in the body and decode just that
-  /// slice. Returns null (never throws) if none is found.
   String? _extractJson(String body) {
     final trimmed = body.trim();
     if (trimmed.isEmpty) return null;
@@ -271,39 +315,19 @@ class ApiClient {
     return trimmed.substring(start, end + 1);
   }
 
-  List<String> _splitSetCookieHeader(String raw) {
-    final parts = <String>[];
-    var start = 0;
-
-    final newCookieStart = RegExp(r'^\s*[^=;,\s]+=');
-
-    for (var i = 0; i < raw.length; i++) {
-      if (raw[i] != ',') continue;
-
-      final ahead = raw.substring(i + 1);
-
-      if (newCookieStart.hasMatch(ahead)) {
-        parts.add(raw.substring(start, i).trim());
-        start = i + 1;
-      }
-    }
-
-    parts.add(raw.substring(start).trim());
-
-    return parts;
-  }
-
   Future<RawApiResponse> get(
     String path, {
     Map<String, dynamic>? queryParameters,
     ApiCancelToken? cancelToken,
+
+    bool skipAuthInterceptor = false,
   }) {
     final uri = _resolve(path, queryParameters);
 
     return _guard('GET', uri, () async {
       final headers = await _headers(uri);
       return _http.get(uri, headers: headers);
-    });
+    }, skipAuthInterceptor: skipAuthInterceptor, cancelToken: cancelToken);
   }
 
   Future<RawApiResponse> post(
@@ -322,7 +346,7 @@ class ApiClient {
         headers: headers,
         body: data != null ? jsonEncode(data) : null,
       );
-    });
+    }, cancelToken: cancelToken);
   }
 
   Future<RawApiResponse> put(
@@ -341,7 +365,7 @@ class ApiClient {
         headers: headers,
         body: data != null ? jsonEncode(data) : null,
       );
-    });
+    }, cancelToken: cancelToken);
   }
 
   Future<RawApiResponse> patch(
@@ -360,7 +384,7 @@ class ApiClient {
         headers: headers,
         body: data != null ? jsonEncode(data) : null,
       );
-    });
+    }, cancelToken: cancelToken);
   }
 
   Future<RawApiResponse> delete(
@@ -379,17 +403,9 @@ class ApiClient {
         headers: headers,
         body: data != null ? jsonEncode(data) : null,
       );
-    });
+    }, cancelToken: cancelToken);
   }
 
-  /// Multipart POST for endpoints that accept a binary field alongside
-  /// plain form fields (e.g. `POST /api/employee/profile/photo`'s `photo`
-  /// file / `remove_photo` flag). Kept separate from [post] because
-  /// `http.MultipartRequest` needs its own request object — the `Content-
-  /// Type: application/json` header [_headers] sets by default would be
-  /// wrong here, so it's dropped in favor of the boundary header
-  /// `MultipartRequest` sets itself. Goes through the same [_guard] (auth
-  /// cookie handling, retry, error normalization) as every other verb.
   Future<RawApiResponse> postMultipart(
     String path, {
     Map<String, String>? fields,
@@ -404,7 +420,8 @@ class ApiClient {
       final headers = await _headers(uri);
       headers.remove('Content-Type');
 
-      final request = http.MultipartRequest('POST', uri)..headers.addAll(headers);
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers);
 
       if (fields != null && fields.isNotEmpty) {
         request.fields.addAll(fields);
@@ -412,13 +429,17 @@ class ApiClient {
 
       if (fileFieldName != null && fileBytes != null) {
         request.files.add(
-          http.MultipartFile.fromBytes(fileFieldName, fileBytes, filename: fileName ?? 'photo.jpg'),
+          http.MultipartFile.fromBytes(
+            fileFieldName,
+            fileBytes,
+            filename: fileName ?? 'photo.jpg',
+          ),
         );
       }
 
       final streamedResponse = await _http.send(request);
       return http.Response.fromStream(streamedResponse);
-    });
+    }, cancelToken: cancelToken);
   }
 }
 

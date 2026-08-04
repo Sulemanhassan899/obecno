@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 
 /// ===============================
@@ -12,7 +12,6 @@ class SnackbarHelper {
 
   static OverlayEntry? _overlayEntry;
 
-  /// 🔥 MAIN METHOD (FULLY CUSTOMIZABLE)
   static void showTopToast(
     BuildContext context, {
     required String message,
@@ -200,10 +199,7 @@ class _TopToastWidgetState extends State<_TopToastWidget>
 
     final threshold = widget.swipeVelocityThreshold;
 
-    // ✅ LEFT / RIGHT
     if (absX > absY && absX > threshold) return true;
-
-    // ✅ TOP (negative Y = upward swipe)
     if (vy < -threshold) return true;
 
     return false;
@@ -213,86 +209,85 @@ class _TopToastWidgetState extends State<_TopToastWidget>
   Widget build(BuildContext context) {
     return Positioned(
       top: MediaQuery.of(context).padding.top + widget.topOffset,
-      left: 40,
-      right: 40,
-      child: Material(
-        color: Colors.transparent,
-        child: SlideTransition(
-          position: _slide,
-          child: FadeTransition(
-            opacity: _fade,
-            child: GestureDetector(
-              onTap: widget.dismissOnTap ? _dismiss : null,
+      left: 0,
+      right: 0,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Material(
+          color: Colors.transparent,
+          child: SlideTransition(
+            position: _slide,
+            child: FadeTransition(
+              opacity: _fade,
+              child: GestureDetector(
+                onTap: widget.dismissOnTap ? _dismiss : null,
 
-              /// ✅ TRACK DRAG
-              onPanUpdate: widget.swipeToDismiss
-                  ? (details) {
-                      _dragOffset += details.delta;
-                      setState(() {});
-                    }
-                  : null,
-
-              /// ✅ HANDLE RELEASE
-              onPanEnd: widget.swipeToDismiss
-                  ? (details) {
-                      if (_isSwipeValid(details)) {
-                        _dismiss();
-                      } else {
-                        // reset position
-                        setState(() => _dragOffset = Offset.zero);
+                onPanUpdate: widget.swipeToDismiss
+                    ? (details) {
+                        _dragOffset += details.delta;
+                        setState(() {});
                       }
-                    }
-                  : null,
+                    : null,
 
-              child: Transform.translate(
-                offset: _dragOffset,
-                child: Container(
-                  padding: widget.padding,
-                  decoration: BoxDecoration(
-                    color: widget.backgroundColor,
-                    borderRadius: BorderRadius.circular(widget.radius),
-                    boxShadow:
-                        widget.boxShadow ??
-                        [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
+                onPanEnd: widget.swipeToDismiss
+                    ? (details) {
+                        if (_isSwipeValid(details)) {
+                          _dismiss();
+                        } else {
+                          setState(() => _dragOffset = Offset.zero);
+                        }
+                      }
+                    : null,
+
+                child: Transform.translate(
+                  offset: _dragOffset,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.9,
+                    ),
+                    child: Container(
+                      padding: widget.padding,
+                      decoration: BoxDecoration(
+                        color: widget.backgroundColor,
+                        borderRadius: BorderRadius.circular(widget.radius),
+                        boxShadow:
+                            widget.boxShadow ??
+                            [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          /// ✅ OPTIONAL IMAGE
+                          if (widget.imagePath != null)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                right: 10,
+                                bottom: 5,
+                              ),
+                              child: CommonImageView(
+                                imagePath: widget.imagePath!,
+                                height: 20,
+                              ),
+                            ),
+
+                          Flexible(
+                            child: AppText.p2(
+                              widget.message,
+                              color: widget.textColor,
+                              weight: widget.fontWeight,
+                              align: TextAlign.center,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
-                  ),
-                  child: Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        /// ✅ OPTIONAL IMAGE
-                        if (widget.imagePath != null)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              right: 10,
-                              bottom: 5,
-                            ),
-                            child: CommonImageView(
-                              imagePath: widget.imagePath!,
-                              height: 20,
-                            ),
-                          ),
-
-                        /// ✅ TEXT
-                        // FIXED: wrapped in Flexible -- longer messages
-                        // (e.g. permission/connectivity toasts) were
-                        // overflowing the Row since AppText.p2 had no
-                        // width constraint of its own.
-                        Flexible(
-                          child: AppText.p2(
-                            widget.message,
-                            color: widget.textColor,
-                            weight: widget.fontWeight,
-                            align: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),

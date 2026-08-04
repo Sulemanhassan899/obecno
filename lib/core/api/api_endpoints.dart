@@ -1,24 +1,21 @@
-
-
 class ApiEndpoints {
   ApiEndpoints._();
 
   // ---------------------------------------------------------------------
   // Auth
   // ---------------------------------------------------------------------
-  static const String login = '/api/auth/login';
-  static const String logout = '/api/auth/logout';
-  static const String currentUser = '/api/auth/me';
-  static const String forgot = '/api/auth/forgot-password';
-  static const String changePassword = '/api/auth/change-password';
+  static const String login = '/auth/login';
+  static const String logout = '/auth/logout';
+  static const String currentUser = '/auth/me';
+  static const String forgot = '/auth/forgot-password';
+  static const String changePassword = '/auth/change-password';
 
   // ---------------------------------------------------------------------
   // Attendance / Clock module
   // ---------------------------------------------------------------------
-  static const String attendance = "/api/employee/attendance";
+  static const String attendance = "/employee/attendance";
 
-  // 🔥 NEW — only addition in this file, everything else is untouched.
-  static const String attendanceCalendar = "/api/employee/calendar";
+  static const String attendanceCalendar = "/employee/calendar";
 
   static String monthlyAttendance(String employeeId, String yearMonth) =>
       '/attendance/monthly/$employeeId/$yearMonth';
@@ -29,16 +26,60 @@ class ApiEndpoints {
   // ---------------------------------------------------------------------
   // Employee
   // ---------------------------------------------------------------------
-  static const String employeeProfile = '/api/employee/profile';
-  static const String employeeProfilePhoto = '/api/employee/profile/photo';
+  static const String employeeProfile = '/employee/profile';
+  static const String employeeProfilePhoto = '/employee/profile/photo';
+  static const String employeeDashboard = '/employee/dashboard';
+  static const String employeeLeaves = '/employee/leaves';
+  static const String employeeLeaveBalances = '/employee/leaves/balances';
+  static const String employeeLeaveTypes = '/employee/leaves/types';
+  static const String employeeLeaveApply = '/employee/leaves/apply';
+  static const String employeeSalary = '/employee/salary';
+
+  // ---------------------------------------------------------------------
+  // Company (employee view) — 🔥 NEW
+  // ---------------------------------------------------------------------
+  static const String companyProfile = '/employee/company-profile';
+  static const String companyEmployees = '/employee/company-employees';
+  static const String companyCalendar = '/employee/company-calendar';
+
+  // ---------------------------------------------------------------------
+  // CMS (public legal pages) — 🔥 NEW
+  // ---------------------------------------------------------------------
+  static const String termsAndConditions = '/terms-and-conditions';
+  static const String privacyPolicy = '/privacy-policy';
+
+  // ---------------------------------------------------------------------
+  // Team (manager leave review) — 🔥 NEW
+  // ---------------------------------------------------------------------
+  static const String teamLeaves = '/employee/team-leaves';
+  static const String teamLeavesReview = '/employee/team-leaves/review';
+
+  // ---------------------------------------------------------------------
+  // Reference (lookup data) — 🔥 NEW
+  // ---------------------------------------------------------------------
+  static const String countries = '/countries';
+  static const String cities = '/cities';
 
   // ---------------------------------------------------------------------
   // Tickets (Ansupport) — 🔥 NEW
   // ---------------------------------------------------------------------
-  static const String tickets = '/api/employee/tickets';
-  static const String ticketShow = '/api/employee/tickets/show';
-  static const String ticketsMeta = '/api/employee/tickets/meta';
-  static const String ticketReply = '/api/employee/tickets/reply';
+  static const String tickets = '/employee/tickets';
+  static const String ticketShow = '/employee/tickets/show';
+  static const String ticketsMeta = '/employee/tickets/meta';
+  static const String ticketReply = '/employee/tickets/reply';
+
+  // ---------------------------------------------------------------------
+  // Device  — 🔥 NEW
+  // ---------------------------------------------------------------------
+
+  static const String devices = '/employee/devices';
+  static const String registerdevices = '/employee/devices';
+
+  // ---------------------------------------------------------------------
+  // Device  — 🔥 NEW
+  // ---------------------------------------------------------------------
+
+  static const String perimssion = '/employee/permissions';
 
   // ---------------------------------------------------------------------
   // Query param helpers

@@ -1,9 +1,5 @@
 import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
 
-
-/// One row read back from the local `attendance_queue` SQLite table --
-/// the SQLite-assigned [id] plus the original payload, used by
-/// [SyncService] to replay unsynced records FIFO and mark them synced.
 class QueueModel {
   final int id;
   final AttendancePayloadModel payload;

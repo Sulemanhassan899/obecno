@@ -18,6 +18,8 @@ enum AttendanceDayStatus {
   missingCheckOut,
   manuallyEdited,
   weekend,
+  onLeave,
+  holiday,
 }
 
 enum AttendanceActionResult {
@@ -33,3 +35,11 @@ enum AttendanceEventType { checkIn, checkOut, breakStart, breakEnd }
 
 enum AttendanceHisotryEventType { checkIn, checkOut, breakStart, breakEnd }
 
+enum LocationErrorType {
+  none,
+  permissionDenied,
+  serviceDisabled,
+  accuracyTooLow,
+  mockLocationDetected,
+  unknown,
+}

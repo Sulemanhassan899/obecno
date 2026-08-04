@@ -14,7 +14,11 @@ class LoadingAnimations {
   }
 
   /// Small inline spinner sized for buttons / list tiles.
-  static Widget small({Color? color, double size = 18, double strokeWidth = 2}) {
+  static Widget small({
+    Color? color,
+    double size = 18,
+    double strokeWidth = 2,
+  }) {
     return SizedBox(
       height: size,
       width: size,
@@ -30,7 +34,12 @@ class LoadingAnimations {
     Color color = const Color(0xFFE0E0E0),
     BorderRadius? borderRadius,
   }) {
-    return PulseBox(width: width, height: height, color: color, borderRadius: borderRadius);
+    return PulseBox(
+      width: width,
+      height: height,
+      color: color,
+      borderRadius: borderRadius,
+    );
   }
 }
 
@@ -52,14 +61,17 @@ class PulseBox extends StatefulWidget {
   State<PulseBox> createState() => _PulseBoxState();
 }
 
-class _PulseBoxState extends State<PulseBox> with SingleTickerProviderStateMixin {
+class _PulseBoxState extends State<PulseBox>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
   )..repeat(reverse: true);
 
-  late final Animation<double> _opacity =
-      Tween<double>(begin: 0.4, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.4,
+    end: 1.0,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
   @override
   void dispose() {

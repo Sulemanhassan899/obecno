@@ -1,4 +1,3 @@
-
 import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/features/employee_module/clock/repositories/clock_attendance_repository.dart';
 import 'package:Obecno/shared/location/data/location_model.dart';
@@ -7,7 +6,6 @@ import 'package:Obecno/shared/location/service/attendance_permission_service.dar
 import 'package:Obecno/shared/location/service/location_service.dart';
 import 'package:flutter/foundation.dart';
 
-// Existing, untouched clock module files -- reused, not duplicated.
 import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/employee_module/clock/presentation/widgets/clock_attendance_engine.dart';
 
@@ -19,6 +17,11 @@ enum AttendanceSubmitStatus {
   failure,
 }
 
+@Deprecated(
+  'Unused legacy attendance path. Bypasses geofence validation, tap '
+  'cooldown, and synced-result checks present in '
+  'SyncedClockScreenController. Do not wire this into the app.',
+)
 class AttendanceProvider extends ChangeNotifier {
   AttendanceProvider(
     this._repository,
@@ -35,15 +38,8 @@ class AttendanceProvider extends ChangeNotifier {
 
   AttendanceSubmitStatus status = AttendanceSubmitStatus.idle;
   String? errorMessage;
-
-  /// Set true when the server explicitly rejects an action (business
-  /// failure, e.g. invalid action / out of range) rather than a
-  /// connectivity/transport failure. Per spec, the check-in control
-  /// stays disabled once this happens until [clearError] resets it.
   bool isCheckInDisabled = false;
 
-  /// Duration/status derived from `_events` via the EXISTING
-  /// `AttendanceEngine.compute` -- not reimplemented here.
   AttendanceSummary get summary => AttendanceEngine.compute(_events);
 
   Future<bool> checkIn() =>
@@ -64,10 +60,6 @@ class AttendanceProvider extends ChangeNotifier {
     AttendanceEventType eventType,
     String apiAction,
   ) async {
-    // Capture the time IMMEDIATELY on press. This exact instant is what
-    // gets stored locally and (if applicable) what the queue holds --
-    // it is never recalculated or overwritten later, including at sync
-    // time.
     final capturedAt = DateTime.now();
 
     status = AttendanceSubmitStatus.submitting;
@@ -82,13 +74,14 @@ class AttendanceProvider extends ChangeNotifier {
       return false;
     }
 
-    LocationModel? location;
+    final LocationModel location;
     try {
       location = await _locationService.getCurrentLocation();
     } catch (_) {
-      // A GPS fetch failure shouldn't block the attendance action --
-      // submit without coordinates rather than losing the event.
-      location = null;
+      status = AttendanceSubmitStatus.failure;
+      errorMessage = 'Unable to get your location. Please try again.';
+      notifyListeners();
+      return false;
     }
 
     final payload = AttendancePayloadModel(
@@ -102,9 +95,10 @@ class AttendanceProvider extends ChangeNotifier {
 
       _events.add(
         AttendanceEvent(
+          id: '${DateTime.now().microsecondsSinceEpoch}',
           type: eventType,
           time: capturedAt,
-          location: location?.currentLocation,
+          location: location.currentLocation,
         ),
       );
 
@@ -112,18 +106,12 @@ class AttendanceProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } on AttendanceBusinessException catch (e) {
-      // Server explicitly rejected the action (success:false) -- not a
-      // connectivity problem, so it was never queued. Surface the exact
-      // server message and keep the control disabled per spec.
       status = AttendanceSubmitStatus.failure;
       errorMessage = e.message;
       isCheckInDisabled = true;
       notifyListeners();
       return false;
     } catch (_) {
-      // submitAttendance queues transport-level failures internally
-      // (offline / timeout / 5xx), but this stays defensive per the
-      // "no unhandled exceptions" rule.
       status = AttendanceSubmitStatus.failure;
       errorMessage = 'Failed to record attendance. Please try again.';
       notifyListeners();

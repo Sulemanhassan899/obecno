@@ -5,17 +5,17 @@ import 'package:Obecno/features/employee_module/more/presentation/screens/policy
 import 'package:Obecno/features/employee_module/more/presentation/screens/terms.dart';
 import 'package:Obecno/features/launch/book_demo/presentation/request_demo.dart';
 import 'package:Obecno/features/launch/book_demo/providers/book_demo_provider.dart';
-import 'package:Obecno/shared/widgets/back_button.dart';
-import 'package:Obecno/shared/widgets/custom_dropdown.dart';
-import 'package:Obecno/shared/widgets/phone_feild.dart';
-import 'package:Obecno/shared/widgets/term_text.dart';
+import 'package:Obecno/widgets/back_button.dart';
+import 'package:Obecno/widgets/custom_dropdown.dart';
+import 'package:Obecno/widgets/phone_feild.dart';
+import 'package:Obecno/widgets/term_text.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/validators/validators.dart';
-import 'package:Obecno/shared/widgets/custom_textfield.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/custom_textfield.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:go_router/go_router.dart';
 
@@ -51,13 +51,6 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
   Future<void> _submit() async {
     if (_isSubmitting) return;
 
-    // Only Name + Email are required to book a demo. Phone and Industry
-    // are optional -- they're folded into the ticket's free-text
-    // `content` message (see BookDemoEntity.buildContentMessage()) and
-    // are never enforced by the backend, so the form must not block
-    // submission on them either. validate() below only runs the
-    // validators actually attached to Name/Email in this form -- Phone
-    // and Industry intentionally have none.
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSubmitting = true);
@@ -95,24 +88,11 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
     super.dispose();
   }
 
-  /// Onboarding is where "Book a Demo" is always entered from, so both
-  /// the tapped back arrow and the hardware/gesture back go there --
-  /// there's nothing below this screen in the stack to pop to when it
-  /// was reached via `context.go('/bookdemo')`.
-  ///
-  /// NOTE: double-check '/onboarding' is the exact route name registered
-  /// in your GoRouter config -- if it's spelled differently there,
-  /// `context.go` fails silently with no visible error, which looks
-  /// exactly like "the back button does nothing".
   void _backToOnboarding(BuildContext context) {
     if (!context.mounted) return;
     try {
       context.go('/onboarding');
     } catch (_) {
-      // If '/onboarding' isn't a registered GoRouter path (typo, renamed
-      // route, etc.) context.go throws instead of silently doing
-      // nothing -- fall back to a plain pop so the button still does
-      // *something* visible instead of appearing dead.
       Navigator.of(context).maybePop();
     }
   }
@@ -121,10 +101,7 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      // onPopInvoked is deprecated as of newer Flutter SDKs in favor of
-      // onPopInvokedWithResult. Using the deprecated callback can be a
-      // no-op (silently ignored) depending on your Flutter version --
-      // this was very likely why hardware/gesture back appeared dead.
+
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _backToOnboarding(context);
@@ -139,8 +116,7 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
               /// BACK
               Padding(
                 padding: const EdgeInsets.only(top: 40),
-                child: BackButtonBg(
-                ),
+                child: BackButtonBg(),
               ),
 
               const SizedBox(height: 20),
@@ -189,12 +165,6 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                         ),
                         const SizedBox(height: 10),
 
-                        /// PHONE (optional -- no validator passed on
-                        /// purpose). If phone still blocks submission,
-                        /// the enforcement is hard-coded inside
-                        /// PhoneField itself (shared/widgets/phone_feild.dart)
-                        /// and needs to be made optional there too --
-                        /// that file wasn't in this bundle.
                         PhoneField(
                           controller: phoneController,
                           selectedCode: selectedCode,
@@ -205,10 +175,6 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
 
                         const SizedBox(height: 16),
 
-                        /// INDUSTRY (optional -- no validator passed on
-                        /// purpose). If it still blocks submission, same
-                        /// note as above but for
-                        /// shared/widgets/custom_dropdown.dart.
                         CustomDropDown(
                           labelText: "Industry or Sector",
                           items: industries,
@@ -245,7 +211,7 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                               ),
                             );
                           },
-                          textType: AppTextType.p2, // ✅ uses 14 from system
+                          textType: AppTextType.p2,
                         ),
                       ],
                     ),

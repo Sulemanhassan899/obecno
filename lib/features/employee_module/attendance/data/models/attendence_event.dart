@@ -1,4 +1,3 @@
-
 import 'package:Obecno/core/constants/app_enums.dart';
 
 class HistoryAttendanceEvent {
@@ -25,10 +24,10 @@ class HistoryAttendanceEvent {
   }
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        'time': time.toIso8601String(),
-        'location': location,
-      };
+    'type': type.name,
+    'time': time.toIso8601String(),
+    'location': location,
+  };
 
   factory HistoryAttendanceEvent.fromJson(Map<String, dynamic> json) {
     return HistoryAttendanceEvent(

@@ -5,8 +5,8 @@ import 'package:Obecno/core/services/token_service.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -54,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen>
     final startTime = DateTime.now();
 
     final authProvider = context.read<AuthProvider>();
-    
+
     // Check onboarding completion
     final tokenService = TokenService();
     final onboardingCompleted = await tokenService.isOnboardingCompleted;
@@ -73,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Ensure we wait at least 4 seconds for splash animation
     final elapsed = DateTime.now().difference(startTime);
-    final remaining = const Duration(seconds: 4) - elapsed;
+    final remaining = const Duration(seconds: 2) - elapsed;
     if (remaining.inMilliseconds > 0) {
       await Future.delayed(remaining);
     }

@@ -7,8 +7,9 @@ import 'package:Obecno/core/constants/app_fonts.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';
 
-import 'package:Obecno/shared/widgets/term_text.dart';
+import 'package:Obecno/widgets/term_text.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
@@ -16,9 +17,9 @@ import 'package:Obecno/generated/assets.dart';
 
 import 'package:Obecno/core/services/token_service.dart';
 
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
-import 'package:Obecno/shared/widgets/text_widget.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
+import 'package:Obecno/widgets/text_widget.dart';
 
 class OnBoardingScreen extends StatefulWidget {
   const OnBoardingScreen({super.key});
@@ -103,21 +104,56 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
     super.dispose();
   }
 
-  /// =========================
-  /// SEGMENTED PROGRESS BAR
-  /// =========================
   Widget _progressBar() {
     return Row(
       children: List.generate(pages.length, (index) {
+        final bool isCompleted = index < currentIndex;
+        final bool isActive = index == currentIndex;
+
         return Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 4),
             height: 4,
             decoration: BoxDecoration(
-              color: index <= currentIndex
-                  ? kPrimaryColor
-                  : kGreyContainerColor,
+              color: kGreyContainerColor,
               borderRadius: BorderRadius.circular(32),
+            ),
+            child: Stack(
+              children: [
+                // Completed (fully filled)
+                if (isCompleted)
+                  AnimatedContainer(
+                    duration: const Duration(
+                      milliseconds: 2000,
+                    ), // slightly slower
+                    curve: Curves.easeOut,
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor,
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                  ),
+
+                // Active (slow loading animation)
+                if (isActive)
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(
+                      milliseconds: 2500,
+                    ), // ⬅️ slower here
+                    curve: Curves.easeInOutCubic, // smoother feel
+                    builder: (context, value, child) {
+                      return FractionallySizedBox(
+                        widthFactor: value,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor,
+                            borderRadius: BorderRadius.circular(32),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
             ),
           ),
         );
@@ -127,108 +163,112 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Size screenSize = MediaQuery.of(context).size;
+    final bool isTablet = screenSize.shortestSide >= 600;
+    final double horizontalPadding = isTablet ? 32 : 10;
+    final double titleSpacing = screenSize.height * 0.015;
+    final double sectionSpacing = screenSize.height * 0.02;
+
     return Scaffold(
-      backgroundColor: kWhite,
       body: Padding(
-        padding: AppSizes.DEFAULT,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-              _progressBar(),
-
-              const SizedBox(height: 20),
-
-              /// 🔥 PAGE VIEW (SWIPEABLE)
-              SizedBox(
-                height: 550,
-                child: PageView.builder(
-                  controller: _controller,
-                  onPageChanged: onPageChanged,
-                  itemCount: pages.length,
-                  itemBuilder: (context, index) {
-                    return Column(
-                      children: [
-                        AppText.h2(
-                          pages[index]["title"]!,
-                          fontFamily: AppFonts.Arvo,
-                        ),
-                        const SizedBox(height: 8),
-                        AppText.p1(pages[index]["Subtitle"]!),
-                        const SizedBox(height: 16),
-                        CommonImageView(
-                          imagePath: pages[index]["image"],
-                          height: 450,
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              /// 🔥 BUTTONS
-              MyButton(
-                mTop: 20,
-                mBottom: 10,
-                buttonText: 'Already have an account',
-                fontWeight: FontWeight.w400,
-                backgroundColor: kPrimaryButtonColor,
-                onTap: ()async{
-                  await TokenService().markOnboardingCompleted();
-                  if (!context.mounted) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginEmailScreen()),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+        ).add(AppSizes.DEFAULT),
+        child: Column(
+          children: [
+            SizedBox(height: sectionSpacing),
+            _progressBar(),
+            SizedBox(height: sectionSpacing),
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                onPageChanged: onPageChanged,
+                itemCount: pages.length,
+                itemBuilder: (context, index) {
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          AppText.h2(
+                            pages[index]["title"]!,
+                            fontFamily: AppFonts.Arvo,
+                          ),
+                          SizedBox(height: titleSpacing * 0.5),
+                          AppText.p1(pages[index]["Subtitle"]!),
+                          SizedBox(height: titleSpacing),
+                          Expanded(
+                            child: Center(
+                              child: CommonImageView(
+                                imagePath: pages[index]["image"],
+                                height: constraints.maxHeight,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
+            ),
+            SizedBox(height: sectionSpacing * 0.5),
+            MyButton(
+              mTop: 10,
+              mBottom: 10,
+              buttonText: 'Already have an account',
+              fontWeight: FontWeight.w400,
+              backgroundColor: kPrimaryButtonColor,
+              onTap: () async {
+                await TokenService().markOnboardingCompleted();
+                if (!context.mounted) return;
+                context.push('/login');
+              },
+            ),
 
-              MyButton(
-                mTop: 8,
-                mBottom: 16,
-                buttonText: 'Book a demo',
-                hasiconRight: true,
-                fontWeight: FontWeight.w400,
-                rightWidget: CommonImageView(
-                  imagePath: Assets.imagesRightArrow,
-                  height: 12,
-                ),
-                onTap: () async{
-                  await TokenService().markOnboardingCompleted();
-                  if (!context.mounted) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const BookDemoScreen()),
-                  );
-                },
+            MyButton(
+              mTop: 4,
+              mBottom: 12,
+              buttonText: 'Book a demo',
+              hasiconRight: true,
+              fontWeight: FontWeight.w400,
+              rightWidget: CommonImageView(
+                imagePath: Assets.imagesRightArrow,
+                height: 12,
               ),
+              onTap: () async {
+                await TokenService().markOnboardingCompleted();
+                if (!context.mounted) return;
+                context.push('/bookdemo');
+              },
+            ),
 
-              CustomRichText(
-                textAlign: TextAlign.center,
-                prefixText: "By continuing, you agree to accept our ",
-                linkText1: "Terms of Use",
-                middleText: " and ",
-                linkText2: "Privacy policy",
-                suffixText: ".",
+            CustomRichText(
+              textAlign: TextAlign.center,
+              prefixText: "By continuing, you agree to accept our ",
+              linkText1: "Terms of Use",
+              middleText: " and ",
+              linkText2: "Privacy policy",
+              suffixText: ".",
 
-                onTap1: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const TermsScreen()),
-                  );
-                },
-                onTap2: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const PolicyScreen()),
-                  );
-                },
+              onTap1: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TermsScreen()),
+                );
+              },
+              onTap2: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PolicyScreen()),
+                );
+              },
 
-                textType: AppTextType.p2, // ✅ uses 14 from system
-              ),
-            ],
-          ),
+              textType: AppTextType.p2,
+            ),
+            SizedBox(height: sectionSpacing * 0.3),
+          ],
         ),
       ),
     );

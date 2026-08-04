@@ -1,9 +1,14 @@
+
+
+
 import 'dart:async';
 
 import 'package:Obecno/core/binding/app_binding.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart';
+import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart'
+    hide MonthSummary, AttendanceDayRecord;
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:Obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
+import 'package:Obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 
 import 'package:Obecno/main.dart';
 import 'package:flutter/material.dart';
@@ -19,34 +24,45 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
   final HistoryAttendanceRepository _repository;
 
-  // ✅ REQUIRED FOR AttendanceDetailsSheet (NO LOGIC CHANGE)
   get apiClient => bindings.ApihttpClient;
   String get userEmail => bindings.userEmail;
+
+  /// Working weekdays from backend policy, exposed for the UI.
+  Set<int> get workingWeekdays => _workingWeekdays;
+  Set<int> _workingWeekdays = const {1, 2, 3, 4, 5};
+
+  bool _disposed = false;
+
+  // Fix (Issue 2): this controller previously guarded async continuations
+  // only with _disposed, not with the app's session epoch -- so if a slow
+  // request from User A's session resolved after User B was already signed
+  // in but before this controller happened to be disposed, User A's month
+  // data could flash into User B's screen. `bindings.authProvider` is the
+  // same session-epoch source SyncService already trusts.
+  int get _currentSessionEpoch => bindings.authProvider.sessionEpoch;
+  bool _staleSession(int epochAtStart) => epochAtStart != _currentSessionEpoch;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   DateTime selectedMonth;
   MonthSummary? summary;
   List<AttendanceDayRecord> records = [];
   List<AttendanceDay> rawDays = [];
 
-  /// Full-screen loader — only true on the very first-ever load (no cache
-  /// yet at all) or when jumping to a month that isn't cached.
   bool isLoading = false;
 
-  /// 🔥 NEW — bottom-only loader while paginating to a month that isn't
-  /// cached yet and has to be fetched from the API.
   bool isPaginating = false;
 
-  /// 🔥 NEW — true while the silent "app reopen" background sync of the
-  /// current month is in flight. Not surfaced as a loader anywhere by
-  /// design (spec: "App reopen -> NO loader").
   bool isSyncing = false;
 
   String? error;
 
   static DateTime _monthOnly(DateTime d) => DateTime(d.year, d.month);
 
-  /// 🔥 NEW — the picker/header use this to disable forward navigation
-  /// past the current month.
   bool get canGoNext => selectedMonth.isBefore(_monthOnly(DateTime.now()));
 
   // -----------------------------------------------------------------------
@@ -54,29 +70,53 @@ class MonthlyAttendanceController extends ChangeNotifier {
   // -----------------------------------------------------------------------
 
   Future<void> _initialLoad() async {
+    final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
+
+    // Load working_days policy from backend before any data loading.
+    await _loadWorkingDaysPolicy();
+    if (_disposed || _staleSession(epochAtStart)) return; // Fix (Issue 2)
+
     final hasCache = await _repository.hasAnyCachedData();
+    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
 
     if (!hasCache) {
-      // First login ever (or fresh install): full loader, backfill the
-      // last ~4 months into the DB, then show the current month.
       isLoading = true;
       error = null;
       notifyListeners();
 
       await _repository.syncInitialRange();
+      if (_disposed || _staleSession(epochAtStart)) return; // Fix (Issue 2)
       await _loadMonth(preferCache: true, silent: false);
     } else {
-      // App reopen: instant UI straight from the DB, no loader at all,
-      // then silently re-sync just the current month in the background.
       await _loadMonth(preferCache: true, silent: true);
+      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
       unawaited(_syncLatestMonthInBackground());
     }
   }
 
+  /// Loads working_days from CompanyPolicyService and updates the repository.
+  Future<void> _loadWorkingDaysPolicy() async {
+    try {
+      final raw = await bindings.companyPolicyService.valueFor(
+        'attendance',
+        'working_days',
+      );
+      final parsed = WorkingDaysParser.parse(raw);
+      if (parsed.isNotEmpty) {
+        _workingWeekdays = parsed;
+        _repository.updateWorkingWeekdays(parsed);
+      }
+    } catch (_) {
+      // Silently fall back to default Mon–Fri.
+    }
+  }
+
   Future<void> _syncLatestMonthInBackground() async {
+    final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
     isSyncing = true;
 
     final response = await _repository.syncLatestMonth();
+    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
 
     isSyncing = false;
 
@@ -134,9 +174,11 @@ class MonthlyAttendanceController extends ChangeNotifier {
     bool silent = false,
   }) async {
     final requestedMonth = selectedMonth;
+    final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
 
     if (preferCache) {
       final cached = await _repository.loadMonthFromCache(requestedMonth);
+      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
       if (cached != null) {
         if (requestedMonth != selectedMonth) return;
 
@@ -163,6 +205,7 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
     try {
       final response = await _repository.loadMonthSmart(requestedMonth);
+      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
 
       if (requestedMonth != selectedMonth) return;
 
@@ -175,10 +218,12 @@ class MonthlyAttendanceController extends ChangeNotifier {
         error = response.message ?? 'Failed to load attendance.';
       }
     } catch (e) {
+      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
       if (requestedMonth != selectedMonth) return;
       error = e.toString();
     }
 
+    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
     isLoading = false;
     isPaginating = false;
     isSyncing = false;
@@ -186,13 +231,16 @@ class MonthlyAttendanceController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
     isPaginating = summary != null;
     isLoading = !isPaginating;
     notifyListeners();
 
     final response = await _repository.loadMonth(selectedMonth);
+    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
     if (response.success && response.data != null) {
       await _repository.cacheMonth(selectedMonth, response.data!);
+      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
       final result = response.data!;
       summary = result.summary;
       records = result.records;

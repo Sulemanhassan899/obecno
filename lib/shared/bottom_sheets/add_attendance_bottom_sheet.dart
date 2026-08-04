@@ -2,24 +2,15 @@
 
 import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/helpers/snackbar_helper.dart';
 import 'package:Obecno/generated/assets.dart';
-
-// 🔥 FIX — you were importing BOTH edit_response_sheet.dart AND
-// response_bottom_sheet.dart. Both files define `class ReponseBottomSheet`
-// and `enum TicketResponseStatus`, so Dart had two candidates for the same
-// name (ambiguous import) and may have silently picked the stale one
-// (response_bottom_sheet.dart, which doesn't have the `day` param) — that's
-// very likely the real source of your "day isn't defined" errors.
-// Only edit_response_sheet.dart is the one being maintained now.
 import 'package:Obecno/shared/bottom_sheets/edit_response_sheet.dart';
-
-import 'package:Obecno/shared/widgets/bottom_sheet.dart';
-import 'package:Obecno/shared/widgets/common_image_view_widget.dart';
-import 'package:Obecno/shared/widgets/my_button.dart';
+import 'package:Obecno/shared/location/service/ticket_repository.dart';
+import 'package:Obecno/widgets/bottom_sheet.dart';
+import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -34,9 +25,6 @@ class AddAttendanceBottomSheet {
     TimeOfDay? initialBreakStart,
     TimeOfDay? initialBreakEnd,
   }) {
-    // lets the "Save" button (rendered by CommonBottomSheet, outside this
-    // widget's own build tree) reach into this content's state and
-    // trigger the save/submit flow.
     final contentKey = GlobalKey<_AttendanceContentState>();
 
     CommonBottomSheet.show(
@@ -120,6 +108,12 @@ class _AttendanceContentState extends State<_AttendanceContent>
     breakEnd = widget.initialBreakEnd;
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   String formatTime(TimeOfDay t) {
     final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
     final min = t.minute.toString().padLeft(2, '0');
@@ -157,6 +151,8 @@ class _AttendanceContentState extends State<_AttendanceContent>
     });
 
     await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) return;
 
     final contextKey = _itemKeys[fieldKey]?.currentContext;
     if (contextKey == null) return;
@@ -273,18 +269,16 @@ class _AttendanceContentState extends State<_AttendanceContent>
       ..writeln('Thank you.');
 
     try {
-      final response = await widget.apiClient.post(
-        ApiEndpoints.tickets,
-        data: {
-          'user_email': widget.userEmail,
-          'subject': 'Attendance fix request - ${_dateLabel(widget.day)}',
-          'content': content.toString(),
-        },
+      final ticketRepository = TicketRepository(widget.apiClient);
+      final result = await ticketRepository.submitTicket(
+        userEmail: widget.userEmail,
+        subject: 'Attendance fix request - ${_dateLabel(widget.day)}',
+        content: content.toString(),
       );
 
       if (!mounted) return;
 
-      final success = response.statusCode == 200 || response.statusCode == 201;
+      final success = result.success;
 
       // ✅ UPDATED TO HANDLE BOTH CASES
       SnackbarHelper.showTopToast(
@@ -678,6 +672,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
               ],
             ),
           ),
+          const SizedBox(height: 30),
         ],
       ),
     );

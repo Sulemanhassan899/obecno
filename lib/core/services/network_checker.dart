@@ -1,15 +1,13 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-/// Wraps `connectivity_plus` so the rest of the app depends on a single,
-/// mockable abstraction instead of the plugin directly (important for
-/// unit-testing repositories/providers without a platform channel).
 abstract class NetworkChecker {
   Future<bool> get isConnected;
   Stream<bool> get onConnectivityChanged;
 }
 
 class NetworkCheckerImpl implements NetworkChecker {
-  NetworkCheckerImpl({Connectivity? connectivity}) : _connectivity = connectivity ?? Connectivity();
+  NetworkCheckerImpl({Connectivity? connectivity})
+    : _connectivity = connectivity ?? Connectivity();
 
   final Connectivity _connectivity;
 

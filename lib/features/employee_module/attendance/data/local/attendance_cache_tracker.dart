@@ -1,22 +1,26 @@
-/// In-memory fast-path over the DB cache. The DB (`AttendanceDao`) is the
-/// real source of truth for "is this month cached?" — this tracker just
-/// avoids an extra disk hit when the user flips back and forth between
-/// months already confirmed loaded earlier in the same app session.
-///
-/// Keys are "YYYY-MM" strings, matching `AttendanceDao`'s month key format.
 class AttendanceCacheTracker {
   AttendanceCacheTracker._();
 
   static final AttendanceCacheTracker instance = AttendanceCacheTracker._();
 
-  final Set<String> _loadedMonths = <String>{};
+  final Map<String, Set<String>> _loadedMonthsByUser = <String, Set<String>>{};
 
-  bool isLoaded(String monthKey) => _loadedMonths.contains(monthKey);
+  bool isLoaded(String userId, String monthKey) =>
+      _loadedMonthsByUser[userId]?.contains(monthKey) ?? false;
 
-  void markLoaded(String monthKey) => _loadedMonths.add(monthKey);
+  void markLoaded(String userId, String monthKey) {
+    _loadedMonthsByUser.putIfAbsent(userId, () => <String>{}).add(monthKey);
+  }
 
   /// Snapshot for debugging / the spec's `loadedMonths` tracker requirement.
-  List<String> get loadedMonths => List.unmodifiable(_loadedMonths);
+  List<String> loadedMonths(String userId) =>
+      List.unmodifiable(_loadedMonthsByUser[userId] ?? const <String>{});
 
-  void reset() => _loadedMonths.clear();
+  /// Clears every user's cache-loaded state. Safe to call broadly (e.g. on
+  /// logout) since only one user is ever active on the device at a time.
+  void reset() => _loadedMonthsByUser.clear();
+
+  /// Clears cache-loaded state for a single user only, leaving any other
+  /// user's tracked state untouched.
+  void resetForUser(String userId) => _loadedMonthsByUser.remove(userId);
 }

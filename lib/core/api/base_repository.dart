@@ -3,17 +3,6 @@ import './api_client.dart';
 import './api_error.dart';
 import './api_response.dart';
 
-/// Every feature repository (AttendanceRepository, EmployeeRepository, ...)
-/// extends this. It owns zero business logic of its own — it exists so
-/// "call the client, catch errors, parse JSON, wrap in ApiResponse" is
-/// written exactly once instead of copy-pasted into every repository
-/// method.
-///
-/// FIXED: `ApiClient` no longer wraps Dio, so this now talks in
-/// [RawApiResponse]/[ApiCancelToken] instead of Dio's `Response`/
-/// `CancelToken`. The public shape (`getRequest`/`postRequest`/... taking
-/// a `parser` and returning `ApiResponse<T>`) is unchanged, so feature
-/// repositories that extend this class don't need to change at all.
 abstract class BaseRepository {
   BaseRepository(this.apiClient);
 
@@ -26,7 +15,11 @@ abstract class BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return _execute(
-      () => apiClient.get(path, queryParameters: queryParameters, cancelToken: cancelToken),
+      () => apiClient.get(
+        path,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+      ),
       parser,
     );
   }
@@ -39,7 +32,12 @@ abstract class BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return _execute(
-      () => apiClient.post(path, data: data, queryParameters: queryParameters, cancelToken: cancelToken),
+      () => apiClient.post(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+      ),
       parser,
     );
   }
@@ -52,7 +50,12 @@ abstract class BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return _execute(
-      () => apiClient.put(path, data: data, queryParameters: queryParameters, cancelToken: cancelToken),
+      () => apiClient.put(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+      ),
       parser,
     );
   }
@@ -65,7 +68,12 @@ abstract class BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return _execute(
-      () => apiClient.patch(path, data: data, queryParameters: queryParameters, cancelToken: cancelToken),
+      () => apiClient.patch(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+      ),
       parser,
     );
   }
@@ -78,12 +86,16 @@ abstract class BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return _execute(
-      () => apiClient.delete(path, data: data, queryParameters: queryParameters, cancelToken: cancelToken),
+      () => apiClient.delete(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+      ),
       parser,
     );
   }
 
-  /// Shared success/error/parse-failure funnel for every verb above.
   Future<ApiResponse<T>> _execute<T>(
     Future<RawApiResponse> Function() call,
     T Function(dynamic json) parser,
@@ -94,13 +106,6 @@ abstract class BaseRepository {
         final parsed = parser(response.data);
         return ApiResponse.success(parsed, statusCode: response.statusCode);
       } catch (parseError) {
-        // FIXED: a parser can deliberately throw an ApiError (e.g. to
-        // surface a backend `success: false` message) -- this used to
-        // catch that too and stomp it with a generic "Failed to read
-        // server response" message, so callers never saw the real
-        // reason. Only wrap *actual* parse failures (malformed JSON,
-        // missing fields, etc.) in the generic message; let a
-        // deliberately-thrown ApiError pass through unchanged.
         if (parseError is ApiError) rethrow;
         throw ApiError(
           type: ApiErrorType.parsing,
@@ -112,7 +117,10 @@ abstract class BaseRepository {
       return ApiResponse.failure(e.message, statusCode: e.statusCode);
     } catch (e) {
       final apiError = ApiError.fromException(e);
-      return ApiResponse.failure(apiError.message, statusCode: apiError.statusCode);
+      return ApiResponse.failure(
+        apiError.message,
+        statusCode: apiError.statusCode,
+      );
     }
   }
 }

@@ -1,22 +1,23 @@
 import 'dart:async';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:Obecno/core/services/network_checker.dart';
 
 class ConnectivityService {
   ConnectivityService._();
 
-  static final Connectivity _connectivity = Connectivity();
+  static final NetworkChecker _networkChecker = NetworkCheckerImpl();
 
   static final _controller = StreamController<bool>.broadcast();
 
   static Stream<bool> get stream => _controller.stream;
 
-  static StreamSubscription? _subscription;
+  static StreamSubscription<bool>? _subscription;
 
   static void start() {
     _subscription?.cancel();
 
-    _subscription = _connectivity.onConnectivityChanged.listen((result) async {
-      final hasConnection = result != ConnectivityResult.none;
+    _subscription = _networkChecker.onConnectivityChanged.listen((
+      hasConnection,
+    ) {
       _controller.add(hasConnection);
     });
   }
@@ -25,8 +26,5 @@ class ConnectivityService {
     _subscription?.cancel();
   }
 
-  static Future<bool> isConnected() async {
-    final result = await _connectivity.checkConnectivity();
-    return result != ConnectivityResult.none;
-  }
+  static Future<bool> isConnected() => _networkChecker.isConnected;
 }

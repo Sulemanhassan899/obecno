@@ -1,40 +1,32 @@
-/// Normalized attendance domain model + raw API DTOs.
-///
-/// This file is ADDITIVE only — it does not modify the existing
-/// `attendence_model.dart` (which stays as the UI-facing model consumed by
-/// `AttendanceSummaryCard` / `AttendanceDayTile`). `AttendanceDay` here is
-/// the scalable, API-shape-agnostic model requested in the spec; the
-/// repository maps it down into the existing `AttendanceDayRecord` /
-/// `MonthSummary` UI models so widgets never need to change.
-library;
 
-/// A single break window on a given day. The current API only ever returns
-/// one break pair (`breakin` + `breakout`) per day, but modeling it as a
-/// list of sessions (see [AttendanceDay.breaks]) means the day model
-/// doesn't need to change shape if the backend adds multiple breaks later.
 class BreakSession {
-  const BreakSession({required this.breakIn, required this.breakOut});
+  const BreakSession({
+    required this.breakIn,
+    required this.breakOut,
+    this.breakInLocation,
+    this.breakOutLocation,
+  });
 
   /// Raw "HH:mm:ss" (or "HH:mm") time string, 24-hour, as returned by the API.
   final String breakIn;
   final String breakOut;
 
+  /// Raw "lat,lon" string for each side of the break, if the API provided one.
+  final String? breakInLocation;
+  final String? breakOutLocation;
+
   @override
   String toString() => 'BreakSession($breakIn -> $breakOut)';
 }
 
-/// Normalized, scalable representation of one day's attendance.
-///
-/// The live API only ever produces a single check-in and a single
-/// check-out per day, but modeling them as lists ([checkIns], [checkOuts])
-/// means downstream code (summaries, tiles) doesn't have to change if the
-/// backend later supports multiple clock events per day.
 class AttendanceDay {
   const AttendanceDay({
     required this.date,
     this.recordId,
     this.checkIns = const [],
     this.checkOuts = const [],
+    this.checkInLocations = const [],
+    this.checkOutLocations = const [],
     this.breaks = const [],
     this.isEdited = false,
   });
@@ -43,51 +35,117 @@ class AttendanceDay {
   final int? recordId;
   final List<String> checkIns;
   final List<String> checkOuts;
+
+  /// Raw "lat,lon" strings, index-aligned with [checkIns] / [checkOuts].
+  final List<String?> checkInLocations;
+  final List<String?> checkOutLocations;
   final List<BreakSession> breaks;
 
-  /// The API has no `is_edited` flag today, so this is always `false`.
-  /// Kept as a field (rather than hardcoded at every call site) so a future
-  /// API addition only requires wiring this one value, not touching the
-  /// icon logic that reads it.
   final bool isEdited;
 
   String? get firstCheckIn => checkIns.isEmpty ? null : checkIns.first;
   String? get lastCheckOut => checkOuts.isEmpty ? null : checkOuts.last;
 
+  String? get firstCheckInLocation =>
+      checkInLocations.isEmpty ? null : checkInLocations.first;
+  String? get lastCheckOutLocation =>
+      checkOutLocations.isEmpty ? null : checkOutLocations.last;
+
   bool get hasCheckIn => firstCheckIn != null;
   bool get hasCheckOut => lastCheckOut != null;
 
-  /// True when both a check-in and a check-out are present.
   bool get isComplete => hasCheckIn && hasCheckOut;
 
-  /// True when the record is missing a check-in and/or a check-out —
-  /// drives the `imagesTriangleExclamation` icon per the spec.
   bool get hasMissingData => !hasCheckIn || !hasCheckOut;
 
-  /// Builds an [AttendanceDay] from one `history[]` (or `today_attendance`)
-  /// item:
-  /// ```json
-  /// {"id":6,"date":"2026-07-14","checkin":"00:27:02","checkout":"00:28:12","breakout":"","breakin":""}
-  /// ```
-  /// Empty strings are treated as null/absent per the mapping rules.
   factory AttendanceDay.fromApiHistoryItem(Map<String, dynamic> json) {
     final date = _parseDate(json['date']) ?? DateTime.now();
 
-    final checkin = _normalizedTime(json['checkin']);
-    final checkout = _normalizedTime(json['checkout']);
-    final breakin = _normalizedTime(json['breakin']);
-    final breakout = _normalizedTime(json['breakout']);
+    final detailsRaw = json['attendance_details'];
+    final hasDetails = detailsRaw is List && detailsRaw.isNotEmpty;
 
-    final breaks = <BreakSession>[
-      if (breakin != null && breakout != null)
-        BreakSession(breakIn: breakin, breakOut: breakout),
-    ];
+    final checkIns = <String>[];
+    final checkInLocations = <String?>[];
+    final checkOuts = <String>[];
+    final checkOutLocations = <String?>[];
+    final breaks = <BreakSession>[];
+
+    if (hasDetails) {
+      String? pendingBreakOutTime;
+      String? pendingBreakOutLocation;
+
+      for (final raw in detailsRaw) {
+        if (raw is! Map) continue;
+        final detail = Map<String, dynamic>.from(raw);
+        final time = _normalizedTime(detail['attendance_time']);
+        if (time == null) continue;
+        final location = _normalizedLocation(detail['current_location']);
+
+        switch ((detail['type'] as String?)?.trim().toLowerCase()) {
+          case 'check in':
+            checkIns.add(time);
+            checkInLocations.add(location);
+            break;
+          case 'check out':
+            checkOuts.add(time);
+            checkOutLocations.add(location);
+            break;
+          case 'break out':
+            pendingBreakOutTime = time;
+            pendingBreakOutLocation = location;
+            break;
+          case 'break in':
+            if (pendingBreakOutTime != null) {
+              breaks.add(
+                BreakSession(
+                  breakIn: time,
+                  breakOut: pendingBreakOutTime,
+                  breakInLocation: location,
+                  breakOutLocation: pendingBreakOutLocation,
+                ),
+              );
+              pendingBreakOutTime = null;
+              pendingBreakOutLocation = null;
+            }
+            break;
+        }
+      }
+    } else {
+      // No per-event breakdown (e.g. "today_attendance") -- fall back to the
+      // single top-level fields, all sharing the one reported location.
+      final checkin = _normalizedTime(json['checkin']);
+      final checkout = _normalizedTime(json['checkout']);
+      final breakin = _normalizedTime(json['breakin']);
+      final breakout = _normalizedTime(json['breakout']);
+      final location = _normalizedLocation(json['current_location']);
+
+      if (checkin != null) {
+        checkIns.add(checkin);
+        checkInLocations.add(location);
+      }
+      if (checkout != null) {
+        checkOuts.add(checkout);
+        checkOutLocations.add(location);
+      }
+      if (breakin != null && breakout != null) {
+        breaks.add(
+          BreakSession(
+            breakIn: breakin,
+            breakOut: breakout,
+            breakInLocation: location,
+            breakOutLocation: location,
+          ),
+        );
+      }
+    }
 
     return AttendanceDay(
       date: DateTime(date.year, date.month, date.day),
       recordId: _parseId(json['id']),
-      checkIns: checkin != null ? [checkin] : const [],
-      checkOuts: checkout != null ? [checkout] : const [],
+      checkIns: checkIns,
+      checkOuts: checkOuts,
+      checkInLocations: checkInLocations,
+      checkOutLocations: checkOutLocations,
       breaks: breaks,
       isEdited: false,
     );
@@ -106,12 +164,20 @@ class AttendanceDay {
     return DateTime.tryParse(s);
   }
 
-  /// Treats empty/blank strings (and null) as "no value", per the API's
-  /// convention of returning `""` instead of omitting the field.
   static String? _normalizedTime(dynamic raw) {
     if (raw == null) return null;
     final s = raw.toString().trim();
     return s.isEmpty ? null : s;
+  }
+
+  /// Normalizes the API's "lat,lon" location string. Treats "0,0" (a common
+  /// "no fix" sentinel) and empty/null the same as no location at all.
+  static String? _normalizedLocation(dynamic raw) {
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    if (s.isEmpty) return null;
+    if (s == '0,0' || s == '0.0,0.0') return null;
+    return s;
   }
 
   @override
@@ -119,7 +185,6 @@ class AttendanceDay {
       'AttendanceDay(date: $date, in: $checkIns, out: $checkOuts, breaks: $breaks)';
 }
 
-/// Raw payload of `GET /api/employee/attendance`.
 class AttendanceHistoryData {
   const AttendanceHistoryData({
     this.today,
@@ -151,9 +216,7 @@ class AttendanceHistoryData {
             history.add(
               AttendanceDay.fromApiHistoryItem(Map<String, dynamic>.from(item)),
             );
-          } catch (_) {
-            // Skip malformed rows instead of failing the whole response.
-          }
+          } catch (_) {}
         }
       }
     }
@@ -166,7 +229,6 @@ class AttendanceHistoryData {
   }
 }
 
-/// Raw payload of `GET /api/employee/calendar`.
 class AttendanceCalendarData {
   const AttendanceCalendarData({
     this.monthLabel = '',
