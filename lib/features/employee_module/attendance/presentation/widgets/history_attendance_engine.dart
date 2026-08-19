@@ -1,6 +1,6 @@
 import 'package:Obecno/core/constants/app_enums.dart';
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_event.dart';
-import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
+import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
 
 class HistoryAttendanceSummary {
   final DateTime? firstCheckIn;
@@ -57,8 +57,18 @@ class HistoryAttendanceEngine {
 
     final sorted = [...events]..sort((a, b) => a.time.compareTo(b.time));
 
+    // Explicit earliest check-in / latest check-out — never overwritten by
+    // later re-check-ins or intermediate check-outs.
     DateTime? firstCheckIn;
     DateTime? lastCheckOut;
+    for (final e in sorted) {
+      if (e.type == AttendanceHisotryEventType.checkIn) {
+        firstCheckIn ??= e.time;
+      } else if (e.type == AttendanceHisotryEventType.checkOut) {
+        lastCheckOut = e.time;
+      }
+    }
+
     Duration working = Duration.zero;
     Duration breaks = Duration.zero;
 
@@ -70,14 +80,13 @@ class HistoryAttendanceEngine {
     for (final e in sorted) {
       switch (e.type) {
         case AttendanceHisotryEventType.checkIn:
-          firstCheckIn ??= e.time;
+          // Do not touch firstCheckIn — already locked to earliest above.
           openWorkStart = e.time;
           isCheckedIn = true;
           isOnBreak = false;
           break;
 
         case AttendanceHisotryEventType.checkOut:
-          lastCheckOut = e.time;
           if (openWorkStart != null) {
             working += e.time.difference(openWorkStart);
             openWorkStart = null;
@@ -127,6 +136,14 @@ class HistoryAttendanceEngine {
     List<HistoryAttendanceEvent> events,
   ) {
     final sorted = [...events]..sort((a, b) => b.time.compareTo(a.time));
+    return sorted;
+  }
+
+  /// Events sorted oldest-first (chronological), for attendance timelines.
+  static List<HistoryAttendanceEvent> sortedOldestFirst(
+    List<HistoryAttendanceEvent> events,
+  ) {
+    final sorted = [...events]..sort((a, b) => a.time.compareTo(b.time));
     return sorted;
   }
 }

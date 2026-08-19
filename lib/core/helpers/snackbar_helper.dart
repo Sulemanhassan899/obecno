@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:Obecno/core/services/logger.dart';
+import 'package:Obecno/features/employee_module/routes/app_routes.dart';
 
 /// ===============================
 /// 🔥 ADVANCED TOP TOAST SYSTEM
@@ -50,9 +52,55 @@ class SnackbarHelper {
     bool swipeToDismiss = true,
     double swipeVelocityThreshold = 600,
   }) {
-    _removeCurrent();
+    // ROOT CAUSE FIX (toast never appearing / "Navigator crash"):
+    //
+    // `Overlay.of(context)` does an *ancestor* lookup -- it only finds an
+    // Overlay that sits ABOVE `context` in the widget tree. Every call site
+    // that needed a toast from a background flow (DeviceProvider's
+    // checkDeviceStatus, AppGuard) was handing this function a context
+    // obtained from `Navigator.maybeOf(context, rootNavigator: true)?.context`
+    // or `rootNavigatorKey.currentContext` -- i.e. the root Navigator's OWN
+    // context. The Overlay that Navigator manages is a *descendant* of that
+    // context, not an ancestor, so `Overlay.of` could never find it and
+    // either silently failed to insert the toast or threw
+    // "No Overlay widget found", which is what surfaced as an uncaught
+    // error / "Navigator crash".
+    //
+    // Fix: try the normal ancestor lookup first (works for any ordinary
+    // on-screen `context`, which is the common case and keeps this call
+    // cheap), and if that fails, fall back to asking the root Navigator for
+    // its OverlayState directly -- `NavigatorState.overlay` returns it
+    // straight from the Navigator instance, with no context/ancestor walk
+    // involved, so it always works regardless of which context was passed
+    // in or whether the screen that triggered it is still mounted.
+    // `context.mounted` MUST be checked before touching the context at all:
+    // calling any ancestor-lookup method (Overlay.maybeOf, Navigator.of...)
+    // on an already-deactivated context throws synchronously, and this is
+    // frequently invoked from a post-frame callback / after an awaited call
+    // where nothing downstream would catch that throw.
+    final overlay =
+        (context.mounted ? Overlay.maybeOf(context, rootOverlay: true) : null) ??
+        rootNavigatorKey.currentState?.overlay;
 
-    final overlay = Overlay.of(context);
+    AppLogger.info(
+      '[UI_EXECUTION]\n'
+      'type=TOAST\n'
+      'contextValid=${context.mounted}\n'
+      'mounted=${context.mounted}\n'
+      'navigatorAvailable=${rootNavigatorKey.currentState != null}\n'
+      'source=SnackbarHelper.showTopToast',
+    );
+
+    if (overlay == null) {
+      AppLogger.error(
+        'SnackbarHelper',
+        'showTopToast',
+        '[ERROR]\ntype=NAVIGATOR_CONTEXT_ERROR\nreason=No Overlay available (root navigator not ready yet)\nsource=showTopToast -- toast dropped: "$message"',
+      );
+      return;
+    }
+
+    _removeCurrent();
 
     _overlayEntry = OverlayEntry(
       builder: (context) => _TopToastWidget(

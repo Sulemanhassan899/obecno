@@ -9,7 +9,7 @@ class AppStrings {
   static const String breakStarted = "Break Started";
   static const String breakEnded = "Break Ended";
   static const String breakAutoEnded = "Break ended ";
-  static const String noInternetConnection = "No internet connection.";
+  static const String noInternetConnection = "Internet not available";
   static const String nonWorkingDay = "Not a working day";
   static const String permissionsRequired =
       "Location and notification permissions are required.";

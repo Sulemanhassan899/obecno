@@ -10,7 +10,7 @@ final ThemeData lightTheme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.light,
   fontFamily: AppFonts.Poppins,
-  scaffoldBackgroundColor: kWhite,
+  scaffoldBackgroundColor: kbackground1,
   colorScheme: const ColorScheme.light(
     primary: kPrimaryColor,
 

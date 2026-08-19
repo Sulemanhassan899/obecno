@@ -11,9 +11,11 @@ class ApiEndpoints {
   static const String changePassword = '/auth/change-password';
 
   // ---------------------------------------------------------------------
-  // Attendance / Clock module
+  // Attendance module / Clock module
   // ---------------------------------------------------------------------
   static const String attendance = "/employee/attendance";
+  static const String attendanceDetails = "/employee/attendance/details";
+  static const String attendanceEdit = "/employee/attendance/edit";
 
   static const String attendanceCalendar = "/employee/calendar";
 
@@ -74,6 +76,7 @@ class ApiEndpoints {
 
   static const String devices = '/employee/devices';
   static const String registerdevices = '/employee/devices';
+  static String deleteDevice(String id) => '/employee/devices/$id';
 
   // ---------------------------------------------------------------------
   // Device  — 🔥 NEW

@@ -8,7 +8,7 @@ import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:Obecno/features/auth/providers/permission_provider.dart';
 import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 
@@ -46,7 +46,7 @@ class _AccountSettingState extends State<AccountSetting> {
     final permissionProvider = context.read<PermissionProvider>();
 
     return Scaffold(
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.HORIZONTAL,
         child: RefreshIndicator(

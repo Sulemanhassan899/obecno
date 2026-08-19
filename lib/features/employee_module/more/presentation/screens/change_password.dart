@@ -1,7 +1,7 @@
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/snackbar_helper.dart';
+import 'package:Obecno/core/helpers/toast_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
 
@@ -80,13 +80,11 @@ class _ChangePasswordState extends State<ChangePassword> {
     if (!mounted) return;
 
     if (success) {
-      SnackbarHelper.showTopToast(
+      ToastHelper.passwordChanged(
         context,
         message:
             authProvider.changePasswordMessage ??
             'Password changed successfully.',
-        backgroundColor: kOrangeColor,
-        duration: const Duration(seconds: 3),
       );
       authProvider.clearChangePasswordMessage();
       Navigator.pop(context);
@@ -144,7 +142,7 @@ class _ChangePasswordState extends State<ChangePassword> {
           ),
         ],
       ),
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
 
       body: Padding(
         padding: AppSizes.HORIZONTAL,

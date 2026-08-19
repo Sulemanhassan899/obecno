@@ -1,6 +1,6 @@
 import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 

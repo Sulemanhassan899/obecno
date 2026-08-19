@@ -3,7 +3,7 @@ import 'package:Obecno/core/animations/heart_beat_animation.dart';
 import 'package:Obecno/core/animations/ripple_animation%20.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 

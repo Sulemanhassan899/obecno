@@ -37,12 +37,16 @@ class CompanyPolicyService {
 
   /// Fetch permissions from the network.
   ///
-  /// - Returns immediately if the TTL cache is still valid.
+  /// - Returns immediately if the TTL cache is still valid (unless [force]).
+  /// - If the TTL says "fresh" but the stored list is empty, fetches anyway.
   /// - Deduplicates concurrent calls: all callers that arrive while a request
   ///   is already in-flight await the same [Completer] future.
-  Future<bool> refreshFromNetwork() async {
-    // 1. TTL guard — skip network if cache is fresh.
-    if (_isCacheValid) return true;
+  Future<bool> refreshFromNetwork({bool force = false}) async {
+    // 1. TTL guard — skip network if cache is fresh AND non-empty.
+    if (!force && _isCacheValid) {
+      final cached = await _tokenService.cachedPermissions;
+      if (cached.isNotEmpty) return true;
+    }
 
     // 2. Deduplication — if a request is already in-flight, join it.
     final inFlight = _refreshInFlight;

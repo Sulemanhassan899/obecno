@@ -1,42 +1,59 @@
 import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 
 class HistoryAttendanceEvent {
+  final String? id;
   final AttendanceHisotryEventType type;
   final DateTime time;
   final String? location;
+  final List<AttendanceEditRequest> editRequests;
 
   const HistoryAttendanceEvent({
+    this.id,
     required this.type,
     required this.time,
     this.location,
+    this.editRequests = const [],
   });
 
+  bool get isEdited => editRequests.isNotEmpty;
+
   HistoryAttendanceEvent copyWith({
+    String? id,
     AttendanceHisotryEventType? type,
     DateTime? time,
     String? location,
+    List<AttendanceEditRequest>? editRequests,
   }) {
     return HistoryAttendanceEvent(
+      id: id ?? this.id,
       type: type ?? this.type,
       time: time ?? this.time,
       location: location ?? this.location,
+      editRequests: editRequests ?? this.editRequests,
     );
   }
 
   Map<String, dynamic> toJson() => {
+    'id': id,
     'type': type.name,
     'time': time.toIso8601String(),
     'location': location,
+    'edit_requests': editRequests.map((e) => e.toJson()).toList(),
   };
 
   factory HistoryAttendanceEvent.fromJson(Map<String, dynamic> json) {
     return HistoryAttendanceEvent(
+      id: json['id']?.toString(),
       type: AttendanceHisotryEventType.values.firstWhere(
         (e) => e.name == json['type'],
         orElse: () => AttendanceHisotryEventType.checkIn,
       ),
       time: DateTime.parse(json['time'] as String),
       location: json['location'] as String?,
+      editRequests: AttendanceEditRequest.listFromJson(
+        json['edit_requests'] ?? json['fix_requests'],
+      ),
     );
   }
 

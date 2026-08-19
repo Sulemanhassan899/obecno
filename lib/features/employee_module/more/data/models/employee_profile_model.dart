@@ -49,6 +49,7 @@ class EmployeeProfileModel {
     this.countryId,
     this.cityId,
     this.departmentId,
+    this.department,
     this.countries = const [],
     this.cities = const [],
     this.departments = const [],
@@ -67,11 +68,39 @@ class EmployeeProfileModel {
   final String? cityId;
   final String? departmentId;
 
+  /// Direct department name from the API when provided as a string
+  /// (e.g. login/profile `"department": "Sales"`).
+  final String? department;
+
   final List<LookupItem> countries;
   final List<LookupItem> cities;
   final List<LookupItem> departments;
 
   final List<ProfileField> profileFields;
+
+  /// Resolved display name for the employee's department.
+  String? get departmentName {
+    final direct = department?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    if (departmentId != null && departmentId!.isNotEmpty) {
+      for (final item in departments) {
+        if (item.id == departmentId) {
+          final name = item.name.trim();
+          if (name.isNotEmpty) return name;
+        }
+      }
+    }
+
+    for (final field in profileFields) {
+      final label = field.label.toLowerCase();
+      if (label == 'department' || label.contains('department')) {
+        final value = field.value.trim();
+        if (value.isNotEmpty && value != '—') return value;
+      }
+    }
+    return null;
+  }
 
   factory EmployeeProfileModel.fromJson(Map<String, dynamic> json) {
     final profile = json['user'] is Map<String, dynamic>
@@ -94,6 +123,25 @@ class EmployeeProfileModel {
     final countries = LookupItem.listFrom(json['countries']);
     final cities = LookupItem.listFrom(json['cities']);
     final departments = LookupItem.listFrom(json['departments']);
+
+    // Department may arrive as a plain string, an id, or a nested object.
+    String? departmentName;
+    final rawDepartment = profile['department'] ?? json['department'];
+    if (rawDepartment is Map) {
+      departmentName =
+          (rawDepartment['name'] ??
+                  rawDepartment['title'] ??
+                  rawDepartment['label'])
+              ?.toString();
+    } else if (rawDepartment != null) {
+      final asString = rawDepartment.toString().trim();
+      // Numeric-only strings are ids, not display names.
+      if (asString.isNotEmpty && int.tryParse(asString) == null) {
+        departmentName = asString;
+      }
+    }
+    departmentName ??=
+        (profile['department_name'] ?? json['department_name'])?.toString();
 
     final profileFields = _buildProfileFields(
       json: json,
@@ -119,6 +167,7 @@ class EmployeeProfileModel {
       countryId: profile['country_id']?.toString(),
       cityId: profile['city_id']?.toString(),
       departmentId: profile['department_id']?.toString(),
+      department: departmentName,
       countries: countries,
       cities: cities,
       departments: departments,

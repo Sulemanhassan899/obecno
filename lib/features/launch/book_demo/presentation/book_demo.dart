@@ -16,7 +16,7 @@ import 'package:Obecno/core/validators/validators.dart';
 import 'package:Obecno/widgets/custom_textfield.dart';
 import 'package:Obecno/widgets/my_button.dart';
 import 'package:Obecno/widgets/text_widget.dart';
-import 'package:Obecno/core/helpers/snackbar_helper.dart';
+import 'package:Obecno/core/helpers/toast_helper.dart';
 import 'package:go_router/go_router.dart';
 
 class BookDemoScreen extends StatefulWidget {
@@ -70,7 +70,7 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
       final message =
           context.read<BookDemoProvider>().errorMessage ??
           'Failed to submit your demo request. Please try again.';
-      SnackbarHelper.showTopToast(context, message: message);
+      ToastHelper.show(context, message: message);
       return;
     }
 

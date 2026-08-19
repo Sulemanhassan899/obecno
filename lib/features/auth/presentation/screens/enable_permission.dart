@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/snackbar_helper.dart';
+import 'package:Obecno/core/helpers/toast_helper.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:Obecno/core/generated/assets.dart';
+import 'package:Obecno/core/monitors/app_guard.dart';
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/my_button.dart';
@@ -25,6 +27,19 @@ class EnablePermissionsScreen extends StatefulWidget {
 class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
   bool _loading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Own the permission requests on this screen. Login can flip
+    // isAuthenticated a moment before navigating here, which used to let
+    // AppGuard overlay "Permission Required" on first install.
+    AppGuard.permissionOnboardingPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppGuard.dismissOpenPromptIfAny();
+    });
+  }
+
   Future<void> _handleContinue() async {
     if (_loading) return;
 
@@ -39,42 +54,51 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
 
       if (location && notification && motion) {
         /// ✅ 1. SHOW TOAST
-        SnackbarHelper.showTopToast(
-          context,
-          message: "All permissions granted",
-          backgroundColor: kgreenColor,
-          duration: const Duration(seconds: 2),
-        );
+        ToastHelper.allPermissionsGranted(context);
 
         await Future.delayed(const Duration(seconds: 2));
 
         if (!mounted) return;
 
-        final homeTarget = context.read<AuthProvider>().homeTarget;
+        // Clear onboarding flag before leaving so AppGuard/device UI may run
+        // after we land on the role-based home screen (Scenario 1).
+        AppGuard.permissionOnboardingPending = false;
+
+        final authProvider = context.read<AuthProvider>();
+        final homeTarget = authProvider.homeTarget;
+        final userId = authProvider.user?.id;
         context.go(
           homeTarget == AuthHomeTarget.manager
               ? '/manager_nav'
               : '/employee_nav',
         );
+
+        // Device toast/dialog AFTER permission screen (Scenario 1).
+        try {
+          final deviceProvider = context.read<DeviceProvider>();
+          unawaited(
+            deviceProvider.registerOnLogin().then((_) async {
+              await deviceProvider.checkDeviceStatus(
+                null,
+                loginMessage: true,
+                source: 'LOGIN',
+                userId: userId,
+                isFirstLogin: true,
+              );
+            }),
+          );
+        } catch (e) {
+          debugPrint('[EnablePermissionsScreen] DeviceProvider unavailable: $e');
+        }
       } else {
-        SnackbarHelper.showTopToast(
-          context,
-          message: "Please allow all permissions",
-          backgroundColor: kOrangeColor,
-          duration: const Duration(seconds: 3),
-        );
+        ToastHelper.pleaseAllowPermissions(context);
 
         setState(() => _loading = false); // stop loading here
       }
     } catch (e) {
       if (!mounted) return;
 
-      SnackbarHelper.showTopToast(
-        context,
-        message: "Error requesting permissions",
-        backgroundColor: kredColor,
-        duration: const Duration(seconds: 3),
-      );
+      ToastHelper.permissionRequestError(context);
 
       setState(() => _loading = false);
     }
@@ -94,7 +118,7 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
   /// TOAST
   /// =========================
   void _showToast(String msg) {
-    SnackbarHelper.showTopToast(context, message: msg, backgroundColor: kWhite);
+    ToastHelper.show(context, message: msg, backgroundColor: kWhite);
   }
 
   /// =========================
@@ -128,7 +152,7 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
       bottomNavigationBar: Padding(
         padding: AppSizes.DEFAULT,
         child: Column(

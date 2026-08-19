@@ -111,6 +111,8 @@ class AuthService {
 
   Future<String?> getCachedRole() => _tokenService.userRole;
 
+  Future<String?> getCachedUserId() => _tokenService.userId;
+
   Future<ApiResponse<void>> forgotPassword(String email) {
     return _repository.forgotPassword(email);
   }

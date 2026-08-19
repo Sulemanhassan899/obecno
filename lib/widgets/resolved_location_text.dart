@@ -2,20 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/features/employee_module/clock/data/models/clock_attendence_event.dart';
+import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/main.dart';
 import 'package:Obecno/shared/location/service/geofence_helper.dart';
 import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
 
-/// A widget that resolves a raw GPS coordinate or known-location string to a
-/// human-readable label.
-///
-/// [onlyKnownLocations] – when `true`, reverse geocoding is skipped.  If the
-/// coordinates do not match any known office the widget shows
-/// "Not in office range" instead of fetching an external address.  Use this
-/// for the attendance *card* and bottom-sheet *header* where you only want to
-/// display office names.  Leave it `false` (the default) for timeline tiles
-/// where the real geocoded address is desired.
 class ResolvedLocationText extends StatefulWidget {
   const ResolvedLocationText({
     super.key,
@@ -31,8 +22,6 @@ class ResolvedLocationText extends StatefulWidget {
   final Widget Function(BuildContext context, String text) builder;
   final ReverseGeocodingService? service;
 
-  /// When true, skips reverse geocoding and shows "Not in office range" when
-  /// the location coordinates don't match any known office.
   final bool onlyKnownLocations;
 
   @override
@@ -71,8 +60,6 @@ class _ResolvedLocationTextState extends State<ResolvedLocationText> {
       widget.rawLocation,
       widget.knownLocations,
     );
-    // If not in any known office and caller wants known-locations-only mode,
-    // show "Not in [selectedLocationName] range" immediately without waiting for geocoding.
     if (widget.onlyKnownLocations) {
       if (resolved == "Location unavailable") return _notInOfficeRange;
       final isKnown = widget.knownLocations.any((k) => k.name == resolved);
@@ -82,7 +69,6 @@ class _ResolvedLocationTextState extends State<ResolvedLocationText> {
   }
 
   void _maybeResolve() {
-    // Never reverse-geocode when the caller wants known-locations-only output.
     if (widget.onlyKnownLocations) return;
 
     final raw = widget.rawLocation;

@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -118,10 +117,24 @@ class AuthProvider extends ChangeNotifier {
   String? get role => _user?.role ?? _restoredRole;
 
   AuthHomeTarget get homeTarget {
-    final r = role;
-    if (r == '6' || r?.toLowerCase() == 'manager') {
+    final candidates = <String>{
+      if (role != null) role!,
+      ...?_user?.roleIds,
+      if (_user?.activeRoleView != null) _user!.activeRoleView!,
+    };
+
+    for (final raw in candidates) {
+      final r = raw.trim().toLowerCase();
+      if (r == '6' || r == 'manager' || r == 'owner' || r == 'admin') {
+        return AuthHomeTarget.manager;
+      }
+    }
+
+    // API can mark management users with is_employee: false.
+    if (_user?.isEmployee == false) {
       return AuthHomeTarget.manager;
     }
+
     return AuthHomeTarget.employee;
   }
 
@@ -212,6 +225,25 @@ class AuthProvider extends ChangeNotifier {
     if (updated) {
       notifyListeners();
     }
+  }
+
+  /// Builds a minimal in-memory user from the locally persisted session so
+  /// Clock / Attendance can mount while `/auth/me` is unreachable.
+  Future<void> _hydrateUserFromCacheIfNeeded() async {
+    if (_user != null && _user!.id.isNotEmpty) return;
+
+    final userId = await _service.getCachedUserId();
+    if (userId == null || userId.isEmpty) return;
+
+    final email = await _service.getSavedEmail() ?? '';
+    _user = AuthUserModel(
+      id: userId,
+      name: '',
+      email: email,
+      role: _restoredRole,
+      company: _company,
+      locations: _locations,
+    );
   }
 
   Future<void> selectLocation(AuthLocationModel location) async {
@@ -324,6 +356,17 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
+  /// Fast, local-only check (no network call): true if a remembered,
+  /// locally-persisted session exists. Lets callers (AuthWrapper) decide to
+  /// go straight to the authenticated UI while [checkSession]'s full
+  /// network verification (`/auth/me`) continues in the background,
+  /// instead of blocking first paint on that network round-trip.
+  Future<bool> hasLocalSession() async {
+    final isRemembered = await _service.isRememberMe();
+    if (!isRemembered) return false;
+    return _service.isLoggedIn();
+  }
+
   /// app resume/API call once connectivity returns.
   Future<bool> checkSession() async {
     final isRemembered = await _service.isRememberMe();
@@ -343,6 +386,10 @@ class AuthProvider extends ChangeNotifier {
     _restoredRole ??= await _service.getCachedRole();
 
     await restoreCompanyAndLocationsFromCache();
+    // Offline restore: /auth/me may fail with "No internet" while a local
+    // session still exists. Clock/Attendance need a user id before they
+    // mount, so hydrate from the cached session id first.
+    await _hydrateUserFromCacheIfNeeded();
 
     _isAuthenticated = true;
     notifyListeners();
@@ -362,7 +409,9 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> refreshCurrentUser() {
     // TTL guard — return immediately if the cache is still fresh.
     if (_isMeCacheValid) {
-      AppLogger.info('AuthProvider: /api/auth/me TTL cache hit, skipping network.');
+      AppLogger.info(
+        'AuthProvider: /api/auth/me TTL cache hit, skipping network.',
+      );
       return Future.value(true);
     }
 

@@ -60,12 +60,13 @@ class AttendanceDao {
 
     final totalBreak = day.breaks.fold<Duration>(
       Duration.zero,
-      (sum, b) => sum + _diff(day.date, from: b.breakIn, to: b.breakOut),
+      // BreakSession: breakOut = start, breakIn = end (API naming).
+      (sum, b) => sum + _diff(day.date, from: b.breakOut, to: b.breakIn),
     );
-    final totalWork = (day.firstCheckIn != null && day.lastCheckOut != null)
-        ? _diff(day.date, from: day.firstCheckIn!, to: day.lastCheckOut!) -
-              totalBreak
-        : Duration.zero;
+
+    // Session-aware work duration: sum each check-in→check-out segment,
+    // then subtract breaks (matches AttendanceEngine behaviour).
+    final totalWork = _computeWorkDuration(day) - totalBreak;
 
     await txn.insert(AttendanceDb.daysTable, {
       'date': dateKey,
@@ -105,6 +106,10 @@ class AttendanceDao {
       await insertEvent('check_in', day.checkIns[i], loc);
     }
     for (final b in day.breaks) {
+      // Stored with swapped start/end labels intentionally so the existing
+      // read path can rebuild BreakSession with API naming
+      // (breakOut = start, breakIn = end). Do not "fix" without a
+      // matching read-side migration.
       await insertEvent('break_start', b.breakIn, b.breakInLocation);
       await insertEvent('break_end', b.breakOut, b.breakOutLocation);
     }
@@ -272,6 +277,27 @@ class AttendanceDao {
 
   Duration _diff(DateTime date, {required String from, required String to}) {
     return _combine(date, to).difference(_combine(date, from));
+  }
+
+  /// Sums closed check-in → check-out segments for [day], ignoring open
+  /// sessions and the time between sessions (when the user is checked out).
+  Duration _computeWorkDuration(AttendanceDay day) {
+    final stamps = <({DateTime time, bool isIn})>[
+      for (final t in day.checkIns) (time: _combine(day.date, t), isIn: true),
+      for (final t in day.checkOuts) (time: _combine(day.date, t), isIn: false),
+    ]..sort((a, b) => a.time.compareTo(b.time));
+
+    Duration working = Duration.zero;
+    DateTime? openStart;
+    for (final stamp in stamps) {
+      if (stamp.isIn) {
+        openStart = stamp.time;
+      } else if (openStart != null) {
+        working += stamp.time.difference(openStart);
+        openStart = null;
+      }
+    }
+    return working.isNegative ? Duration.zero : working;
   }
 
   String _timeOnly(String isoTimestamp) {

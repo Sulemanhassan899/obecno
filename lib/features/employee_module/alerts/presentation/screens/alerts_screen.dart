@@ -1,8 +1,8 @@
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/generated/assets.dart';
-import 'package:Obecno/shared/bottom_sheets/hoilday_detail_sheet.dart';
+import 'package:Obecno/core/generated/assets.dart';
+import 'package:Obecno/shared/bottom_sheets/attendance_sheet/hoilday_detail_sheet.dart';
 import 'package:Obecno/widgets/bottom_sheet.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/my_button.dart';
@@ -19,7 +19,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.DEFAULT,
         child: Center(

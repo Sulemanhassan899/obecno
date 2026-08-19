@@ -1,8 +1,11 @@
 // ignore_for_file: non_constant_identifier_names
 
-import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/helpers/toast_helper.dart';
+import 'package:Obecno/core/state/change_notifier_provider.dart';
+import 'package:Obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -18,99 +21,219 @@ class LinkedDevices extends StatefulWidget {
 }
 
 class _LinkedDevicesState extends State<LinkedDevices> {
+  final Set<String> _deletingIds = {};
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<DeviceProvider>().fetchDevices();
+    });
+  }
+
+  String _deviceIcon(DeviceModel device) {
+    final platform = device.platform.toLowerCase();
+    final os = device.os.toLowerCase();
+    if (platform.contains('ios') || os.contains('ios')) {
+      return Assets.imagesApple;
+    }
+    if (platform.contains('android') || os.contains('android')) {
+      return Assets.imagesAndroid;
+    }
+    return Assets.imagesDesktop;
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final min = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'AM' : 'PM';
+    return '$hour:$min $period';
+  }
+
+  String _formatLastUsed(DateTime? dt) {
+    if (dt == null) return 'No recent activity';
+    final now = DateTime.now();
+    final local = dt.toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(local.year, local.month, local.day);
+    if (day == today) {
+      return 'Last used: Today at ${_formatTime(local)}';
+    }
+    return 'Last used: ${_months[local.month - 1]} ${local.day}, ${local.year}';
+  }
+
+  String _formatRequested(DateTime? dt) {
+    if (dt == null) return 'Requested: —';
+    final local = dt.toLocal();
+    return 'Requested: ${_months[local.month - 1]} ${local.day}, ${local.year}';
+  }
+
+  (Color text, Color bg) _statusColors(String label) {
+    switch (label) {
+      case 'Active':
+        return (kPrimaryColor, kPrimaryColor.withOpacity(0.15));
+      case 'Pending':
+        return (kYellowColorLight, kContainerYellowColor2);
+      case 'Blocked':
+      case 'Rejected':
+        return (kRed, kContainerRedColor2);
+      default:
+        return (kGreyColor, kGreyColor.withOpacity(0.1));
+    }
+  }
+
+  Future<void> _onDeleteRequest(DeviceModel device) async {
+    if (device.id.isEmpty || _deletingIds.contains(device.id)) return;
+
+    setState(() => _deletingIds.add(device.id));
+
+    final provider = context.read<DeviceProvider>();
+    final ok = await provider.deleteDevice(device.id);
+
+    if (!mounted) return;
+    setState(() => _deletingIds.remove(device.id));
+
+    if (ok) {
+      ToastHelper.deviceDeleted(context);
+    } else {
+      ToastHelper.deviceDeleteFailed(context, message: provider.errorMessage);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final deviceProvider = context.read<DeviceProvider>();
+
     return Scaffold(
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.HORIZONTAL,
-        child: ListView(
-          children: [
-            const SizedBox(height: 20),
+        child: ListenableBuilder(
+          listenable: deviceProvider,
+          builder: (context, _) {
+            final devices = deviceProvider.devices;
+            final isInitialLoad = deviceProvider.isLoading && devices.isEmpty;
+            final showError =
+                !isInitialLoad && devices.isEmpty && deviceProvider.hasError;
+            final showEmpty = !isInitialLoad && !showError && devices.isEmpty;
 
-            /// HEADER
-            BackButtonBg(title: "Linked Devices"),
-
-            const SizedBox(height: 20),
-
-            /// INFO
-            AppText.p1(
-              "Attendance actions are allowed only from the devices listed below.",
-              align: TextAlign.left,
-              color: kGreyColor,
-            ),
-
-            const SizedBox(height: 20),
-
-            _deviceCard(
-              DeviceIcon: Assets.imagesApple,
-              name: "iPhone 16pro max",
-              subtitle: "Last used: Today at 9:12 AM",
-              status: "Active",
-              isCurrent: true,
-            ),
-
-            const SizedBox(height: 12),
-
-            _deviceCard(
-              DeviceIcon: Assets.imagesAndroid,
-              name: "iPhone 16pro max",
-              subtitle: "Requested: Jan 12, 2026",
-              status: "Pending",
-              showDelete: true,
-            ),
-
-            const SizedBox(height: 12),
-
-            _deviceCard(
-              DeviceIcon: Assets.imagesAndroid,
-              name: "iPhone 13pro max",
-              subtitle: "Last used: Oct 10, 2025",
-              status: "Blocked",
-            ),
-
-            const SizedBox(height: 12),
-
-            _deviceCard(
-              DeviceIcon: Assets.imagesDesktop,
-              name: "Macbook 2016",
-              subtitle: "Last used: Oct 10, 2025",
-              status: "Blocked",
-            ),
-          ],
+            return RefreshIndicator(
+              onRefresh: () => deviceProvider.refreshDevices(),
+              child: ListView(
+                children: [
+                  const SizedBox(height: 20),
+                  BackButtonBg(title: "Linked Devices"),
+                  const SizedBox(height: 20),
+                  AppText.p1(
+                    "Attendance actions are allowed only from the devices listed below.",
+                    align: TextAlign.left,
+                    color: kGreyColor,
+                  ),
+                  const SizedBox(height: 20),
+                  if (isInitialLoad)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 60),
+                      child: Center(
+                        child: CircularProgressIndicator(color: kPrimaryColor),
+                      ),
+                    )
+                  else if (showError)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 60),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            AppText.h6(
+                              deviceProvider.errorMessage ??
+                                  "Failed to load devices",
+                              align: TextAlign.center,
+                              color: kGreyColor,
+                            ),
+                            const SizedBox(height: 16),
+                            MyButton(
+                              width: 140,
+                              height: 40,
+                              buttonText: "Retry",
+                              fontSize: 12,
+                              onTap: () => deviceProvider.fetchDevices(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (showEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 60),
+                      child: Center(
+                        child: AppText.h6(
+                          "No linked devices yet",
+                          align: TextAlign.center,
+                          color: kGreyColor,
+                        ),
+                      ),
+                    )
+                  else
+                    ..._buildDeviceList(deviceProvider),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _deviceCard({
-    required String name,
-    required String subtitle,
-    required String status,
-    required String DeviceIcon,
-    bool isCurrent = false,
-    bool showDelete = false,
-  }) {
-    Color statusColor;
-    Color bgColor;
+  List<Widget> _buildDeviceList(DeviceProvider deviceProvider) {
+    final devices = deviceProvider.devices;
+    final currentDevice = deviceProvider.currentDevice;
+    final otherDevices = currentDevice == null
+        ? devices
+        : devices
+              .where((device) => device.deviceId != currentDevice.deviceId)
+              .toList(growable: false);
 
-    switch (status) {
-      case "Active":
-        statusColor = kPrimaryColor;
-        bgColor = kPrimaryColor.withOpacity(0.2);
-        break;
-      case "Pending":
-        statusColor = kYellowColorLight;
-        bgColor = kYellowColor.withOpacity(0.2);
-        break;
-      case "Blocked":
-        statusColor = kredColor;
-        bgColor = kredColorLight..withOpacity(0.1);
-        break;
-      default:
-        statusColor = kGreyColor;
-        bgColor = kGreyColor.withOpacity(0.1);
+    final widgets = <Widget>[];
+
+    if (currentDevice != null) {
+      widgets.add(const SizedBox(height: 12));
+      widgets.add(_deviceCard(currentDevice));
+      widgets.add(const SizedBox(height: 12));
     }
+
+    widgets.addAll(
+      otherDevices.expand(
+        (device) => [_deviceCard(device), const SizedBox(height: 12)],
+      ),
+    );
+
+    return widgets;
+  }
+
+  Widget _deviceCard(DeviceModel device) {
+    final status = device.statusLabel;
+    final colors = _statusColors(status);
+    final isDeleting = _deletingIds.contains(device.id);
+    final actionedBy = device.actionedByLabel;
+    final detailLine = device.isPending
+        ? _formatRequested(device.requestedAt ?? device.lastActive)
+        : _formatLastUsed(device.lastActive);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -122,71 +245,67 @@ class _LinkedDevicesState extends State<LinkedDevices> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// TOP ROW
           Row(
             children: [
-              CommonImageView(imagePath: DeviceIcon, height: 20),
+              CommonImageView(imagePath: _deviceIcon(device), height: 20),
               const SizedBox(width: 10),
-
               Expanded(
                 child: AppText.h6(
-                  name,
+                  device.displayName,
                   align: TextAlign.left,
                   weight: FontWeight.w500,
+                  textOverflow: TextOverflow.ellipsis,
                 ),
               ),
-
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: bgColor,
+                  color: colors.$2,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: AppText.small(status, color: statusColor),
+                child: AppText.p2(status, color: colors.$1),
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          /// SUBTITLE
-          AppText.p2(subtitle, align: TextAlign.left, color: kGreyColor),
-
-          if (isCurrent) ...[
+          AppText.p2(detailLine, align: TextAlign.left, color: kGreyColor),
+          if (actionedBy != null) ...[
+            const SizedBox(height: 4),
+            AppText.p2(actionedBy, align: TextAlign.left, color: kGreyColor),
+          ],
+          if (device.isCurrent) ...[
             const SizedBox(height: 6),
             Row(
-              spacing: 5,
               children: [
                 Icon(Icons.circle, size: 8, color: kBlue2),
+                const SizedBox(width: 5),
                 AppText.caption(
-                  "Current Device",
+                  'Current Device',
                   color: kBlue2,
                   align: TextAlign.left,
                 ),
               ],
             ),
           ],
-
-          if (showDelete) ...[
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                MyButton(
-                  width: 140,
-                  height: 40,
-                  buttonText: "Delete Request",
-                  onTap: () async {},
-                  fontSize: 12,
-                  backgroundColor: kWhite,
-                  fontColor: Colors.red,
-                  outlineColor: Colors.red,
-                ),
-              ],
-            ),
-          ],
+          const SizedBox(height: 16),
+          MyButton(
+            width: 120,
+            height: 44,
+            buttonText: isDeleting ? 'Deleting...' : 'Delete Request',
+            backgroundColor: kWhite,
+            fontColor: kRed,
+            fontSize: 12,
+            outlineColor: kRed,
+            radius: 25,
+            onTap: isDeleting
+                ? () async {}
+                : () async {
+                    await _onDeleteRequest(device);
+                  },
+          ),
         ],
       ),
     );

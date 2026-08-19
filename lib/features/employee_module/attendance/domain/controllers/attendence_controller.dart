@@ -1,9 +1,6 @@
-
-
-
 import 'dart:async';
 
-import 'package:Obecno/core/binding/app_binding.dart';
+import 'package:Obecno/core/services/logger.dart';
 import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     hide MonthSummary, AttendanceDayRecord;
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
@@ -19,6 +16,8 @@ class MonthlyAttendanceController extends ChangeNotifier {
     HistoryAttendanceRepository? repository,
   }) : selectedMonth = _monthOnly(initialMonth ?? DateTime.now()),
        _repository = repository ?? (bindings.attendanceRepository) {
+    _clampSelectedMonthToJoining();
+    _logJoiningBounds();
     _initialLoad();
   }
 
@@ -63,7 +62,67 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
   static DateTime _monthOnly(DateTime d) => DateTime(d.year, d.month);
 
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Live joining date for the currently authenticated employee.
+  DateTime? get joiningDate {
+    final raw = bindings.authProvider.user?.joiningDate;
+    if (raw == null) return null;
+    return _dateOnly(raw);
+  }
+
+  /// First selectable attendance month (month containing [joiningDate]).
+  DateTime? get minimumMonth {
+    final join = joiningDate;
+    if (join == null) return null;
+    return DateTime(join.year, join.month);
+  }
+
   bool get canGoNext => selectedMonth.isBefore(_monthOnly(DateTime.now()));
+
+  bool get canGoPrevious {
+    final min = minimumMonth;
+    if (min == null) return true;
+    return selectedMonth.isAfter(min);
+  }
+
+  void _clampSelectedMonthToJoining() {
+    final min = minimumMonth;
+    if (min != null && selectedMonth.isBefore(min)) {
+      selectedMonth = min;
+    }
+    final currentMonth = _monthOnly(DateTime.now());
+    if (selectedMonth.isAfter(currentMonth)) {
+      selectedMonth = currentMonth;
+    }
+  }
+
+  void _logJoiningBounds() {
+    final join = joiningDate;
+    final min = minimumMonth;
+    if (join == null) {
+      AppLogger.info(
+        '[ATTENDANCE_BOUNDS]\n'
+        'joining_date=null\n'
+        'minimumDate=null\n'
+        'minimumMonth=null\n'
+        'selectedMonth=${selectedMonth.year}-${selectedMonth.month.toString().padLeft(2, "0")}',
+      );
+      return;
+    }
+    AppLogger.info(
+      '[ATTENDANCE_BOUNDS]\n'
+      'joining_date=${_yyyyMMdd(join)}\n'
+      'minimumDate=${_yyyyMMdd(join)}\n'
+      'minimumMonth=${min!.year}-${min.month.toString().padLeft(2, "0")}\n'
+      'selectedMonth=${selectedMonth.year}-${selectedMonth.month.toString().padLeft(2, "0")}',
+    );
+  }
+
+  static String _yyyyMMdd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   // -----------------------------------------------------------------------
   // 🔥 NEW: initial load — offline-first
@@ -72,12 +131,21 @@ class MonthlyAttendanceController extends ChangeNotifier {
   Future<void> _initialLoad() async {
     final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
 
+    final userId = bindings.authProvider.user?.id;
+    if (userId == null || userId.isEmpty) return;
+
     // Load working_days policy from backend before any data loading.
     await _loadWorkingDaysPolicy();
     if (_disposed || _staleSession(epochAtStart)) return; // Fix (Issue 2)
 
+    // /auth/me may have populated joining_date after construction.
+    _clampSelectedMonthToJoining();
+    _logJoiningBounds();
+
     final hasCache = await _repository.hasAnyCachedData();
-    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+    if (_disposed || _staleSession(epochAtStart)) {
+      return; // FIXED (issue #1) + Fix (Issue 2)
+    }
 
     if (!hasCache) {
       isLoading = true;
@@ -89,7 +157,9 @@ class MonthlyAttendanceController extends ChangeNotifier {
       await _loadMonth(preferCache: true, silent: false);
     } else {
       await _loadMonth(preferCache: true, silent: true);
-      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+      if (_disposed || _staleSession(epochAtStart)) {
+        return; // FIXED (issue #1) + Fix (Issue 2)
+      }
       unawaited(_syncLatestMonthInBackground());
     }
   }
@@ -116,7 +186,9 @@ class MonthlyAttendanceController extends ChangeNotifier {
     isSyncing = true;
 
     final response = await _repository.syncLatestMonth();
-    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+    if (_disposed || _staleSession(epochAtStart)) {
+      return; // FIXED (issue #1) + Fix (Issue 2)
+    }
 
     isSyncing = false;
 
@@ -138,14 +210,21 @@ class MonthlyAttendanceController extends ChangeNotifier {
   // -----------------------------------------------------------------------
 
   void setMonth(DateTime date) {
-    final target = _monthOnly(date);
+    var target = _monthOnly(date);
     final currentMonth = _monthOnly(DateTime.now());
 
-    selectedMonth = target.isAfter(currentMonth) ? currentMonth : target;
+    if (target.isAfter(currentMonth)) target = currentMonth;
+
+    final min = minimumMonth;
+    if (min != null && target.isBefore(min)) target = min;
+
+    selectedMonth = target;
+    _logJoiningBounds();
     _loadMonth(preferCache: true);
   }
 
   void previousMonth() {
+    if (!canGoPrevious) return;
     setMonth(DateTime(selectedMonth.year, selectedMonth.month - 1));
   }
 
@@ -178,7 +257,9 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
     if (preferCache) {
       final cached = await _repository.loadMonthFromCache(requestedMonth);
-      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+      if (_disposed || _staleSession(epochAtStart)) {
+        return; // FIXED (issue #1) + Fix (Issue 2)
+      }
       if (cached != null) {
         if (requestedMonth != selectedMonth) return;
 

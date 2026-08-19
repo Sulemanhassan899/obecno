@@ -87,6 +87,17 @@ class _MyButtonState extends State<MyButton> {
     }
   }
 
+  /// Filled buttons (non-white bg) use a matching border so gray outlines
+  /// don't show around green/red/black CTAs. White/outlined buttons keep
+  /// [outlineColor].
+  Color get _resolvedBorderColor {
+    final bg = widget.backgroundColor;
+    if (bg != null && bg != kWhite && bg != kTransperentColor) {
+      return bg;
+    }
+    return widget.outlineColor;
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color baseColor = widget.backgroundColor ?? kSecondaryButtonColor;
@@ -96,6 +107,10 @@ class _MyButtonState extends State<MyButton> {
     final Color textColor = _isDisabled
         ? (widget.fontColor ?? kWhite).withOpacity(0.7)
         : (widget.fontColor ?? kWhite);
+
+    final Color borderColor = _resolvedBorderColor.withOpacity(
+      _isDisabled ? 0.4 : 1,
+    );
 
     return ScrollAnimations.fadeSlide(
       duration: const Duration(milliseconds: 400),
@@ -115,9 +130,7 @@ class _MyButtonState extends State<MyButton> {
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(widget.radius),
-            border: Border.all(
-              color: widget.outlineColor.withOpacity(_isDisabled ? 0.4 : 1),
-            ),
+            border: Border.all(color: borderColor),
           ),
           child: Material(
             color: Colors.transparent,

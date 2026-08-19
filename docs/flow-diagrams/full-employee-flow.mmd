@@ -1,0 +1,176 @@
+flowchart TD
+    install(["Install App"]) --> splash["Splash 2 to 4s"]
+    splash --> onboarded{"Onboarding done?"}
+    onboarded -->|"No"| onboard["Onboarding"]
+    onboarded -->|"Yes"| session{"Local session?"}
+
+    subgraph launch ["Onboarding"]
+        onboard --> demo["Book a Demo"]
+        onboard --> hasAccount["Already have account"]
+        onboard --> termsOn["Terms BDUI"]
+        onboard --> privOn["Privacy BDUI"]
+        demo --> demoApi{"Validate and API"}
+        demoApi -->|"Success"| demoOk["Demo success screen"]
+        demoApi -->|"Fail"| demoFail["Error toast"]
+        demoFail --> demo
+        demoOk --> onboard
+        termsOn --> onboard
+        privOn --> onboard
+    end
+
+    hasAccount --> loginEmail["Login with email"]
+    session -->|"No"| loginEmail
+    session -->|"Yes"| osPerms{"All OS permissions?"}
+
+    subgraph auth ["Authentication"]
+        loginEmail --> emailApi{"POST email check"}
+        emailApi -->|"Fail"| emailFail["Toast and field error"]
+        emailFail --> loginEmail
+        emailApi -->|"Success"| loginPass["Login with password or OTP"]
+        loginPass --> forgot["Forgot password"]
+        forgot --> forgotApi{"POST forgot password"}
+        forgotApi -->|"Fail"| forgotFail["Error toast"]
+        forgotFail --> forgot
+        forgotApi -->|"Success"| forgotOk["Check email message"]
+        forgotOk --> loginPass
+        loginPass --> passApi{"POST login"}
+        passApi -->|"Fail"| passFail["Toast and field error"]
+        passFail --> loginPass
+        passApi -->|"Success"| osPerms
+    end
+
+    osPerms -->|"No"| enablePerms["Enable Permissions"]
+    osPerms -->|"Yes"| deviceCheck{"Device status"}
+
+    subgraph gate ["Permissions and Device"]
+        enablePerms --> permAsk["Location Notification Motion"]
+        permAsk -->|"Fail"| permFail["Error toast remain here"]
+        permFail --> enablePerms
+        permAsk -->|"Success"| permOk["All permissions granted"]
+        permOk --> deviceCheck
+        deviceCheck -->|"Approved"| dash["Employee Dashboard"]
+        deviceCheck -->|"Pending or Requested"| unreg["Unregistered device toast"]
+        unreg --> dash
+        deviceCheck -->|"Blocked or Rejected"| blocked["Device blocked screen"]
+        blocked --> resend["Resend request"]
+        resend --> deviceCheck
+        blocked --> logoutBlocked["Logout"]
+    end
+
+    dash --> clockTab["Clock"]
+    dash --> attTab["Attendance"]
+    dash --> alertsTab["Alerts coming soon"]
+    dash --> moreTab["More"]
+
+    subgraph clock ["Clock"]
+        clockTab --> locRow["Open location sheet"]
+        locRow --> locFetch["Fetch latest locations and cache"]
+        locFetch -->|"Fail"| locFail["Error toast use cache"]
+        locFail --> locPick["Select location"]
+        locFetch -->|"Success"| locPick
+        locPick --> action{"Punch action"}
+        action --> ci["Check In"]
+        action --> brIn["Break In"]
+        action --> brOut["Break Out"]
+        action --> co["Check Out"]
+        ci --> punchGate["Check permissions policy GPS"]
+        brIn --> punchGate
+        brOut --> punchGate
+        co --> early{"Early checkout?"}
+        early -->|"Yes"| earlyDlg["Checkout early dialog"]
+        earlyDlg -->|"Cancel"| clockTab
+        earlyDlg -->|"Yes Check Out"| punchGate
+        early -->|"No"| punchGate
+        punchGate -->|"Permission fail"| punchPermFail["Cannot mark attendance"]
+        punchPermFail --> clockTab
+        punchGate -->|"Non working day"| nonWork["Non working day toast"]
+        punchGate -->|"OK"| net{"Internet?"}
+        net -->|"Yes"| postAtt["POST attendance"]
+        net -->|"No"| queue[("SQLite queue")]
+        postAtt -->|"Success"| punchOk["Success toast"]
+        postAtt -->|"Fail"| queue
+        queue -.->|"Internet returns"| autoSync["Auto sync"]
+        autoSync -->|"Success"| synced["Synced toast"]
+        autoSync -->|"Fail"| syncFail["Retry then dead letter"]
+        punchOk --> card["Clock card"]
+        synced --> card
+        card --> firstIn["First check-in stays constant"]
+        card --> lastOut["Check-out can change"]
+        card --> details["View details sheet"]
+        details --> cycles["Repeatable cycles"]
+    end
+
+    subgraph attendance ["Attendance"]
+        attTab --> load3["Auto load 3 months cache"]
+        load3 -->|"Fail"| useCache["Load stored data"]
+        load3 -->|"Success"| monthHead["Current month header"]
+        useCache --> monthHead
+        monthHead --> picker["Month picker"]
+        picker -->|"Before joining"| noPast["Not allowed"]
+        picker -->|"Future month"| noFuture["Not allowed"]
+        picker -->|"Valid month"| overview["Monthly overview"]
+        overview --> dayRow["Day row view details"]
+        dayRow --> daySheet["Attendance details sheet"]
+        daySheet --> dayCycles["Repeatable actions"]
+        daySheet --> editBtn["Edit attendance"]
+        editBtn --> editSheet["Edit times and submit"]
+        editSheet --> editPending["Pending"]
+        editPending -->|"Approved"| editOk["Updated on details"]
+        editPending -->|"Rejected"| editNo["Rejected on details"]
+    end
+
+    subgraph more ["More"]
+        moreTab --> photo["Profile photo"]
+        photo -->|"Pending"| dummy["Show dummy image"]
+        photo -->|"Approved"| photoOk["Show approved image"]
+        photo -->|"Offline"| photoCache["Show cached image"]
+        moreTab --> account["Account info BDUI"]
+        account -->|"Offline"| accountCache["Show cached account"]
+        moreTab --> permSec["Permissions section"]
+        moreTab --> offices["Offices and locations"]
+        offices -->|"Offline"| locCache["Show cached locations"]
+        moreTab --> devices["Linked devices"]
+        devices --> dApproved["Approved"]
+        devices --> dBlocked["Blocked"]
+        devices --> dPending["Pending"]
+        devices --> dRequested["Requested"]
+        devices -->|"Offline"| deviceCache["Show cached devices"]
+        moreTab --> changePass["Change password"]
+        changePass -->|"Fail"| passErr["Error toast"]
+        changePass -->|"Success"| passOk["Password changed toast"]
+        moreTab --> termsMore["Terms latest or cache"]
+        moreTab --> privMore["Privacy latest or cache"]
+        moreTab --> logoutDlg["Logout dialog"]
+        logoutDlg -->|"No"| moreTab
+        logoutDlg -->|"Yes"| clearAll["Clear session and user cache"]
+    end
+
+    logoutBlocked --> loginEmail
+    clearAll --> onboard
+    dash -.->|"Token expiry"| loginEmail
+
+    style launch fill:#C2E5FF,stroke:#3DADFF
+    style auth fill:#DCCCFF,stroke:#874FFF
+    style gate fill:#FFECBD,stroke:#FFC943
+    style clock fill:#C6FAF6,stroke:#5AD8CC
+    style attendance fill:#FFE0C2,stroke:#FF9E42
+    style more fill:#FFC2EC,stroke:#F849C1
+    style demoOk fill:#CDF4D3,stroke:#66D575
+    style punchOk fill:#CDF4D3,stroke:#66D575
+    style synced fill:#CDF4D3,stroke:#66D575
+    style editOk fill:#CDF4D3,stroke:#66D575
+    style photoOk fill:#CDF4D3,stroke:#66D575
+    style passOk fill:#CDF4D3,stroke:#66D575
+    style demoFail fill:#FFCDC2,stroke:#FF7556
+    style emailFail fill:#FFCDC2,stroke:#FF7556
+    style passFail fill:#FFCDC2,stroke:#FF7556
+    style permFail fill:#FFCDC2,stroke:#FF7556
+    style blocked fill:#FFCDC2,stroke:#FF7556
+    style punchPermFail fill:#FFCDC2,stroke:#FF7556
+    style noPast fill:#FFCDC2,stroke:#FF7556
+    style noFuture fill:#FFCDC2,stroke:#FF7556
+    style editNo fill:#FFCDC2,stroke:#FF7556
+    style queue fill:#FFECBD,stroke:#FFC943
+    style editPending fill:#FFECBD,stroke:#FFC943
+    style dummy fill:#FFECBD,stroke:#FFC943
+    style dash fill:#CDF4D3,stroke:#66D575

@@ -31,6 +31,10 @@ dependencies:
   shared_preferences : 
   shimmer:
   image_picker:
+  device_info_plus:
+  system_clock:
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:
