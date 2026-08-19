@@ -111,7 +111,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
       },
       child: Scaffold(
         resizeToAvoidBottomInset: true,
-        backgroundColor: kWhite,
+        backgroundColor: kbackground1,
 
         body: Padding(
           padding: AppSizes.DEFAULT,

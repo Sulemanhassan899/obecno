@@ -41,9 +41,11 @@ class HistoryAttendanceRepository {
     AttendanceDao? dao,
     AttendanceCacheTracker? cacheTracker,
     required String? Function() userIdProvider,
+    DateTime? Function()? joiningDateProvider,
   }) : _dao = dao ?? AttendanceDao(),
        _cacheTracker = cacheTracker ?? AttendanceCacheTracker.instance,
-       _userIdProvider = userIdProvider;
+       _userIdProvider = userIdProvider,
+       _joiningDateProvider = joiningDateProvider;
 
   final AttendanceService _service;
 
@@ -51,6 +53,14 @@ class HistoryAttendanceRepository {
   final AttendanceDao _dao;
   final AttendanceCacheTracker _cacheTracker;
   final String? Function() _userIdProvider;
+  final DateTime? Function()? _joiningDateProvider;
+
+  /// Calendar date-only joining date for the current employee, or null.
+  DateTime? get _joiningDate {
+    final raw = _joiningDateProvider?.call();
+    if (raw == null) return null;
+    return DateTime(raw.year, raw.month, raw.day);
+  }
 
   /// Resolves the current user id, failing loudly rather than silently
   /// falling back to a shared/global cache bucket if nobody is signed in.
@@ -146,20 +156,24 @@ class HistoryAttendanceRepository {
       ..sort((a, b) => b.date.compareTo(a.date)); // latest first
 
     final today = history.today ?? DateTime.now();
+    final joiningDate = _joiningDate;
 
     final summary = _buildSummary(
       days: days,
       calendarDates: calendar?.attendanceDates ?? const [],
       month: month,
       today: today,
+      joiningDate: joiningDate,
     );
 
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
     // latest-first so records match the original display order.
+    // Days before the employee's joining date are never filled/shown.
     final displayDays = _fillMissingDays(
       days: days,
       month: month,
       today: today,
+      joiningDate: joiningDate,
     ).reversed.toList();
     final records = displayDays.map(_toDayRecord).toList();
 
@@ -182,7 +196,11 @@ class HistoryAttendanceRepository {
   // 🔥 NEW: OFFLINE CACHE
   // =======================================================================
 
-  Future<bool> hasAnyCachedData() => _dao.hasAnyData(_requireUserId());
+  Future<bool> hasAnyCachedData() async {
+    final id = _userIdProvider();
+    if (id == null || id.isEmpty) return false;
+    return _dao.hasAnyData(id);
+  }
 
   Future<List<String>> getLoadedMonths() =>
       _dao.getLoadedMonths(_requireUserId());
@@ -203,18 +221,21 @@ class HistoryAttendanceRepository {
         : await _dao.getDaysForMonth(userId, month);
 
     final today = DateTime.now();
+    final joiningDate = _joiningDate;
 
     final summary = _buildSummary(
       days: days,
       calendarDates: const [],
       month: month,
       today: today,
+      joiningDate: joiningDate,
     );
 
     final displayDays = _fillMissingDays(
       days: days,
       month: month,
       today: today,
+      joiningDate: joiningDate,
     ).reversed.toList();
     final records = displayDays.map(_toDayRecord).toList();
     final monthLabel = '${_monthNames[month.month - 1]} ${month.year}';
@@ -256,6 +277,12 @@ class HistoryAttendanceRepository {
     final start = now.subtract(Duration(days: daysBack));
 
     var cursor = DateTime(start.year, start.month);
+    final joiningDate = _joiningDate;
+    if (joiningDate != null) {
+      final joiningMonth = DateTime(joiningDate.year, joiningDate.month);
+      if (cursor.isBefore(joiningMonth)) cursor = joiningMonth;
+    }
+
     final endMonth = DateTime(now.year, now.month);
     final userId = _requireUserId();
 
@@ -296,13 +323,28 @@ class HistoryAttendanceRepository {
     required List<DateTime> calendarDates,
     required DateTime month,
     required DateTime today,
+    DateTime? joiningDate,
   }) {
-    final workingDays = days.length;
+    final eligibleDays = joiningDate == null
+        ? days
+        : days
+              .where((d) {
+                final date = DateTime(d.date.year, d.date.month, d.date.day);
+                return !date.isBefore(joiningDate);
+              })
+              .toList(growable: false);
+
+    final workingDays = eligibleDays.length;
 
     // Count only working weekdays (per policy) in the elapsed period,
     // instead of counting every calendar day.
-    final elapsedDays = _elapsedDaysInMonth(month, today);
-    final firstDay = DateTime(month.year, month.month, 1);
+    final range = _monthDisplayRange(
+      month: month,
+      today: today,
+      joiningDate: joiningDate,
+    );
+    final firstDay = range.$1;
+    final elapsedDays = range.$2;
     var totalWorkingDays = 0;
     for (var i = 0; i < elapsedDays; i++) {
       final d = firstDay.add(Duration(days: i));
@@ -317,7 +359,7 @@ class HistoryAttendanceRepository {
     var lateCheckIns = 0;
     var lateCheckOuts = 0;
 
-    for (final day in days) {
+    for (final day in eligibleDays) {
       final checkIn = _parseClockTime(day.firstCheckIn);
       if (checkIn != null &&
           _isAfterThreshold(checkIn, _lateCheckInHour, _lateCheckInMinute)) {
@@ -344,28 +386,65 @@ class HistoryAttendanceRepository {
     );
   }
 
-  int _elapsedDaysInMonth(DateTime month, DateTime today) {
-    final firstDay = DateTime(month.year, month.month, 1);
+  /// Returns `(startDate, dayCount)` for the visible attendance range in
+  /// [month], respecting today (no future days) and [joiningDate].
+  (DateTime, int) _monthDisplayRange({
+    required DateTime month,
+    required DateTime today,
+    DateTime? joiningDate,
+  }) {
+    final monthStart = DateTime(month.year, month.month, 1);
     final lastDay = DateTime(month.year, month.month + 1, 0);
+    final todayOnly = DateTime(today.year, today.month, today.day);
 
-    final sameMonth = today.year == month.year && today.month == month.month;
-    final effectiveEnd = sameMonth && today.isBefore(lastDay) ? today : lastDay;
+    final sameMonth = todayOnly.year == month.year && todayOnly.month == month.month;
+    var effectiveEnd =
+        sameMonth && todayOnly.isBefore(lastDay) ? todayOnly : lastDay;
 
-    if (effectiveEnd.isBefore(firstDay)) return 0;
-    return effectiveEnd.difference(firstDay).inDays + 1;
+    var effectiveStart = monthStart;
+    if (joiningDate != null) {
+      final join = DateTime(joiningDate.year, joiningDate.month, joiningDate.day);
+      final joiningMonth = DateTime(join.year, join.month);
+      final thisMonth = DateTime(month.year, month.month);
+
+      // Entire month before joining month → nothing to show.
+      if (thisMonth.isBefore(joiningMonth)) {
+        return (monthStart, 0);
+      }
+
+      if (thisMonth.year == join.year && thisMonth.month == join.month) {
+        if (join.isAfter(effectiveStart)) effectiveStart = join;
+      }
+
+      if (effectiveEnd.isBefore(join)) {
+        return (monthStart, 0);
+      }
+    }
+
+    if (effectiveEnd.isBefore(effectiveStart)) return (effectiveStart, 0);
+    return (
+      effectiveStart,
+      effectiveEnd.difference(effectiveStart).inDays + 1,
+    );
   }
 
   List<AttendanceDay> _fillMissingDays({
     required List<AttendanceDay> days,
     required DateTime month,
     required DateTime today,
+    DateTime? joiningDate,
   }) {
     final byDate = <String, AttendanceDay>{
       for (final d in days) _yyyyMMdd(d.date): d,
     };
 
-    final firstDay = DateTime(month.year, month.month, 1);
-    final elapsed = _elapsedDaysInMonth(month, today);
+    final range = _monthDisplayRange(
+      month: month,
+      today: today,
+      joiningDate: joiningDate,
+    );
+    final firstDay = range.$1;
+    final elapsed = range.$2;
 
     final filled = <AttendanceDay>[];
     for (var i = 0; i < elapsed; i++) {

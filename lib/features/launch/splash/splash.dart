@@ -4,7 +4,10 @@ import 'package:Obecno/core/services/permission_helper.dart';
 import 'package:Obecno/core/services/token_service.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
 import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:Obecno/core/generated/assets.dart';
+import 'package:Obecno/core/monitors/app_guard.dart';
+import 'package:Obecno/core/monitors/device_approval_guard.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
@@ -85,8 +88,34 @@ class _SplashScreenState extends State<SplashScreen>
     } else if (!loggedIn) {
       context.go('/login');
     } else if (permissionsAllowed) {
-      context.go('/employee_nav');
+      final homeTarget = authProvider.homeTarget;
+      context.go(
+        homeTarget == AuthHomeTarget.manager
+            ? '/manager_nav'
+            : '/employee_nav',
+      );
+
+      // Silent background device status (Scenario 2) -- no loaders.
+      // Toast shows if device is still unregistered, every app open.
+      try {
+        final deviceProvider = context.read<DeviceProvider>();
+        final userId = authProvider.user?.id;
+        unawaited(() async {
+          DeviceApprovalGuard.reset();
+          await deviceProvider.registerOnLogin();
+          await deviceProvider.checkDeviceStatus(
+            null,
+            loginMessage: false,
+            source: 'APP_START',
+            userId: userId,
+            isFirstLogin: false,
+          );
+        }());
+      } catch (e) {
+        debugPrint('[SplashScreen] DeviceProvider unavailable: $e');
+      }
     } else {
+      AppGuard.permissionOnboardingPending = true;
       context.go('/enable_permissions');
     }
   }

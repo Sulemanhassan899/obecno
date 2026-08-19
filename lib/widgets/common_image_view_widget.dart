@@ -43,7 +43,7 @@ class CommonImageView extends StatelessWidget {
     this.bottomLeftRadius = 0.0,
     this.bottomRightRadius = 0.0,
     this.fit = BoxFit.cover,
-    this.placeHolder = 'assets/images/no_image_found.png',
+    this.placeHolder = 'assets/images/userimage.png',
     this.errorImage,
   });
 
@@ -67,13 +67,18 @@ class CommonImageView extends StatelessWidget {
     return ClipRRect(borderRadius: _borderRadius, child: _buildImageView());
   }
 
-  /// 🔥 CENTRALIZED ERROR HANDLER
+  /// CENTRALIZED ERROR HANDLER — never throws if the fallback asset is missing.
   Widget _errorWidget() {
     return Image.asset(
       errorImage ?? placeHolder,
       height: height,
       width: width,
       fit: fit,
+      errorBuilder: (_, __, ___) => SizedBox(
+        height: height,
+        width: width,
+        child: const Icon(Icons.broken_image_outlined, size: 18),
+      ),
     );
   }
 

@@ -80,7 +80,7 @@ const kredColorLight = Color(0x5BFECDCA);
 //! ================== GREEN SHADES ==================
 const kGreen = Color(0xFF00FF00);
 const kgreenColor = Color(0xFF2CA02C);
-const kgreenColorLight = Color(0x2634C759);
+const kgreenColorLight = Color(0xFFCDFFD2);
 const kGreen500 = Color(0xFF4CAF50);
 
 //! ================== ORANGE ==================
@@ -119,6 +119,7 @@ const kSecondaryButtonColor = Color(0xFF0ED574);
 
 //! ================== BACKGROUND ==================
 const kbackground = Color(0xFFE3EEFF); // new
+const kbackground1 = Color(0xFFF7F9FA);
 const kbackground2 = Color(0xFFF4F4F4);
 const kbackgroundNew = Color(0xFF0D0E0E);
 const kbackgroundBlack = Color.fromARGB(255, 0, 0, 0);

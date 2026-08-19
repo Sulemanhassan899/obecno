@@ -157,14 +157,9 @@ class AuthRepository {
       }
 
       final body = decoded['data'];
-      dynamic raw;
-      if (body is List) {
-        raw = body;
-      } else if (body is Map<String, dynamic>) {
-        raw = body['permissions'] ?? body;
-      }
-
-      final items = PermissionItemModel.listFromEnvelope(raw);
+      // Prefer structured shapes (permission_items / sections) over the
+      // nested policy map under `permissions`, which lacks labels/items.
+      final items = PermissionItemModel.listFromEnvelope(body);
       if (items.isEmpty) {
         return ApiResponse.failure(
           'Unexpected response from server. Please try again.',

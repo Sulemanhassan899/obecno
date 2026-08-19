@@ -1,10 +1,10 @@
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
 import 'package:Obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
-import 'package:Obecno/features/employee_module/clock/presentation/screens/clock_screen.dart';
+import 'package:Obecno/features/clock/presentation/screens/clock_screen.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +25,7 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
 
   late final List<Widget> screens = [
     ClockScreen(key: _clockKey),
-    MonthlyAttendanceScreen(),
+    EmployeeAttendanceScreen(),
     AlertsScreen(),
     ProfileSettingsScreen(),
   ];

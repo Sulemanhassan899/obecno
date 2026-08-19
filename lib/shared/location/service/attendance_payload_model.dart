@@ -38,9 +38,14 @@ class AttendancePayloadModel {
     return '${capturedAt.microsecondsSinceEpoch}-$action-$rand';
   }
 
+  /// Fallback when [DeviceInfoService] is unavailable. Prefer injecting
+  /// a real `deviceDetails` from DeviceInfoService (e.g. "Vivo e23 | Android 13").
   static String _defaultDeviceDetails() {
     try {
-      return '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
+      final osLabel = Platform.isIOS
+          ? 'iOS'
+          : (Platform.isAndroid ? 'Android' : Platform.operatingSystem);
+      return 'Unknown | $osLabel ${Platform.operatingSystemVersion}';
     } catch (_) {
       return 'unknown device';
     }
@@ -55,11 +60,16 @@ class AttendancePayloadModel {
       '${capturedAt.hour.toString().padLeft(2, '0')}:'
       '${capturedAt.minute.toString().padLeft(2, '0')}';
 
+  /// Wall-clock timestamp the API expects: `2026-08-10 03:00:00`.
+  String get datetime =>
+      '$date ${time}:${capturedAt.second.toString().padLeft(2, '0')}';
+
   Map<String, dynamic> toApiJson() => {
     'action': action,
-    'request_id': requestId,
     'device_details': deviceDetails,
-    if (location != null) ...location!.toJson(),
+    'datetime': datetime,
+    if (location != null) 'lat': location!.lat,
+    if (location != null) 'lon': location!.lon,
   };
   Map<String, dynamic> toQueueMap() => {
     'action': action,

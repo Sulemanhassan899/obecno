@@ -3,9 +3,10 @@
 import 'dart:io';
 
 import 'package:Obecno/core/animations/app_animations.dart';
+import 'package:Obecno/core/helpers/dialog.dart';
 
 import 'package:Obecno/features/launch/onboarding/onboarding.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/account_setting.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/change_password.dart';
@@ -14,7 +15,6 @@ import 'package:Obecno/features/employee_module/more/presentation/screens/office
 import 'package:Obecno/features/employee_module/more/presentation/screens/policy.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/terms.dart';
 import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:Obecno/widgets/dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/state/change_notifier_provider.dart';
@@ -47,6 +47,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     final profileProvider = context.read<ProfileProvider>();
     final authProvider = context.read<AuthProvider>();
     return Scaffold(
+      backgroundColor: kbackground1,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => profileProvider.loadProfile(),
@@ -228,6 +229,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
                     child: Container(
                       decoration: BoxDecoration(
+                        color: kWhite,
                         border: Border.all(color: kBorderColor),
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -331,9 +333,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         const SizedBox(height: 6),
 
         AppText.p2(
-          profile?.designation?.isNotEmpty == true
-              ? profile!.designation!
-              : "—",
+          profile?.departmentName?.isNotEmpty == true
+              ? profile!.departmentName!
+              : (profile?.designation?.isNotEmpty == true
+                    ? profile!.designation!
+                    : "—"),
           color: kGreyColor,
         ),
       ],
@@ -381,6 +385,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
+        color: kWhite,
         border: Border.all(color: kBorderColor),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -414,6 +419,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   Widget _groupCard(List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
+        color: kWhite,
         border: Border.all(color: kBorderColor),
         borderRadius: BorderRadius.circular(16),
       ),

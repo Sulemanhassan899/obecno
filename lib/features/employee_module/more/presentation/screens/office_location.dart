@@ -4,7 +4,7 @@ import 'dart:async';
 
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
@@ -38,7 +38,7 @@ class _OfficeLocationState extends State<OfficeLocation> {
     final locationProvider = context.read<LocationProvider>();
 
     return Scaffold(
-      backgroundColor: kWhite,
+      backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.HORIZONTAL,
         child: ListenableBuilder(

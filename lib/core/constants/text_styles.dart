@@ -103,6 +103,7 @@ class AppText {
     String? fontFamily,
     FontWeight weight = FontWeight.w500,
     TextAlign? align,
+    TextOverflow? textOverflow,
   }) {
     return TextWidget(
       text: text,
@@ -111,6 +112,7 @@ class AppText {
       weight: weight,
       color: color ?? kBlack,
       textAlign: align ?? TextAlign.center,
+      textOverflow: textOverflow,
     );
   }
 

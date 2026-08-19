@@ -43,13 +43,44 @@ class AttendanceDay {
 
   final bool isEdited;
 
-  String? get firstCheckIn => checkIns.isEmpty ? null : checkIns.first;
-  String? get lastCheckOut => checkOuts.isEmpty ? null : checkOuts.last;
+  /// Earliest check-in of the day (immutable session start). Never use a
+  /// later re-check-in as the day header check-in.
+  String? get firstCheckIn {
+    if (checkIns.isEmpty) return null;
+    final sorted = [...checkIns]..sort();
+    return sorted.first;
+  }
 
-  String? get firstCheckInLocation =>
-      checkInLocations.isEmpty ? null : checkInLocations.first;
-  String? get lastCheckOutLocation =>
-      checkOutLocations.isEmpty ? null : checkOutLocations.last;
+  /// Latest check-out of the day. Intermediate check-outs are superseded.
+  String? get lastCheckOut {
+    if (checkOuts.isEmpty) return null;
+    final sorted = [...checkOuts]..sort();
+    return sorted.last;
+  }
+
+  String? get firstCheckInLocation {
+    if (checkIns.isEmpty || checkInLocations.isEmpty) return null;
+    final pairs = [
+      for (var i = 0; i < checkIns.length; i++)
+        (
+          checkIns[i],
+          i < checkInLocations.length ? checkInLocations[i] : null,
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    return pairs.first.$2;
+  }
+
+  String? get lastCheckOutLocation {
+    if (checkOuts.isEmpty || checkOutLocations.isEmpty) return null;
+    final pairs = [
+      for (var i = 0; i < checkOuts.length; i++)
+        (
+          checkOuts[i],
+          i < checkOutLocations.length ? checkOutLocations[i] : null,
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    return pairs.last.$2;
+  }
 
   bool get hasCheckIn => firstCheckIn != null;
   bool get hasCheckOut => lastCheckOut != null;
@@ -139,6 +170,11 @@ class AttendanceDay {
       }
     }
 
+    // Keep lists chronologically ordered so consumers that index `.first` /
+    // `.last` (and local DB writes) always see earliest in / latest out.
+    _sortTimeLocationPairs(checkIns, checkInLocations);
+    _sortTimeLocationPairs(checkOuts, checkOutLocations);
+
     return AttendanceDay(
       date: DateTime(date.year, date.month, date.day),
       recordId: _parseId(json['id']),
@@ -149,6 +185,23 @@ class AttendanceDay {
       breaks: breaks,
       isEdited: false,
     );
+  }
+
+  static void _sortTimeLocationPairs(
+    List<String> times,
+    List<String?> locations,
+  ) {
+    if (times.length <= 1) return;
+    final pairs = [
+      for (var i = 0; i < times.length; i++)
+        (times[i], i < locations.length ? locations[i] : null),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    times
+      ..clear()
+      ..addAll(pairs.map((p) => p.$1));
+    locations
+      ..clear()
+      ..addAll(pairs.map((p) => p.$2));
   }
 
   static int? _parseId(dynamic raw) {

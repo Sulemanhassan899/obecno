@@ -13,7 +13,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/generated/assets.dart';
+import 'package:Obecno/core/generated/assets.dart';
 
 import 'package:Obecno/core/services/token_service.dart';
 
