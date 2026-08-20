@@ -3,7 +3,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:Obecno/core/animations/app_shimmer.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 
 class CommonImageView extends StatelessWidget {
   final String? url;

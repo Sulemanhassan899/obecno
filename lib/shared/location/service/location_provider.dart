@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
-import 'package:Obecno/shared/location/service/location_service.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
 
 class LocationProvider extends ChangeNotifier {
   LocationProvider({LocationService? locationService})

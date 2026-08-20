@@ -1,9 +1,9 @@
 // lib/widgets/custom_theme_switch.dart
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/core/theme/theme_provider.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/core/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 import 'text_widget.dart';
 

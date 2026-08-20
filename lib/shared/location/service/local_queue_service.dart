@@ -1,8 +1,8 @@
 
 
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/shared/location/data/queue_model.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/shared/location/data/queue_model.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 

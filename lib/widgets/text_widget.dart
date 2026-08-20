@@ -1,9 +1,9 @@
 // ignore_for_file: unnecessary_string_interpolations
 
-import 'package:Obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 // ignore: must_be_immutable
 class TextWidget extends StatelessWidget {

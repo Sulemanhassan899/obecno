@@ -1,12 +1,12 @@
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/demo/demo_list.dart';
-import 'package:Obecno/demo/manager_attendence_model.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
-import 'package:Obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/demo/demo_list.dart';
+import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
+import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 class ManagerAttendanceScreen extends StatefulWidget {
   const ManagerAttendanceScreen({super.key, this.initialStatus});

@@ -1,4 +1,4 @@
-import 'package:Obecno/features/auth/data/models/token_model.dart';
+import 'package:obecno/features/auth/data/models/token_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,4 +1,4 @@
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

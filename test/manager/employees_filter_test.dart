@@ -1,5 +1,5 @@
-import 'package:Obecno/demo/manager_employee_model.dart';
-import 'package:Obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
+import 'package:obecno/demo/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

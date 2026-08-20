@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:Obecno/shared/location/data/location_model.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
 import 'package:geolocator/geolocator.dart';
 
 class LocationServiceDisabledException implements Exception {

@@ -1,14 +1,14 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/demo/demo_list.dart';
-import 'package:Obecno/demo/manager_attendence_model.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
-import 'package:Obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
-import 'package:Obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
-import 'package:Obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
-import 'package:Obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/demo/demo_list.dart';
+import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
+import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
+import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
+import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
+import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:flutter/material.dart';
 
 class ManagerEmployeeAttendanceSheet {

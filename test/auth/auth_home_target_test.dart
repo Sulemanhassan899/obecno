@@ -1,4 +1,4 @@
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

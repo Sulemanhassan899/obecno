@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 
 class ProfileRepository {
   ProfileRepository(this._client);

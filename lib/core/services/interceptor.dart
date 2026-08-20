@@ -1,4 +1,4 @@
-import 'package:Obecno/core/services/logger.dart';
+import 'package:obecno/core/services/logger.dart';
 
 import 'token_service.dart';
 

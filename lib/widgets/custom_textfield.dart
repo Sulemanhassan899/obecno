@@ -1,8 +1,8 @@
 // ignore: must_be_immutable
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_fonts.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
 class CustomTextField extends StatelessWidget {

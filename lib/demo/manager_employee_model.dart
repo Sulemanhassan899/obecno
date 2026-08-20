@@ -1,4 +1,4 @@
-import 'package:Obecno/core/generated/assets.dart';
+import 'package:obecno/core/generated/assets.dart';
 
 enum ManagerEmployeeStatus { active, pending, disabled, deleted }
 

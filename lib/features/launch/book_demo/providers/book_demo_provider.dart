@@ -1,4 +1,4 @@
-import 'package:Obecno/core/api/base_provider.dart';
+import 'package:obecno/core/api/base_provider.dart';
 
 import '../data/models/book_demo_ticket_model.dart';
 import '../domain/entities/book_demo_entity.dart';

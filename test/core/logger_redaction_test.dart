@@ -1,4 +1,4 @@
-import 'package:Obecno/core/services/logger.dart';
+import 'package:obecno/core/services/logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

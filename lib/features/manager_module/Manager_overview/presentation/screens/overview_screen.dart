@@ -1,8 +1,8 @@
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/demo/overview_model.dart';
-import 'package:Obecno/features/manager_module/Manager_overview/presentation/widgets/overview_header.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/demo/overview_model.dart';
+import 'package:obecno/features/manager_module/Manager_overview/presentation/widgets/overview_header.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});

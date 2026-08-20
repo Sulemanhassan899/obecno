@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:Obecno/shared/location/data/queue_model.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
-import 'package:Obecno/shared/location/service/local_queue_service.dart';
+import 'package:obecno/shared/location/data/queue_model.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/local_queue_service.dart';
 
 /// In-memory queue for employee offline punch tests (no SQLite / no app code changes).
 class InMemoryLocalQueue implements LocalQueueService {

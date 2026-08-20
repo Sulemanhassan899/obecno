@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:Obecno/core/services/network_checker.dart';
+import 'package:obecno/core/services/network_checker.dart';
 
 class ConnectivityService {
   ConnectivityService._();

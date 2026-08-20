@@ -1,4 +1,4 @@
-import 'package:Obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/demo/manager_attendence_model.dart';
 
 /// Pure filter helpers for manager team attendance (testable without UI).
 class ManagerAttendanceFilters {

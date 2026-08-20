@@ -1,4 +1,4 @@
-import 'package:Obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/api_response.dart';
 import 'package:flutter/foundation.dart';
 
 import './api_cancel_token.dart';

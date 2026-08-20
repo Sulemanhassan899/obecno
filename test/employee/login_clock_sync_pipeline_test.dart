@@ -1,14 +1,14 @@
 import 'dart:async';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/services/network_checker.dart';
-import 'package:Obecno/core/services/token_service.dart';
-import 'package:Obecno/features/clock/repositories/clock_attendance_repository.dart';
-import 'package:Obecno/features/clock/services/sync_service.dart';
-import 'package:Obecno/shared/location/data/location_model.dart';
-import 'package:Obecno/shared/location/service/attendance_connectivity_service.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/services/network_checker.dart';
+import 'package:obecno/core/services/token_service.dart';
+import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
+import 'package:obecno/features/clock/services/sync_service.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
+import 'package:obecno/shared/location/service/attendance_connectivity_service.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/in_memory_local_queue.dart';

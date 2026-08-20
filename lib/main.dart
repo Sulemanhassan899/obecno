@@ -1,23 +1,23 @@
 import 'dart:async';
 
-import 'package:Obecno/core/state/multi_provider.dart';
+import 'package:obecno/core/state/multi_provider.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/binding/app_binding.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/core/theme/light_theme.dart';
-import 'package:Obecno/core/theme/theme_provider.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/auth/providers/permission_provider.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/privacy_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/terms_provider.dart';
-import 'package:Obecno/features/launch/book_demo/providers/book_demo_provider.dart';
-import 'package:Obecno/core/monitors/app_guard.dart';
-import 'package:Obecno/features/employee_module/routes/app_routes.dart';
-import 'package:Obecno/shared/location/service/location_provider.dart';
+import 'package:obecno/core/binding/app_binding.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/core/theme/light_theme.dart';
+import 'package:obecno/core/theme/theme_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/auth/providers/permission_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/privacy_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
+import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
+import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/shared/location/service/location_provider.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 

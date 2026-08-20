@@ -18,7 +18,6 @@ analyzer:
     library_private_types_in_public_api: ignore
     must_be_immutable: ignore
     non_constant_identifier_names: ignore
-    package_names: ignore
     prefer_conditional_assignment: ignore
     prefer_final_fields: ignore
     prefer_typing_uninitialized_variables: ignore

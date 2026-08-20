@@ -1,4 +1,4 @@
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
 
 class QueueModel {
   final int id;

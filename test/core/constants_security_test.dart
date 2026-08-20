@@ -1,4 +1,4 @@
-import 'package:Obecno/core/api/constants.dart';
+import 'package:obecno/core/api/constants.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

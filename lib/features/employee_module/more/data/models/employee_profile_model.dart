@@ -1,4 +1,4 @@
-import 'package:Obecno/core/api/constants.dart';
+import 'package:obecno/core/api/constants.dart';
 
 class LookupItem {
   const LookupItem({required this.id, required this.name});

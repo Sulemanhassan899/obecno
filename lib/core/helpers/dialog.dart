@@ -1,12 +1,12 @@
-// import 'package:Obecno/core/constants/text_styles.dart';
-// import 'package:Obecno/widgets/common_image_view_widget.dart';
-// import 'package:Obecno/widgets/custom_dropdown.dart';
-// import 'package:Obecno/widgets/custom_textfield.dart';
-// import 'package:Obecno/widgets/my_button.dart';
-// import 'package:Obecno/widgets/text_widget.dart';
+// import 'package:obecno/core/constants/text_styles.dart';
+// import 'package:obecno/widgets/common_image_view_widget.dart';
+// import 'package:obecno/widgets/custom_dropdown.dart';
+// import 'package:obecno/widgets/custom_textfield.dart';
+// import 'package:obecno/widgets/my_button.dart';
+// import 'package:obecno/widgets/text_widget.dart';
 // import 'package:flutter/material.dart';
 
-// import 'package:Obecno/core/constants/all_colors.dart';
+// import 'package:obecno/core/constants/all_colors.dart';
 
 
 // class DialogHelper {
@@ -228,15 +228,15 @@
 //   }
 // }
 
-// import 'package:Obecno/core/constants/text_styles.dart';
-// import 'package:Obecno/widgets/common_image_view_widget.dart';
-// import 'package:Obecno/widgets/custom_dropdown.dart';
-// import 'package:Obecno/widgets/custom_textfield.dart';
-// import 'package:Obecno/widgets/my_button.dart';
-// import 'package:Obecno/widgets/text_widget.dart';
+// import 'package:obecno/core/constants/text_styles.dart';
+// import 'package:obecno/widgets/common_image_view_widget.dart';
+// import 'package:obecno/widgets/custom_dropdown.dart';
+// import 'package:obecno/widgets/custom_textfield.dart';
+// import 'package:obecno/widgets/my_button.dart';
+// import 'package:obecno/widgets/text_widget.dart';
 // import 'package:flutter/material.dart';
 
-// import 'package:Obecno/core/constants/all_colors.dart';
+// import 'package:obecno/core/constants/all_colors.dart';
 
 // class DialogHelper {
 //   static void show({
@@ -457,17 +457,17 @@
 //   }
 // }
 
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/custom_dropdown.dart';
-import 'package:Obecno/widgets/custom_textfield.dart';
-import 'package:Obecno/widgets/my_button.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/custom_dropdown.dart';
+import 'package:obecno/widgets/custom_textfield.dart';
+import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/routes/app_routes.dart';
 
 class DialogHelper {
   /// Returns the same `Future<void>` `showDialog` returns (completing when

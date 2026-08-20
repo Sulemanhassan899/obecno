@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 class CustomSwitch extends StatelessWidget {
   final bool value;

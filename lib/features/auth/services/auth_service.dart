@@ -1,10 +1,10 @@
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/core/services/token_service.dart';
-import 'package:Obecno/features/auth/data/models/auth_company_model.dart';
-import 'package:Obecno/features/auth/data/models/auth_location_model.dart';
-import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
-import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
-import 'package:Obecno/features/auth/repositories/auth_repository.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/services/token_service.dart';
+import 'package:obecno/features/auth/data/models/auth_company_model.dart';
+import 'package:obecno/features/auth/data/models/auth_location_model.dart';
+import 'package:obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/repositories/auth_repository.dart';
 
 class AuthService {
   AuthService(this._repository, this._tokenService);

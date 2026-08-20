@@ -1,7 +1,7 @@
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/core/api/base_repository.dart';
+import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/base_repository.dart';
 
 import '../data/models/book_demo_ticket_model.dart';
 

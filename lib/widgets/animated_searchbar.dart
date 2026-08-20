@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 

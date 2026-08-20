@@ -1,4 +1,4 @@
-import 'package:Obecno/shared/location/service/location_service.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,15 +1,15 @@
-import 'package:Obecno/core/animations/app_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart';
+import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
+import 'package:obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart';
 
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/features/clock/presentation/screens/clock_screen.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class ManagerBottomNavBar extends StatefulWidget {

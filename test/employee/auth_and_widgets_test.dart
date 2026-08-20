@@ -1,7 +1,7 @@
-import 'package:Obecno/core/validators/validators.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
-import 'package:Obecno/widgets/custom_checkbox_widget.dart';
+import 'package:obecno/core/validators/validators.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
+import 'package:obecno/widgets/custom_checkbox_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,7 +1,7 @@
-import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/constants/text_styles.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 class CustomCheckbox extends StatefulWidget {
   final String? text;

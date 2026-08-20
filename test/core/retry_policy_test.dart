@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:Obecno/core/api/api_cancel_token.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/services/retry_interceptor.dart';
+import 'package:obecno/core/api/api_cancel_token.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/services/retry_interceptor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,10 +1,10 @@
 // import 'dart:async';
-// import 'package:Obecno/core/services/connectivity_service.dart';
-// import 'package:Obecno/core/services/notification_helper.dart';
-// import 'package:Obecno/core/services/permission_helper.dart';
-// import 'package:Obecno/core/state/change_notifier_provider.dart';
-// import 'package:Obecno/features/auth/providers/auth_provider.dart';
-// import 'package:Obecno/routes/app_routes.dart';
+// import 'package:obecno/core/services/connectivity_service.dart';
+// import 'package:obecno/core/services/notification_helper.dart';
+// import 'package:obecno/core/services/permission_helper.dart';
+// import 'package:obecno/core/state/change_notifier_provider.dart';
+// import 'package:obecno/features/auth/providers/auth_provider.dart';
+// import 'package:obecno/routes/app_routes.dart';
 // import 'package:flutter/material.dart';
 // import 'package:permission_handler/permission_handler.dart';
 
@@ -231,15 +231,15 @@
 // }
 
 import 'dart:async';
-import 'package:Obecno/core/helpers/dialog.dart';
-import 'package:Obecno/core/services/connectivity_service.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/notification_helper.dart';
-import 'package:Obecno/core/services/permission_helper.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/core/services/connectivity_service.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/services/notification_helper.dart';
+import 'package:obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/employee_module/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 

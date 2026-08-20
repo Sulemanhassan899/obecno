@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:Obecno/core/api/base_provider.dart';
-import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
-import 'package:Obecno/features/employee_module/more/services/profile_service.dart';
+import 'package:obecno/core/api/base_provider.dart';
+import 'package:obecno/features/employee_module/more/data/models/employee_profile_model.dart';
+import 'package:obecno/features/employee_module/more/services/profile_service.dart';
 
 class ProfileProvider extends BaseProvider {
   ProfileProvider(this._service);

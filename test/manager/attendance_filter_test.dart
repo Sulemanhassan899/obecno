@@ -1,5 +1,5 @@
-import 'package:Obecno/demo/demo_list.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
+import 'package:obecno/demo/demo_list.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

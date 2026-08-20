@@ -5,7 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import 'package:Obecno/core/services/logger.dart';
+import 'package:obecno/core/services/logger.dart';
 
 /// Immutable snapshot of the current device's identifying info, sent to the
 /// backend to register/list this device.

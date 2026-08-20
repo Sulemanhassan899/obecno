@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
 
 class TicketRepository {
   TicketRepository(this._client);

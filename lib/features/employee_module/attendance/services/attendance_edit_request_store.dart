@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache of attendance fix requests so timeline cards can show

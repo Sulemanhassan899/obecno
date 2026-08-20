@@ -1,9 +1,9 @@
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/features/auth/data/models/auth_user_model.dart';
-import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 
 class AuthRepository {
   AuthRepository(this._client);

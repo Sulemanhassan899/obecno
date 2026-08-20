@@ -1,13 +1,13 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/demo/manager_location_model.dart';
-import 'package:Obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
-import 'package:Obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
-import 'package:Obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class AllLocationsScreen extends StatelessWidget {

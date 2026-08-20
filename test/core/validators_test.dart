@@ -1,5 +1,5 @@
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/core/validators/validators.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/core/validators/validators.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

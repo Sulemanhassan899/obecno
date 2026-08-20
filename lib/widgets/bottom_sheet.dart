@@ -1,6 +1,6 @@
 // ignore_for_file: non_constant_identifier_names
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 import 'package:flutter/material.dart';
 
 import 'common_image_view_widget.dart';

@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/employee_module/more/data/models/device_model.dart';
-import 'package:Obecno/features/employee_module/more/repositories/device_repository.dart';
-import 'package:Obecno/features/employee_module/more/services/device_info_service.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/employee_module/more/repositories/device_repository.dart';
+import 'package:obecno/features/employee_module/more/services/device_info_service.dart';
 
 class DeviceService {
   DeviceService(this._repository, this._deviceInfoService);

@@ -1,7 +1,7 @@
-import 'package:Obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 import 'text_widget.dart';
 
 // ignore: must_be_immutable

@@ -1,5 +1,5 @@
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendence_event.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
 
 class HistoryAttendanceSummary {
   final DateTime? firstCheckIn;

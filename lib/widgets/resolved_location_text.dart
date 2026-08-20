@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/main.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
-import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/main.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 
 class ResolvedLocationText extends StatefulWidget {
   const ResolvedLocationText({

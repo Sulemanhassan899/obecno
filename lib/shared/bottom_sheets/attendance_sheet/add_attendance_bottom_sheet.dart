@@ -1,17 +1,17 @@
 // ignore_for_file: non_constant_identifier_names
 
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_service.dart';
-import 'package:Obecno/main.dart';
-import 'package:Obecno/widgets/bottom_sheet.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/main.dart';
+import 'package:obecno/widgets/bottom_sheet.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -177,7 +177,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
     if (!mounted) return;
 
     final contextKey = _itemKeys[fieldKey]?.currentContext;
-    if (contextKey == null) return;
+    if (contextKey == null || !contextKey.mounted) return;
 
     final renderObject = contextKey.findRenderObject();
     if (renderObject == null || renderObject is! RenderBox) return;

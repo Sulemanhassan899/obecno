@@ -1,6 +1,6 @@
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

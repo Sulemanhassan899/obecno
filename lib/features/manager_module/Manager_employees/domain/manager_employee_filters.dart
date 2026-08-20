@@ -1,5 +1,5 @@
-import 'package:Obecno/demo/manager_employee_model.dart';
-import 'package:Obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/demo/manager_employee_model.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 
 /// Pure filter helpers for manager employees list (testable without UI).
 class ManagerEmployeeFilters {

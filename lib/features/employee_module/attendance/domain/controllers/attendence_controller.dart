@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart'
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     hide MonthSummary, AttendanceDayRecord;
-import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
-import 'package:Obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
-import 'package:Obecno/features/employee_module/attendance/services/day_classification_engine.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
+import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
+import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 
-import 'package:Obecno/main.dart';
+import 'package:obecno/main.dart';
 import 'package:flutter/material.dart';
 
 class MonthlyAttendanceController extends ChangeNotifier {

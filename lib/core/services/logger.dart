@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/constants.dart';
+import 'package:obecno/core/api/constants.dart';
 import 'package:flutter/foundation.dart';
 
 class AppLogger {

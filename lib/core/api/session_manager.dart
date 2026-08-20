@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/token_service.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/services/token_service.dart';
 
 class SessionManager {
   SessionManager({

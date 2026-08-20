@@ -1,4 +1,4 @@
-import 'package:Obecno/core/constants/app_enums.dart';
+import 'package:obecno/core/constants/app_enums.dart';
 
 class AttendanceDayRecord {
   const AttendanceDayRecord({

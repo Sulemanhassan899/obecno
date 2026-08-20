@@ -1,6 +1,6 @@
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
-import 'package:Obecno/features/employee_module/more/repositories/profile_repository.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/features/employee_module/more/data/models/employee_profile_model.dart';
+import 'package:obecno/features/employee_module/more/repositories/profile_repository.dart';
 
 class ProfileService {
   ProfileService(this._repository);
