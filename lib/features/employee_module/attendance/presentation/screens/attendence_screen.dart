@@ -350,45 +350,50 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                             ),
                           ],
                         )
-                      : ListView(
-                          children: [
-                            AttendanceSummaryCard(summary: summary),
-                            const SizedBox(height: 20),
-                            ...processedRecords.map((record) {
-                              if (record.status ==
-                                  AttendanceDayStatus.holiday) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  child: AttendanceHolidayCard(
-                                    title:
-                                        record.weekendLabel ?? "Public Holiday",
-                                    date: _formatFullWeekdayDate(record.date),
-                                    onTap: () => _onDayTap(record),
-                                  ),
-                                );
-                              }
-
-                              if (record.status ==
-                                  AttendanceDayStatus.weekend) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: 10,
-                                    top: 10,
-                                  ),
-                                  child: AttendanceWeekendCard(
-                                    label: record.weekendLabel ?? "Weekend",
-                                  ),
-                                );
-                              }
-
-                              return AttendanceDayTile(
-                                record: record,
-                                onTap: () => _onDayTap(record),
+                      : ListView.builder(
+                          itemCount: processedRecords.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return Column(
+                                children: [
+                                  AttendanceSummaryCard(summary: summary),
+                                  const SizedBox(height: 20),
+                                ],
                               );
-                            }),
-                          ],
+                            }
+
+                            final record = processedRecords[index - 1];
+                            if (record.status == AttendanceDayStatus.holiday) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: AttendanceHolidayCard(
+                                  title:
+                                      record.weekendLabel ?? "Public Holiday",
+                                  date: _formatFullWeekdayDate(record.date),
+                                  onTap: () => _onDayTap(record),
+                                ),
+                              );
+                            }
+
+                            if (record.status == AttendanceDayStatus.weekend) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: 10,
+                                  top: 10,
+                                ),
+                                child: AttendanceWeekendCard(
+                                  label: record.weekendLabel ?? "Weekend",
+                                ),
+                              );
+                            }
+
+                            return AttendanceDayTile(
+                              record: record,
+                              onTap: () => _onDayTap(record),
+                            );
+                          },
                         ),
                 ),
               ),

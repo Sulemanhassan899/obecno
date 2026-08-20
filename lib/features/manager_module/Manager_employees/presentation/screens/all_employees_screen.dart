@@ -5,6 +5,7 @@ import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/demo/manager_employee_model.dart';
 import 'package:Obecno/demo/manager_location_model.dart';
 import 'package:Obecno/features/manager_module/Manager_attendance/presentation/widgets/filter_dropdown_chip.dart';
+import 'package:Obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:Obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/employee_sheet/add_employee_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
@@ -43,29 +44,17 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   }
 
   List<ManagerEmployeeModel> get _locationEmployees {
-    if (_selectedLocationId == LocationFilterOption.allId) {
-      return dummyManagerEmployees;
-    }
-    return dummyManagerEmployees
-        .where((e) => e.locationId == _selectedLocationId)
-        .toList();
+    return ManagerEmployeeFilters.byLocation(
+      source: dummyManagerEmployees,
+      selectedLocationId: _selectedLocationId,
+    );
   }
 
   List<ManagerEmployeeModel> get _filtered {
-    var list = List<ManagerEmployeeModel>.from(_locationEmployees);
-
-    final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      list = list
-          .where(
-            (e) =>
-                e.name.toLowerCase().contains(q) ||
-                e.role.toLowerCase().contains(q),
-          )
-          .toList();
-    }
-
-    return list;
+    return ManagerEmployeeFilters.byQuery(
+      source: _locationEmployees,
+      query: _query,
+    );
   }
 
   int get _total => _locationEmployees.length;

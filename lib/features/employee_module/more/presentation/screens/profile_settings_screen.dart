@@ -263,7 +263,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       // Pick image from gallery
       final XFile? pickedImage = await picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 85, // optional compression
+        imageQuality: 70,
+        maxWidth: 1280,
       );
 
       if (pickedImage == null) {
@@ -272,7 +273,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
       return File(pickedImage.path);
     } catch (e) {
-      print('Error picking image: $e');
       return null;
     }
   }

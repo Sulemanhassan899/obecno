@@ -4,7 +4,7 @@ import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
 import 'package:Obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
 import 'package:Obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart.dart';
+import 'package:Obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart';
 
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/features/clock/presentation/screens/clock_screen.dart';

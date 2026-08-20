@@ -1,6 +1,7 @@
 import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/demo/demo_list.dart';
 import 'package:Obecno/demo/manager_attendence_model.dart';
+import 'package:Obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:Obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:Obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
@@ -67,58 +68,18 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
   }
 
   /// Maps raw model status → filter label used by the Status sheet.
-  static String statusDisplayLabel(String raw) {
-    switch (raw.toLowerCase().trim()) {
-      case "working":
-      case "active":
-        return "Active / Working";
-      case "break":
-      case "on break":
-      case "onbreak":
-        return "On Break";
-      case "late":
-      case "late check-in":
-        return "Late Check-in";
-      case "early":
-      case "early check-out":
-      case "early_checkout":
-        return "Early Check-Out";
-      case "leave":
-      case "on leave":
-      case "absent":
-      case "":
-        return "Absent";
-      case "present":
-        return "Present Today";
-      default:
-        return raw;
-    }
-  }
+  static String statusDisplayLabel(String raw) =>
+      ManagerAttendanceFilters.statusDisplayLabel(raw);
 
   bool get _isAllStatus =>
-      selectedStatus == "All Status" || selectedStatus == "Status";
-
-  bool get _isAllLocations =>
-      selectedLocation == "All Locations" || selectedLocation == "Locations";
+      selectedStatus == 'All Status' || selectedStatus == 'Status';
 
   List<ManagerAttendanceModel> _filterList() {
-    List<ManagerAttendanceModel> tempList = List.from(dummyManagerAttendance);
-
-    if (!_isAllStatus) {
-      tempList = tempList.where((item) {
-        return statusDisplayLabel(item.status).toLowerCase() ==
-            selectedStatus.toLowerCase();
-      }).toList();
-    }
-
-    if (!_isAllLocations) {
-      tempList = tempList.where((item) {
-        return (item.team ?? "").toLowerCase() ==
-            selectedLocation.toLowerCase();
-      }).toList();
-    }
-
-    return tempList;
+    return ManagerAttendanceFilters.apply(
+      source: dummyManagerAttendance,
+      selectedStatus: selectedStatus,
+      selectedLocation: selectedLocation,
+    );
   }
 
   void _applyFilters() {

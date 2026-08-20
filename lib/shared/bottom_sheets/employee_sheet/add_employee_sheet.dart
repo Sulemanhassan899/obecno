@@ -42,7 +42,7 @@ class _AddEmployeeSheetBody extends StatefulWidget {
 
 class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
   final _rows = <_InviteRow>[_InviteRow()];
-  static const _inviteLink = 'http://www.obecno.com/EmployeeRegister...';
+  static const _inviteLink = 'https://www.obecno.com/EmployeeRegister...';
 
   @override
   void dispose() {

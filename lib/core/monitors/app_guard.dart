@@ -270,7 +270,6 @@ class AppGuard extends StatefulWidget {
 }
 
 class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
-  Timer? _timer;
   Timer? _offlineDebounce;
   StreamSubscription<bool>? _connectivitySub;
   bool _dialogOpen = false;
@@ -301,10 +300,9 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
 
     ConnectivityService.start();
 
-    _timer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _checkAll(trigger: 'BACKGROUND'),
-    );
+    // No periodic timer: permission/device checks run on app start and when
+    // the app resumes (see didChangeAppLifecycleState). Connectivity is
+    // handled by the stream below.
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // FIX: resolve AuthProvider *before* the first `_checkAll()` runs.
@@ -346,7 +344,6 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
     _offlineDebounce?.cancel();
     _connectivitySub?.cancel();
     ConnectivityService.stop();

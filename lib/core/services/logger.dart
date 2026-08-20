@@ -6,9 +6,31 @@ import 'package:flutter/foundation.dart';
 class AppLogger {
   AppLogger._();
 
-  static bool _enabled = AppConstants.enableApiLogging;
+  /// Release builds never log unless [AppConstants.enableApiLogging] is forced
+  /// via `--dart-define=OBECNO_DEBUG_LOGS=true` *and* we are in debug/profile.
+  static bool _enabled =
+      AppConstants.enableApiLogging && !kReleaseMode;
 
-  static void setEnabled(bool value) => _enabled = value;
+  static bool get isEnabled => _enabled;
+
+  static void setEnabled(bool value) => _enabled = value && !kReleaseMode;
+
+  static const _sensitiveKeys = {
+    'password',
+    'current_password',
+    'new_password',
+    'new_password_confirm',
+    'access_token',
+    'refresh_token',
+    'token',
+    'authorization',
+    'lat',
+    'lon',
+    'latitude',
+    'longitude',
+    'lat_lon',
+    'latlon',
+  };
 
   static void request(
     String method,
@@ -18,8 +40,9 @@ class AppLogger {
   }) {
     if (!_enabled) return;
     _printBlock('➡️ REQUEST', '$method $path', {
-      if (queryParams != null && queryParams.isNotEmpty) 'query': queryParams,
-      if (data != null) 'body': data,
+      if (queryParams != null && queryParams.isNotEmpty)
+        'query': redact(queryParams),
+      if (data != null) 'body': redact(data),
     });
   }
 
@@ -31,7 +54,7 @@ class AppLogger {
   ) {
     if (!_enabled) return;
     _printBlock('✅ RESPONSE', '$method $path [$statusCode]', {
-      'data': _truncate(data),
+      'data': _truncate(redact(data)),
     });
   }
 
@@ -52,6 +75,35 @@ class AppLogger {
   static void info(String message) {
     if (!_enabled) return;
     debugPrint('ℹ️ [ObecnoAPI] $message');
+  }
+
+  /// Redacts passwords, tokens, and coordinates from log payloads.
+  /// Exposed for unit tests.
+  static dynamic redact(dynamic data) {
+    if (data == null) return null;
+    if (data is Map) {
+      return data.map((key, value) {
+        final k = key.toString().toLowerCase();
+        if (_sensitiveKeys.contains(k) ||
+            k.contains('password') ||
+            k.contains('token') ||
+            k == 'authorization') {
+          return MapEntry(key, '***');
+        }
+        return MapEntry(key, redact(value));
+      });
+    }
+    if (data is List) {
+      return data.map(redact).toList();
+    }
+    if (data is String) {
+      var s = data;
+      if (s.toLowerCase().startsWith('bearer ')) {
+        return 'Bearer ***';
+      }
+      return s;
+    }
+    return data;
   }
 
   static void _printBlock(
