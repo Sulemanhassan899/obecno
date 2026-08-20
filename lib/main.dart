@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:Obecno/core/state/multi_provider.dart';
-import 'package:Obecno/widgets/bottom_nav_bars/manager_nav.dart';
 import 'package:flutter/material.dart';
 
 import 'package:Obecno/core/binding/app_binding.dart';

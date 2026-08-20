@@ -4,7 +4,6 @@ import 'package:Obecno/features/employee_module/more/repositories/terms_provider
 import 'package:Obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/widgets/my_button.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 
 class TermsScreen extends StatefulWidget {

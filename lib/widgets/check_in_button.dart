@@ -1,5 +1,4 @@
 import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/animations/heart_beat_animation.dart';
 import 'package:Obecno/core/animations/ripple_animation%20.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';

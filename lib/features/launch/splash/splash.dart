@@ -9,7 +9,6 @@ import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/core/monitors/app_guard.dart';
 import 'package:Obecno/core/monitors/device_approval_guard.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 

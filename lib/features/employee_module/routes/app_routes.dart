@@ -1,7 +1,6 @@
 import 'package:Obecno/features/auth/presentation/screens/enable_permission.dart';
 import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:Obecno/features/auth/presentation/screens/login_pass.dart';
-import 'package:Obecno/features/auth/wrapper/auth_wrapper.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/device_blocked_screen.dart';
 
 import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';

@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/helpers/dialog.dart';
 
-import 'package:Obecno/features/launch/onboarding/onboarding.dart';
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/account_setting.dart';
@@ -22,7 +21,6 @@ import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 

@@ -15,8 +15,6 @@ import 'package:Obecno/shared/location/service/location_service.dart';
 import 'package:Obecno/shared/location/service/geofence_helper.dart';
 import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
 
-import '../../../../core/constants/app_enums.dart'
-    hide AttendanceActionResult;
 import '../../repositories/clock_attendance_repository.dart';
 import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';

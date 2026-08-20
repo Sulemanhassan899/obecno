@@ -5,7 +5,6 @@ import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 
-import 'package:Obecno/widgets/bottom_sheet.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';

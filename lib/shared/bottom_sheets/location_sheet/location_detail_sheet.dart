@@ -1,6 +1,5 @@
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_strings.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';

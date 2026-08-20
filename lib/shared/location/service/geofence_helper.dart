@@ -1,4 +1,3 @@
-import 'package:Obecno/core/constants/app_strings.dart';
 import 'package:geolocator/geolocator.dart';
 
 const String kNotInOfficeRangeMessage = "Not in office range";

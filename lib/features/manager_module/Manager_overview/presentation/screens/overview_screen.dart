@@ -3,7 +3,6 @@ import 'package:Obecno/demo/overview_model.dart';
 import 'package:Obecno/features/manager_module/Manager_overview/presentation/widgets/overview_header.dart';
 import 'package:flutter/material.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
 
 class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});

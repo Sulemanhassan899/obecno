@@ -7,7 +7,6 @@ import 'package:Obecno/features/clock/domain/controllers/clock_controller.dart';
 import 'package:Obecno/core/animations/app_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/services/connectivity_service.dart';
-import 'package:Obecno/core/services/logger.dart';
 import 'package:Obecno/core/services/permission_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:Obecno/core/constants/app_enums.dart'
@@ -16,13 +15,11 @@ import 'package:Obecno/core/constants/app_sizes.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/helpers/toast_helper.dart';
 import 'package:Obecno/features/clock/domain/controllers/synced_clock_screen_controller.dart';
-import 'package:Obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/main.dart';
 import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
 
-import 'package:Obecno/shared/bottom_sheets/detail_sheets/company_detail_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
 import 'package:Obecno/shared/location/service/attendance_permission_service.dart';
 import 'package:Obecno/shared/location/service/geofence_helper.dart';

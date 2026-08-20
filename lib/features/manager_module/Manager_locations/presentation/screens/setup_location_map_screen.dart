@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:Obecno/core/animations/button_animations.dart';
 import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/helpers/toast_helper.dart';

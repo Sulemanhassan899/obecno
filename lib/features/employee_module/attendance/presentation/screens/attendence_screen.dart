@@ -11,14 +11,11 @@ import 'package:Obecno/core/constants/text_styles.dart';
 
 import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:Obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:Obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
 import 'package:Obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
-import 'package:Obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
 import 'package:Obecno/shared/bottom_sheets/detail_sheets/attendance_details_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_sheet/hoilday_detail_sheet.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';

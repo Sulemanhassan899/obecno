@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/policy.dart';
 import 'package:Obecno/features/employee_module/more/presentation/screens/terms.dart';
 
 import 'package:Obecno/core/constants/app_fonts.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';
 
 import 'package:Obecno/widgets/term_text.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +17,6 @@ import 'package:Obecno/core/services/token_service.dart';
 
 import 'package:Obecno/widgets/common_image_view_widget.dart';
 import 'package:Obecno/widgets/my_button.dart';
-import 'package:Obecno/widgets/text_widget.dart';
 
 class OnBoardingScreen extends StatefulWidget {
   const OnBoardingScreen({super.key});

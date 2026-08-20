@@ -593,7 +593,6 @@ import 'package:Obecno/features/auth/providers/auth_provider.dart';
 import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
 import 'package:Obecno/core/monitors/app_guard.dart';
 import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/custom_checkbox_widget.dart';
 import 'package:Obecno/widgets/custom_textfield.dart';
 import 'package:Obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';

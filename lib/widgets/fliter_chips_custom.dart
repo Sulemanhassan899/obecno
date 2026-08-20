@@ -2,7 +2,6 @@ import 'package:Obecno/core/constants/app_fonts.dart';
 import 'package:flutter/material.dart';
 
 import 'package:Obecno/core/constants/all_colors.dart';
-import 'common_image_view_widget.dart';
 import 'text_widget.dart';
 
 class FliterChipCutom extends StatefulWidget {
