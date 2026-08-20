@@ -258,7 +258,8 @@ class _CheckInOutTimingSheetBodyState
                 children: [
                   Expanded(
                     flex: 2,
-                    child: MyButton(         height: 45,
+                    child: MyButton(
+                      size: MyButtonSize.normal,
                       buttonText: 'Reset',
                       backgroundColor: kWhite,
                       fontColor: kBlack,
@@ -269,7 +270,7 @@ class _CheckInOutTimingSheetBodyState
                   const SizedBox(width: 10),
                   Expanded(
                     flex: 4,
-                    child: MyButton(          height: 45,
+                    child: MyButton(
                       buttonText: 'Save',
                       backgroundColor: kPrimaryButtonColor,
                       onTap: _save,
@@ -331,7 +332,8 @@ class _TimingRow extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  ButtonAnimations.press(
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: onTap,
                     child: Row(
                       children: [
@@ -362,10 +364,7 @@ class _TimingRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (picker != null) ...[
-                    const SizedBox(height: 8),
-                    picker!,
-                  ],
+                  if (picker != null) ...[const SizedBox(height: 8), picker!],
                   if (!isLast) const SizedBox(height: 12),
                 ],
               ),
@@ -482,7 +481,8 @@ class _GraceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

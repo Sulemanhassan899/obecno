@@ -46,7 +46,7 @@ class DeleteLocationDialog {
                 Row(
                   children: [
                     MyButton(
-                      height: 45,
+                      size: MyButtonSize.normal,
                       width: 130,
                       buttonText: 'Cancel',
                       backgroundColor: kWhite,
@@ -56,8 +56,9 @@ class DeleteLocationDialog {
                     ),
                     const SizedBox(width: 10),
                     MyButton(
-                      height: 45,
+                      size: MyButtonSize.normal,
                       width: 200,
+                     
                       buttonText: 'Deactivate',
                       backgroundColor: kredColor,
                
@@ -116,7 +117,6 @@ class DeleteLocationDialog {
                 ),
                 const SizedBox(height: 30),
                 MyButton(
-                  height: 48,
                   buttonText: 'Delete Location',
                   backgroundColor: kredColor,
                   onTap: () async => Navigator.pop(
@@ -136,7 +136,6 @@ class DeleteLocationDialog {
                 // ),
                 // const SizedBox(height: 20),
                 MyButton(
-                  height: 48,
                   buttonText: 'Cancel',
                   backgroundColor: kWhite,
                   fontColor: kGreyColor,

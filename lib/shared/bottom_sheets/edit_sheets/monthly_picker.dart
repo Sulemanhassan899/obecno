@@ -214,6 +214,7 @@ class MonthYearContentState extends State<MonthYearContent> {
               children: [
                 Expanded(
                   child: MyButton(
+                    size: MyButtonSize.normal,
                     backgroundColor: kWhite,
                     buttonText: "Reset",
                     fontColor: kBlack,

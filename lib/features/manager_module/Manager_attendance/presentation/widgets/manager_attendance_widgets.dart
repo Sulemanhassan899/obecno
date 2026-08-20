@@ -539,7 +539,8 @@ class ManagerAttendanceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = _alertIcon();
 
-    return ButtonAnimations.press(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),

@@ -57,9 +57,8 @@ class ManagerLinkedDevicesSheet {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ManagerLinkedDevicesSheetBody(
-        employeeName: employeeName,
-      ),
+      builder: (_) =>
+          _ManagerLinkedDevicesSheetBody(employeeName: employeeName),
     );
   }
 }
@@ -338,20 +337,12 @@ class _DeviceCard extends StatelessWidget {
           const SizedBox(height: 8),
 
           /// Last used / Requested
-          AppText.p2(
-            device.detail,
-            color: kGreyColor,
-            align: TextAlign.left,
-          ),
+          AppText.p2(device.detail, color: kGreyColor, align: TextAlign.left),
 
           /// Approved/Rejected/Blocked by — hidden while pending
           if (actionedBy != null) ...[
             const SizedBox(height: 4),
-            AppText.p2(
-              actionedBy,
-              color: kGreyColor,
-              align: TextAlign.left,
-            ),
+            AppText.p2(actionedBy, color: kGreyColor, align: TextAlign.left),
           ],
 
           if (device.isCurrent) ...[
@@ -374,52 +365,52 @@ class _DeviceCard extends StatelessWidget {
           if (device.status == ManagerDeviceStatus.pending)
             Row(
               children: [
-                Expanded(
-                  child: MyButton(
-                    height: 44,
-                    radius: 25,
-                    buttonText: 'Approve',
-                    backgroundColor: kPrimaryColor,
-                    fontColor: kWhite,
-                    fontSize: 14,
-                    onTap: () async => onApprove(),
-                  ),
+                MyButton(
+                  size: MyButtonSize.normal,
+                  compact: false,
+                  radius: 25,
+                  height: 40,
+                  width: 120,
+                  buttonText: 'Approve',
+                  backgroundColor: kPrimaryColor,
+                  fontColor: kWhite,
+                  onTap: () async => onApprove(),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: MyButton(
-                    height: 44,
-                    radius: 25,
-                    buttonText: 'Reject',
-                    backgroundColor: kredColor,
-                    fontColor: kWhite,
-                    fontSize: 14,
-                    onTap: () async => onReject(),
-                  ),
+                MyButton(
+                  size: MyButtonSize.normal,
+                  compact: false,
+                  height: 40,
+                  radius: 25,
+                  width: 120,
+                  buttonText: 'Reject',
+                  backgroundColor: kredColor,
+                  fontColor: kWhite,
+                  onTap: () async => onReject(),
                 ),
               ],
             )
           else if (device.status == ManagerDeviceStatus.active)
             MyButton(
-              width: 120,
-              height: 44,
+              size: MyButtonSize.normal,
+              compact: true,
               radius: 25,
+              height: 40,
               buttonText: 'Block Device',
               backgroundColor: kWhite,
               fontColor: kRed,
-              fontSize: 12,
               outlineColor: kRed,
               onTap: () async => onBlock(),
             )
           else
             MyButton(
-              width: 140,
-              height: 44,
+              size: MyButtonSize.normal,
+              compact: true,
+              height: 40,
               radius: 25,
               buttonText: 'Unblock Device',
               backgroundColor: kWhite,
               fontColor: kGreyColor,
-              fontSize: 12,
               outlineColor: kBorderColor,
               onTap: () async => onUnblock(),
             ),

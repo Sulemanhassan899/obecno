@@ -218,7 +218,6 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
               mTop: 10,
               mBottom: 10,
               buttonText: 'Already have an account',
-              fontWeight: FontWeight.w400,
               backgroundColor: kPrimaryButtonColor,
               onTap: () async {
                 await TokenService().markOnboardingCompleted();
@@ -232,7 +231,6 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
               mBottom: 12,
               buttonText: 'Book a demo',
               hasiconRight: true,
-              fontWeight: FontWeight.w400,
               rightWidget: CommonImageView(
                 imagePath: Assets.imagesRightArrow,
                 height: 12,

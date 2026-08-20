@@ -20,6 +20,7 @@ import 'package:Obecno/main.dart';
 import 'package:Obecno/core/generated/assets.dart';
 
 import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:Obecno/widgets/resolved_location_text.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
@@ -422,7 +423,7 @@ class _AttendanceDetailsSheetBodyState
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 24),
+           const SizedBox(height: 32),
 
                             /// ================= TIMELINE HEADER =================
                             Row(
@@ -456,8 +457,19 @@ class _AttendanceDetailsSheetBodyState
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    GestureDetector(
-                      onTap: () {
+                    MyButton(
+                      size: MyButtonSize.normal,
+                      width: 200,
+                      buttonText: 'Edit Attendance',
+                      backgroundColor: kWhite,
+                      fontColor: kBlack,
+                      outlineColor: kBorderColor,
+                      hasicon: true,
+                      leftWidget: CommonImageView(
+                        imagePath: Assets.imagesPen,
+                        height: 16,
+                      ),
+                      onTap: () async {
                         Navigator.of(context).pop();
 
                         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -488,33 +500,6 @@ class _AttendanceDetailsSheetBodyState
                           onEditAttendance?.call();
                         });
                       },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: kWhite,
-                          border: Border.all(color: kBorderColor),
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                        child: Row(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: 4,
-                                left: 6,
-                              ),
-                              child: CommonImageView(
-                                imagePath: Assets.imagesPen,
-                                height: 16,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            AppText.caption(
-                              "Edit Attendance",
-                              weight: FontWeight.w500,
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ],
                 ),

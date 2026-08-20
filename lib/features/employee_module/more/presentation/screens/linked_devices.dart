@@ -167,10 +167,9 @@ class _LinkedDevicesState extends State<LinkedDevices> {
                             ),
                             const SizedBox(height: 16),
                             MyButton(
+                              size: MyButtonSize.normal,
                               width: 140,
-                              height: 40,
                               buttonText: "Retry",
-                              fontSize: 12,
                               onTap: () => deviceProvider.fetchDevices(),
                             ),
                           ],
@@ -292,12 +291,11 @@ class _LinkedDevicesState extends State<LinkedDevices> {
           ],
           const SizedBox(height: 16),
           MyButton(
-            width: 120,
-            height: 44,
+            size: MyButtonSize.normal,
+            compact: true,
             buttonText: isDeleting ? 'Deleting...' : 'Delete Request',
             backgroundColor: kWhite,
             fontColor: kRed,
-            fontSize: 12,
             outlineColor: kRed,
             radius: 25,
             onTap: isDeleting

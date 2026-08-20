@@ -122,7 +122,8 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                 ),
                 const Divider(height: 1, color: kDividerColor),
                 ...options.map(
-                  (option) => ButtonAnimations.press(
+                  (option) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.pop(sheetContext, option),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -323,7 +324,8 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                 children: [
                   Expanded(
                     flex: 2,
-                    child: MyButton(         height: 45,
+                    child: MyButton(
+                      size: MyButtonSize.normal,
                       buttonText: 'Reset',
                       backgroundColor: kWhite,
                       fontColor: kBlack,
@@ -336,8 +338,6 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                     flex: 4,
                     child: MyButton(
                       buttonText: 'Save',
-                      height: 45,
-
                       backgroundColor: kPrimaryButtonColor,
                       onTap: _save,
                     ),
@@ -365,7 +365,8 @@ class _DayTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -446,7 +447,8 @@ class _DropdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),

@@ -201,7 +201,7 @@ class _EditAccountFieldSheetBodyState
                     Expanded(
                       flex: 2,
                       child: MyButton(
-                        height: 45,
+                        size: MyButtonSize.normal,
                         buttonText: 'Cancel',
                         backgroundColor: kWhite,
                         fontColor: kBlack,
@@ -213,7 +213,6 @@ class _EditAccountFieldSheetBodyState
                     Expanded(
                       flex: 3,
                       child: MyButton(
-                        height: 45,
                         buttonText: 'Save',
                         backgroundColor: kPrimaryButtonColor,
                         onTap: _save,

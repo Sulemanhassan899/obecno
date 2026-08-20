@@ -94,7 +94,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                 ),
                 const Divider(height: 1, color: kDividerColor),
                 ..._durationOptions.map(
-                  (option) => ButtonAnimations.press(
+                  (option) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.pop(sheetContext, option),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -193,7 +194,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                       ),
                       child: Column(
                         children: [
-                          ButtonAnimations.press(
+                        GestureDetector(
+      behavior: HitTestBehavior.opaque,
                             onTap: _pickDuration,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -281,7 +283,7 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                   Expanded(
                     flex: 2,
                     child: MyButton(
-                      height: 45,
+                      size: MyButtonSize.normal,
                       buttonText: 'Reset',
                       backgroundColor: kWhite,
                       fontColor: kBlack,
@@ -293,7 +295,6 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                   Expanded(
                     flex: 3,
                     child: MyButton(
-                      height: 45,
                       buttonText: 'Save',
                       backgroundColor: kPrimaryButtonColor,
                       onTap: _save,

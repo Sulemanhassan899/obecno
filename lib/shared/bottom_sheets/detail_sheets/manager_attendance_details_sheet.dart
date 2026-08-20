@@ -361,7 +361,7 @@ class _ManagerAttendanceDetailsSheetBody extends StatelessWidget {
                     children: [
                       _SummaryCard(data: data),
                       if (hasAttendance && data.timeline.isNotEmpty) ...[
-                        const SizedBox(height: 22),
+                      const SizedBox(height: 32),
                         Row(
                           children: [
                             CommonImageView(
@@ -392,33 +392,19 @@ class _ManagerAttendanceDetailsSheetBody extends StatelessWidget {
                   child: hasAttendance
                       ? Align(
                           alignment: Alignment.centerRight,
-                          child: ButtonAnimations.press(
-                            onTap: () => onEditAttendance?.call(),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kWhite,
-                                border: Border.all(color: kBorderColor),
-                                borderRadius: BorderRadius.circular(28),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CommonImageView(
-                                    imagePath: Assets.imagesPen,
-                                    height: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  AppText.caption(
-                                    "Edit Attendance",
-                                    weight: FontWeight.w500,
-                                  ),
-                                ],
-                              ),
+                          child: MyButton(
+                            size: MyButtonSize.normal,
+                            width: 200,
+                            buttonText: 'Edit Attendance',
+                            backgroundColor: kWhite,
+                            fontColor: kBlack,
+                            outlineColor: kBorderColor,
+                            hasicon: true,
+                            leftWidget: CommonImageView(
+                              imagePath: Assets.imagesPen,
+                              height: 16,
                             ),
+                            onTap: () async => onEditAttendance?.call(),
                           ),
                         )
                       : MyButton(

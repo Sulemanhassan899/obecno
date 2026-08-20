@@ -177,22 +177,22 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                           Row(
                             children: [
                               MyButton(
-                                height: 45,
+                                size: MyButtonSize.normal,
                                 width: 200,
+                                height: 40,
                                 buttonText: 'Deactivated location',
                                 backgroundColor: kredColor,
-                                fontSize: 13,
                                 onTap: () async => _onDelete(),
                               ),
                               const SizedBox(width: 10),
                               MyButton(
-                                height: 45,
+                                size: MyButtonSize.normal,
                                 width: 130,
+                                height: 40,
                                 buttonText: 'Delete location',
                                 backgroundColor: kWhite,
                                 fontColor: kredColor,
                                 outlineColor: kredColor,
-                                fontSize: 13,
                                 onTap: () async => _onDeactivate(),
                               ),
                             ],

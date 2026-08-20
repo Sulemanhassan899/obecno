@@ -317,7 +317,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
                     Expanded(
                       flex: 2,
                       child: MyButton(
-                        height: 45,
+                        size: MyButtonSize.normal,
                         buttonText: 'Clear',
                         backgroundColor: kWhite,
                         fontColor: kBlack,
@@ -329,7 +329,6 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
                     Expanded(
                       flex: 4,
                       child: MyButton(
-                        height: 45,
                         buttonText: 'Send Invites',
                         backgroundColor: kPrimaryColor,
                         onTap: _sendInvites,

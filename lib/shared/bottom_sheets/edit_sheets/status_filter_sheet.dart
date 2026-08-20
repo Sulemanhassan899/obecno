@@ -52,11 +52,7 @@ class StatusFilterOption {
       label: 'Early Check-Out',
       icon: Assets.EarlyCheckOutInIcon,
     ),
-    StatusFilterOption(
-      id: 'absent',
-      label: 'Absent',
-      icon: Assets.AbsentIcon,
-    ),
+    StatusFilterOption(id: 'absent', label: 'Absent', icon: Assets.AbsentIcon),
   ];
 
   /// Maps overview / legacy labels → status option id.
@@ -193,15 +189,14 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
                 children: [
                   Expanded(
                     flex: 2,
-                    child: MyButton(         height: 45,
+                    child: MyButton(
+                      size: MyButtonSize.normal,
                       backgroundColor: kWhite,
                       outlineColor: kBorderColor,
                       fontColor: kBlack,
                       buttonText: 'Reset',
                       onTap: () async {
-                        setState(
-                          () => _selectedId = StatusFilterOption.allId,
-                        );
+                        setState(() => _selectedId = StatusFilterOption.allId);
                       },
                     ),
                   ),
@@ -210,7 +205,7 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
                     flex: 4,
                     child: MyButton(
                       backgroundColor: kPrimaryButtonColor,
-                      buttonText: 'Save',          height: 45,
+                      buttonText: 'Save',
                       onTap: () async {
                         Navigator.pop(context, _selectedId);
                       },

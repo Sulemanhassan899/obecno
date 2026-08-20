@@ -629,7 +629,7 @@ class DialogHelper {
                             if (cancelButtonText != null)
                               width != null
                                   ? MyButton(
-                                      height: height ?? 59,
+                                      size: MyButtonSize.normal,
                                       width:
                                           width, // ✅ fixed width when provided
                                       buttonText: cancelButtonText,
@@ -643,7 +643,7 @@ class DialogHelper {
                                     )
                                   : Expanded(
                                       child: MyButton(
-                                        height: height ?? 59,
+                                        size: MyButtonSize.normal,
                                         buttonText: cancelButtonText,
                                         onTap: () async {
                                           Navigator.pop(context);
@@ -663,7 +663,6 @@ class DialogHelper {
                             if (buttonText != null)
                               Expanded(
                                 child: MyButton(
-                                  height: height ?? 59,
                                   buttonText: buttonText,
                                   onTap: () async {
                                     Navigator.pop(context);

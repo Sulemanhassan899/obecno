@@ -55,9 +55,7 @@ class AttendanceMonthHeader extends StatelessWidget {
               onTap: () {
                 onPrevious();
               },
-              child: GestureDetector(
-                child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
-              ),
+              child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
             ),
           ),
         ),

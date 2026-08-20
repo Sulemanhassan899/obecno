@@ -222,125 +222,123 @@ class _LocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
+    return  GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: GestureDetector(
-        onLongPress: onLongPress,
-        child: Container(
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDefault ? kPrimaryColor : kBorderColor,
-              width: isDefault ? 1.5 : 1,
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDefault ? kPrimaryColor : kBorderColor,
+            width: isDefault ? 1.5 : 1,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AppText.p2(
-                            option.name,
-                            color: kBlack,
-                            weight: FontWeight.w600,
-                            align: TextAlign.left,
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: CommonImageView(
-                                  imagePath: Assets.imagesLocationDot,
-                                  height: 12,
-                                ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppText.p2(
+                          option.name,
+                          color: kBlack,
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: CommonImageView(
+                                imagePath: Assets.imagesLocationDot,
+                                height: 12,
                               ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: AppText.caption(
-                                  option.hasNoLocation
-                                      ? 'No Location'
-                                      : option.address!,
-                                  color: kGreyColor,
-                                  weight: FontWeight.w400,
-                                  align: TextAlign.left,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (isDefault) ...[
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kPrimaryColor2.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
                               child: AppText.caption(
-                                'Default',
-                                color: kPrimaryColor,
-                                weight: FontWeight.w600,
+                                option.hasNoLocation
+                                    ? 'No Location'
+                                    : option.address!,
+                                color: kGreyColor,
+                                weight: FontWeight.w400,
+                                align: TextAlign.left,
                               ),
                             ),
                           ],
+                        ),
+                        if (isDefault) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kPrimaryColor2.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: AppText.caption(
+                              'Default',
+                              color: kPrimaryColor,
+                              weight: FontWeight.w600,
+                            ),
+                          ),
                         ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    height: 22,
+                    width: 22,
+                    decoration: BoxDecoration(
+                      color: selected ? kPrimaryColor : kWhite,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: selected ? kPrimaryColor : kGreyColor3,
+                        width: 1.5,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Container(
-                      height: 22,
-                      width: 22,
-                      decoration: BoxDecoration(
-                        color: selected ? kPrimaryColor : kWhite,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: selected ? kPrimaryColor : kGreyColor3,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: selected
-                          ? const Icon(Icons.check, size: 14, color: kWhite)
-                          : null,
+                    child: selected
+                        ? const Icon(Icons.check, size: 14, color: kWhite)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+            if (option.isNear)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                color: const Color(0xFFEAF4FF),
+                child: Row(
+                  children: [
+                    CommonImageView(imagePath: Assets.GpsPin, height: 14),
+                    const SizedBox(width: 8),
+                    AppText.caption(
+                      'Near this location',
+                      color: kGreyColor,
+                      weight: FontWeight.w500,
+                      align: TextAlign.left,
                     ),
                   ],
                 ),
               ),
-              if (option.isNear)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  color: const Color(0xFFEAF4FF),
-                  child: Row(
-                    children: [
-                      CommonImageView(imagePath: Assets.GpsPin, height: 14),
-                      const SizedBox(width: 8),
-                      AppText.caption(
-                        'Near this location',
-                        color: kGreyColor,
-                        weight: FontWeight.w500,
-                        align: TextAlign.left,
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

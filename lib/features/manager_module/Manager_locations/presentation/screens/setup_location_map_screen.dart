@@ -213,14 +213,14 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                           ),
                         )
                       : (_searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _results = const []);
-                              },
-                            )),
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _results = const []);
+                                },
+                              )),
                   filled: true,
                   fillColor: kWhite,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -308,7 +308,8 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                   Positioned(
                     right: 16,
                     bottom: 16,
-                    child: ButtonAnimations.press(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: _locating ? null : () => _goToCurrentLocation(),
                       child: Container(
                         height: 48,

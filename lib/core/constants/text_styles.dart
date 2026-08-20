@@ -319,4 +319,44 @@ class AppText {
       textAlign: align ?? TextAlign.center,
     );
   }
+
+  /// Full-width / primary buttons — used by [MyButtonSize.big]
+  static Widget ButtonText(
+    String text, {
+    Color? color,
+    String? fontFamily,
+    FontWeight weight = FontWeight.w400,
+    TextAlign? align,
+  }) {
+    return TextWidget(
+      text: text,
+      size: 16,
+      fontFamily: fontFamily ?? AppFonts.Poppins,
+      weight: weight,
+      color: color ?? kBlack,
+      textAlign: align ?? TextAlign.center,
+      maxLines: 1,
+      textOverflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// Narrower buttons — used by [MyButtonSize.normal]
+  static Widget ButtonTextSmall(
+    String text, {
+    Color? color,
+    String? fontFamily,
+    FontWeight weight = FontWeight.w400,
+    TextAlign? align,
+  }) {
+    return TextWidget(
+      text: text,
+      size: 14,
+      fontFamily: fontFamily ?? AppFonts.Poppins,
+      weight: weight,
+      color: color ?? kBlack,
+      textAlign: align ?? TextAlign.center,
+      maxLines: 1,
+      textOverflow: TextOverflow.ellipsis,
+    );
+  }
 }

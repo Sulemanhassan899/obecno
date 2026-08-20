@@ -237,30 +237,30 @@ class _AnimSearchBarState extends State<AnimSearchBar>
                 ),
                 child: IgnorePointer(
                   ignoring: !isOpen,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: kBorderColor,
-                      borderRadius: BorderRadius.circular(30.0),
-                    ),
-                    child: AnimatedBuilder(
-                      animation: _con,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () async {
-                          widget.onSuffixTap();
-                          if (_textFieldValue.isEmpty ||
-                              widget.closeSearchOnSuffixTap) {
-                            await _close();
-                          } else {
-                            widget.textController.clear();
-                            _textFieldValue = '';
-                            widget.onChanged?.call('');
-                            setState(() {});
-                          }
-                        },
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      widget.onSuffixTap();
+                      if (_textFieldValue.isEmpty ||
+                          widget.closeSearchOnSuffixTap) {
+                        await _close();
+                      } else {
+                        widget.textController.clear();
+                        _textFieldValue = '';
+                        widget.onChanged?.call('');
+                        setState(() {});
+                      }
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: kBorderColor,
+                        borderRadius: BorderRadius.circular(30.0),
+                      ),
+                      child: AnimatedBuilder(
+                        animation: _con,
                         child:
                             widget.suffixIcon ??
                             Icon(
@@ -268,13 +268,13 @@ class _AnimSearchBarState extends State<AnimSearchBar>
                               size: 18.0,
                               color: widget.textFieldIconColor,
                             ),
+                        builder: (context, child) {
+                          return Transform.rotate(
+                            angle: _con.value * 2.0 * pi,
+                            child: child,
+                          );
+                        },
                       ),
-                      builder: (context, child) {
-                        return Transform.rotate(
-                          angle: _con.value * 2.0 * pi,
-                          child: child,
-                        );
-                      },
                     ),
                   ),
                 ),

@@ -13,6 +13,7 @@ import 'package:Obecno/core/constants/all_colors.dart';
 import 'package:Obecno/core/constants/text_styles.dart';
 import 'package:Obecno/core/generated/assets.dart';
 import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:Obecno/widgets/my_button.dart';
 import 'package:Obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
 import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:Obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
@@ -460,7 +461,7 @@ class _ClockAttendanceDetailsSheetBodyState
                         ),
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
 
                       /// ================= TIMELINE HEADER =================
                       Row(
@@ -514,8 +515,19 @@ class _ClockAttendanceDetailsSheetBodyState
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        GestureDetector(
-                          onTap: () {
+                        MyButton(
+                          size: MyButtonSize.normal,
+                          width: 200,
+                          buttonText: 'Edit Attendance',
+                          backgroundColor: kWhite,
+                          fontColor: kBlack,
+                          outlineColor: kBorderColor,
+                          hasicon: true,
+                          leftWidget: CommonImageView(
+                            imagePath: Assets.imagesPen,
+                            height: 16,
+                          ),
+                          onTap: () async {
                             AttendanceEvent? checkIn;
                             AttendanceEvent? checkOut;
                             AttendanceEvent? breakStart;
@@ -565,35 +577,6 @@ class _ClockAttendanceDetailsSheetBodyState
                               );
                             });
                           },
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: kWhite,
-                              border: Border.all(color: kBorderColor),
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            child: Row(
-                              spacing: 6,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: 4,
-                                    left: 6,
-                                  ),
-                                  child: CommonImageView(
-                                    imagePath: Assets.imagesMugHot,
-                                    height: 16,
-                                  ),
-                                ),
-                                AppText.caption(
-                                  "Edit Attendance",
-                                  weight: FontWeight.w500,
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
                       ],
                     ),

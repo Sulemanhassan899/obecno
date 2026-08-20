@@ -21,6 +21,7 @@ class SelectedFilterChip extends StatelessWidget {
     return ButtonAnimations.press(
       onTap: onTap,
       child: Container(
+        height: 40,
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -52,11 +53,7 @@ class SelectedFilterChip extends StatelessWidget {
 
 /// Tappable filter chip that opens a bottom sheet.
 class FilterChipButton extends StatelessWidget {
-  const FilterChipButton({
-    super.key,
-    required this.label,
-    required this.onTap,
-  });
+  const FilterChipButton({super.key, required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -66,8 +63,9 @@ class FilterChipButton extends StatelessWidget {
     return ButtonAnimations.press(
       onTap: onTap,
       child: Container(
+        height: 40,
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: kWhite,
           border: Border.all(color: kBorderColor),
@@ -76,11 +74,7 @@ class FilterChipButton extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: AppText.p2(
-                label,
-                color: kBlack,
-                align: TextAlign.left,
-              ),
+              child: AppText.p2(label, color: kBlack, align: TextAlign.left),
             ),
             const SizedBox(width: 6),
             const Icon(Icons.keyboard_arrow_down, size: 18),

@@ -192,6 +192,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                     Expanded(
                       flex: 2,
                       child: MyButton(
+                        size: MyButtonSize.normal,
                         buttonText: 'Clear',
                         backgroundColor: kWhite,
                         fontColor: kBlack,

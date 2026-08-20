@@ -163,8 +163,6 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
               radius: 30,
               backgroundColor: kBlack,
               fontColor: kWhite,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
               onTap: _loading ? () async {} : _handleContinue,
             ),
           ],
