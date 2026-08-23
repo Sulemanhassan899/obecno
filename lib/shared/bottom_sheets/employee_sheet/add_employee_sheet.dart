@@ -2,7 +2,8 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -54,16 +55,17 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
 
   String _locationLabel(String id) {
     if (id == LocationFilterOption.allId) return 'All Location';
-    final match = dummyManagerLocations.where((e) => e.id == id);
-    if (match.isEmpty) return 'All Location';
-    return match.first.name;
+    final match = context.read<ManagerLocationsProvider>().byId(id);
+    return match?.name ?? 'All Location';
   }
 
   Future<void> _pickLocation(_InviteRow row) async {
-    final locations = LocationFilterOption.demoMulti();
+    final locationsProvider = context.read<ManagerLocationsProvider>();
+    await locationsProvider.load();
+    if (!mounted) return;
     final selected = await LocationsFilterSheet.show(
       context,
-      locations: locations,
+      locations: locationsProvider.filterOptions,
       selectedId: row.locationId,
     );
     if (selected == null || !mounted) return;
@@ -135,10 +137,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
           const SizedBox(width: 10),
           ButtonAnimations.press(
             onTap: _shareLink,
-            child: CommonImageView(
-              imagePath: Assets.ShareButton,
-              height: 40,
-            ),
+            child: CommonImageView(imagePath: Assets.ShareButton, height: 40),
           ),
         ],
       ),
@@ -182,10 +181,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
             onTap: () => _pickLocation(row),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 14,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
                 color: kWhite,
                 borderRadius: BorderRadius.circular(12),
@@ -201,11 +197,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
                       align: TextAlign.left,
                     ),
                   ),
-                  const Icon(
-                    Icons.unfold_more,
-                    size: 18,
-                    color: kGreyColor,
-                  ),
+                  const Icon(Icons.unfold_more, size: 18, color: kGreyColor),
                 ],
               ),
             ),

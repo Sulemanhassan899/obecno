@@ -1,8 +1,26 @@
 import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 
 /// Pure filter helpers for manager team attendance (testable without UI).
 class ManagerAttendanceFilters {
   ManagerAttendanceFilters._();
+
+  static bool isAllStatus(String? selectedStatus) {
+    final value = (selectedStatus ?? '').trim();
+    if (value.isEmpty) return true;
+    final id = StatusFilterOption.idFromLabel(value);
+    return id == StatusFilterOption.allId;
+  }
+
+  static bool isAllLocations(String? selectedLocation) {
+    final value = (selectedLocation ?? '').trim();
+    if (value.isEmpty) return true;
+    return value == LocationFilterOption.allId ||
+        value.toLowerCase() == 'all locations' ||
+        value.toLowerCase() == 'locations';
+  }
 
   static String statusDisplayLabel(String raw) {
     switch (raw.toLowerCase().trim()) {
@@ -12,9 +30,11 @@ class ManagerAttendanceFilters {
       case 'break':
       case 'on break':
       case 'onbreak':
+      case 'on_break':
         return 'On Break';
       case 'late':
       case 'late check-in':
+      case 'late_checkin':
         return 'Late Check-in';
       case 'early':
       case 'early check-out':
@@ -32,36 +52,105 @@ class ManagerAttendanceFilters {
     }
   }
 
+  static bool matchesStatus(
+    ManagerTeamAttendanceItem item,
+    String selectedStatus,
+  ) {
+    if (isAllStatus(selectedStatus)) return true;
+    final id = StatusFilterOption.idFromLabel(selectedStatus);
+
+    if (StatusFilterOption.sameFamily(id, 'present')) return item.hasCheckIn;
+    if (StatusFilterOption.sameFamily(id, 'working')) return item.isActive;
+    if (StatusFilterOption.sameFamily(id, 'break')) return item.isOnBreak;
+    if (StatusFilterOption.sameFamily(id, 'late')) return item.isLate;
+    if (StatusFilterOption.sameFamily(id, 'absent')) return item.isAbsent;
+    if (StatusFilterOption.sameFamily(id, 'early_checkout')) {
+      return item.isEarlyCheckout;
+    }
+
+    final raw = item.status ?? '';
+    final label = item.statusLabel ?? '';
+    return StatusFilterOption.sameFamily(raw, id) ||
+        StatusFilterOption.sameFamily(label, selectedStatus) ||
+        StatusFilterOption.sameFamily(raw, selectedStatus);
+  }
+
+  static bool matchesLocation(
+    ManagerTeamAttendanceItem item, {
+    required String selectedLocation,
+    String? locationName,
+  }) {
+    if (isAllLocations(selectedLocation)) return true;
+    final selected = selectedLocation.trim().toLowerCase();
+    final id = (item.locationId ?? '').trim().toLowerCase();
+    if (id.isNotEmpty && id == selected) return true;
+
+    final targetName = (locationName ?? '').trim().toLowerCase();
+    if (targetName.isEmpty) return false;
+    return [
+      item.locationName ?? '',
+      item.currentLocation ?? '',
+    ].any((name) => name.trim().toLowerCase() == targetName);
+  }
+
+  static List<ManagerTeamAttendanceItem> applyItems({
+    required List<ManagerTeamAttendanceItem> source,
+    String selectedStatus = 'all',
+    String selectedLocation = 'all',
+    String? locationName,
+    String searchQuery = '',
+  }) {
+    var list = List<ManagerTeamAttendanceItem>.from(source);
+
+    if (!isAllStatus(selectedStatus)) {
+      list = list.where((item) => matchesStatus(item, selectedStatus)).toList();
+    }
+
+    if (!isAllLocations(selectedLocation)) {
+      list = list
+          .where(
+            (item) => matchesLocation(
+              item,
+              selectedLocation: selectedLocation,
+              locationName: locationName,
+            ),
+          )
+          .toList();
+    }
+
+    final q = searchQuery.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list
+          .where((item) => (item.employeeName ?? '').toLowerCase().contains(q))
+          .toList();
+    }
+
+    return list;
+  }
+
   static List<ManagerAttendanceModel> apply({
     required List<ManagerAttendanceModel> source,
     String selectedStatus = 'All Status',
     String selectedLocation = 'All Locations',
     String searchQuery = '',
   }) {
-    final isAllStatus =
-        selectedStatus == 'All Status' || selectedStatus == 'Status';
-    final isAllLocations =
-        selectedLocation == 'All Locations' || selectedLocation == 'Locations';
-
     var list = List<ManagerAttendanceModel>.from(source);
 
-    if (!isAllStatus) {
+    if (!isAllStatus(selectedStatus)) {
       list = list
           .where(
             (item) =>
+                StatusFilterOption.sameFamily(item.status, selectedStatus) ||
                 statusDisplayLabel(item.status).toLowerCase() ==
-                selectedStatus.toLowerCase(),
+                    selectedStatus.toLowerCase(),
           )
           .toList();
     }
 
-    if (!isAllLocations) {
+    if (!isAllLocations(selectedLocation)) {
+      final selected = selectedLocation.trim().toLowerCase();
       list = list
-          .where(
-            (item) =>
-                (item.team ?? '').toLowerCase() ==
-                selectedLocation.toLowerCase(),
-          )
+          .where((item) => (item.team ?? '').toLowerCase() == selected)
           .toList();
     }
 

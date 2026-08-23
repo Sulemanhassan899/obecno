@@ -2,10 +2,12 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/demo/manager_employee_model.dart';
-import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/filter_dropdown_chip.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_employee_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
@@ -35,6 +37,11 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   void initState() {
     super.initState();
     _selectedLocationId = widget.locationId ?? LocationFilterOption.allId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ManagerEmployeesProvider>().load();
+      context.read<ManagerLocationsProvider>().load();
+    });
   }
 
   @override
@@ -43,45 +50,35 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     super.dispose();
   }
 
-  List<ManagerEmployeeModel> get _locationEmployees {
+  List<ManagerEmployeeModel> _locationEmployees(
+    List<ManagerEmployeeModel> source,
+  ) {
     return ManagerEmployeeFilters.byLocation(
-      source: dummyManagerEmployees,
+      source: source,
       selectedLocationId: _selectedLocationId,
     );
   }
 
-  List<ManagerEmployeeModel> get _filtered {
+  List<ManagerEmployeeModel> _filtered(List<ManagerEmployeeModel> source) {
     return ManagerEmployeeFilters.byQuery(
-      source: _locationEmployees,
+      source: _locationEmployees(source),
       query: _query,
     );
   }
 
-  int get _total => _locationEmployees.length;
-  int get _active => _locationEmployees
-      .where((e) => e.status == ManagerEmployeeStatus.active)
-      .length;
-  int get _pending => _locationEmployees
-      .where((e) => e.status == ManagerEmployeeStatus.pending)
-      .length;
-  int get _disabled => _locationEmployees
-      .where((e) => e.status == ManagerEmployeeStatus.disabled)
-      .length;
-
-  String get _locationChipLabel {
+  String _locationChipLabel(ManagerLocationsProvider locationsProvider) {
     if (_selectedLocationId == LocationFilterOption.allId) {
       return 'Locations';
     }
-    final match =
-        dummyManagerLocations.where((e) => e.id == _selectedLocationId);
-    if (match.isEmpty) return 'Locations';
-    return match.first.name;
+    return locationsProvider.byId(_selectedLocationId)?.name ?? 'Locations';
   }
 
-  Future<void> _openLocationFilter() async {
+  Future<void> _openLocationFilter(
+    ManagerLocationsProvider locationsProvider,
+  ) async {
     final selected = await LocationsFilterSheet.show(
       context,
-      locations: LocationFilterOption.demoMulti(),
+      locations: locationsProvider.filterOptions,
       selectedId: _selectedLocationId,
     );
     if (selected == null || !mounted) return;
@@ -112,118 +109,180 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final employees = _filtered;
+    final employeesProvider = context.watch<ManagerEmployeesProvider>();
+    final locationsProvider = context.watch<ManagerLocationsProvider>();
+    final locationEmployees = _locationEmployees(employeesProvider.members);
+    final employees = _filtered(employeesProvider.members);
+    final counts = EmployeeDirectoryCounts.from(locationEmployees);
     final searchWidth = MediaQuery.sizeOf(context).width - 32;
+    final isInitialLoad =
+        employeesProvider.isLoading && employeesProvider.members.isEmpty;
 
     return Scaffold(
       backgroundColor: kbackground1,
       body: SafeArea(
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 52,
-                      child: _isSearching
-                          ? AnimSearchBar(
-                              key: const ValueKey('employees-search-open'),
-                              width: searchWidth,
-                              rtl: true,
-                              autoOpen: true,
-                              autoFocus: true,
-                              closeOnSubmit: false,
-                              closeSearchOnSuffixTap: true,
-                              boxShadow: true,
-                              animationDurationInMilli: 500,
-                              textFieldColor: kWhite,
-                              searchIconColor: kBlack,
-                              textFieldIconColor: kBlack,
-                              textController: _searchController,
-                              textInputAction: TextInputAction.search,
-                              style: const TextStyle(
-                                color: kBlack,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              prefixIcon: const Icon(Icons.search, size: 20),
-                              suffixIcon: const Icon(Icons.close, size: 18),
-                              onSuffixTap: () {},
-                              onSubmitted: (_) {},
-                              onChanged: (value) =>
-                                  setState(() => _query = value),
-                              searchBarOpen: (value) {
-                                if (value == 0) _closeSearch();
-                              },
-                            )
-                          : BackButtonBg(
-                              title: 'Employees',
-                              padding: EdgeInsets.zero,
-                              rightWidget: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ButtonAnimations.press(
-                                    onTap: _openSearch,
-                                    child: CommonImageView(
-                                      imagePath: Assets.imagesSearchButton,
-                                      height: 45,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await Future.wait([
+              employeesProvider.refresh(),
+              locationsProvider.refresh(),
+            ]);
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 52,
+                        child: _isSearching
+                            ? AnimSearchBar(
+                                key: const ValueKey('employees-search-open'),
+                                width: searchWidth,
+                                rtl: true,
+                                autoOpen: true,
+                                autoFocus: true,
+                                closeOnSubmit: false,
+                                closeSearchOnSuffixTap: true,
+                                boxShadow: true,
+                                animationDurationInMilli: 500,
+                                textFieldColor: kWhite,
+                                searchIconColor: kBlack,
+                                textFieldIconColor: kBlack,
+                                textController: _searchController,
+                                textInputAction: TextInputAction.search,
+                                style: const TextStyle(
+                                  color: kBlack,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                suffixIcon: const Icon(Icons.close, size: 18),
+                                onSuffixTap: () {},
+                                onSubmitted: (_) {},
+                                onChanged: (value) =>
+                                    setState(() => _query = value),
+                                searchBarOpen: (value) {
+                                  if (value == 0) _closeSearch();
+                                },
+                              )
+                            : BackButtonBg(
+                                title: 'Employees',
+                                padding: EdgeInsets.zero,
+                                rightWidget: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ButtonAnimations.press(
+                                      onTap: _openSearch,
+                                      child: CommonImageView(
+                                        imagePath: Assets.imagesSearchButton,
+                                        height: 45,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ManagerPlusButton(
-                                    onTap: () =>
-                                        AddEmployeeSheet.show(context),
-                                  ),
-                                ],
+                                    const SizedBox(width: 8),
+                                    ManagerPlusButton(
+                                      onTap: () =>
+                                          AddEmployeeSheet.show(context),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                    ),
-                    const SizedBox(height: 14),
-                    _EmployeeStatsBar(
-                      total: _total,
-                      active: _active,
-                      pending: _pending,
-                      disabled: _disabled,
-                    ),
-                    const SizedBox(height: 12),
-                    if (_selectedLocationId == LocationFilterOption.allId)
-                      FilterChipButton(
-                        label: _locationChipLabel,
-                        onTap: _openLocationFilter,
-                      )
-                    else
-                      SelectedFilterChip(
-                        label: _locationChipLabel,
-                        onTap: _openLocationFilter,
-                        onClear: () => setState(
-                          () =>
-                              _selectedLocationId = LocationFilterOption.allId,
-                        ),
                       ),
-                    const SizedBox(height: 14),
-                  ],
+                      const SizedBox(height: 14),
+                      _EmployeeStatsBar(
+                        total: counts.total,
+                        active: counts.active,
+                        pending: counts.pending,
+                        disabled: counts.disabled,
+                      ),
+                      const SizedBox(height: 12),
+                      if (_selectedLocationId == LocationFilterOption.allId)
+                        FilterChipButton(
+                          label: _locationChipLabel(locationsProvider),
+                          onTap: () => _openLocationFilter(locationsProvider),
+                        )
+                      else
+                        SelectedFilterChip(
+                          label: _locationChipLabel(locationsProvider),
+                          onTap: () => _openLocationFilter(locationsProvider),
+                          onClear: () => setState(
+                            () => _selectedLocationId =
+                                LocationFilterOption.allId,
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              sliver: SliverList.separated(
-                itemCount: employees.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  return _EmployeeCard(
-                    employee: employees[index],
-                    onTap: () => _openProfile(employees[index]),
-                  );
-                },
-              ),
-            ),
+              if (isInitialLoad)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (employeesProvider.hasError &&
+                  employeesProvider.members.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmployeesError(
+                    message:
+                        employeesProvider.errorMessage ??
+                        'Failed to load employees.',
+                    onRetry: employeesProvider.load,
+                  ),
+                )
+              else if (employees.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: AppText.p1('No employees found.', color: kSubText),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                  sliver: SliverList.separated(
+                    itemCount: employees.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      return _EmployeeCard(
+                        employee: employees[index],
+                        onTap: () => _openProfile(employees[index]),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmployeesError extends StatelessWidget {
+  const _EmployeesError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppText.p1(message, color: kSubText, align: TextAlign.center),
+            const SizedBox(height: 12),
+            TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
       ),
@@ -269,18 +328,18 @@ class _EmployeeStatsBar extends StatelessWidget {
   }
 
   Widget _divider() => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 10),
-        child: SizedBox(
-          height: 28,
-          child: VerticalDivider(width: 3, color: kDividerColor),
-        ),
-      );
+    padding: EdgeInsets.symmetric(horizontal: 10),
+    child: SizedBox(
+      height: 28,
+      child: VerticalDivider(width: 3, color: kDividerColor),
+    ),
+  );
 
   Widget _stat(String value, String label, Color color) {
     return Expanded(
       child: Column(
         children: [
-          AppText.h3(value, color: color,),
+          AppText.h3(value, color: color),
           const SizedBox(height: 2),
           AppText.caption(label, color: kGreyColor, weight: FontWeight.w500),
         ],
@@ -290,10 +349,7 @@ class _EmployeeStatsBar extends StatelessWidget {
 }
 
 class _EmployeeCard extends StatelessWidget {
-  const _EmployeeCard({
-    required this.employee,
-    required this.onTap,
-  });
+  const _EmployeeCard({required this.employee, required this.onTap});
 
   final ManagerEmployeeModel employee;
   final VoidCallback onTap;
@@ -326,7 +382,8 @@ class _EmployeeCard extends StatelessWidget {
           children: [
             ClipOval(
               child: CommonImageView(
-                imagePath: employee.photoPath,
+                url: employee.hasNetworkPhoto ? employee.photo : null,
+                imagePath: employee.hasNetworkPhoto ? null : employee.photoPath,
                 height: 44,
                 width: 44,
                 fit: BoxFit.cover,
@@ -394,7 +451,9 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: isManager ? const Color(0xFFEDE7FF) : kPrimaryColor2.withOpacity(0.5),
+        color: isManager
+            ? const Color(0xFFEDE7FF)
+            : kPrimaryColor2.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
       ),
       child: AppText.caption(

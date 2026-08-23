@@ -1,4 +1,4 @@
-import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/api/base_repository.dart';
@@ -12,7 +12,7 @@ class BookDemoRepository extends BaseRepository {
     BookDemoTicketModel model,
   ) {
     return postRequest<BookDemoTicketResult>(
-      ApiEndpoints.tickets,
+      EmployeeApiEndpoints.tickets,
       data: model.toJson(),
       parser: (json) {
         final decoded = json is Map<String, dynamic> ? json : null;

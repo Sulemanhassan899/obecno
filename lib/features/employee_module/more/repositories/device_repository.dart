@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:obecno/core/api/api_client.dart';
-import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
@@ -83,7 +83,7 @@ class DeviceRepository {
   ) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.registerdevices,
+        EmployeeApiEndpoints.registerdevices,
         data: payload,
       );
 
@@ -144,7 +144,7 @@ class DeviceRepository {
   /// GET /employee/devices
   Future<ApiResponse<DeviceListResponse>> fetchLinkedDevices() async {
     try {
-      final response = await _client.get(ApiEndpoints.devices);
+      final response = await _client.get(EmployeeApiEndpoints.devices);
       final decoded = _unwrapEnvelope(response.data);
 
       if (decoded == null) {
@@ -179,7 +179,9 @@ class DeviceRepository {
   /// Cancels / deletes a pending device registration request.
   Future<ApiResponse<bool>> deleteDevice(String id) async {
     try {
-      final response = await _client.delete(ApiEndpoints.deleteDevice(id));
+      final response = await _client.delete(
+        EmployeeApiEndpoints.deleteDevice(id),
+      );
       final decoded = _unwrapEnvelope(response.data);
 
       if (decoded == null) {

@@ -1,5 +1,5 @@
-class ApiEndpoints {
-  ApiEndpoints._();
+class EmployeeApiEndpoints {
+  EmployeeApiEndpoints._();
 
   // ---------------------------------------------------------------------
   // Auth
@@ -16,7 +16,6 @@ class ApiEndpoints {
   static const String attendance = "/employee/attendance";
   static const String attendanceDetails = "/employee/attendance/details";
   static const String attendanceEdit = "/employee/attendance/edit";
-
   static const String attendanceCalendar = "/employee/calendar";
 
   static String monthlyAttendance(String employeeId, String yearMonth) =>

@@ -25,7 +25,7 @@ class LocationFilterOption {
 
   static const all = LocationFilterOption(id: allId, name: 'All Locations');
 
-  /// Demo multi-location list. Mark nearest with [isNear].
+  /// Demo multi-location list. Prefer [ManagerLocationsProvider.filterOptions].
   static List<LocationFilterOption> demoMulti({String? nearestId}) {
     final items = [
       const LocationFilterOption(

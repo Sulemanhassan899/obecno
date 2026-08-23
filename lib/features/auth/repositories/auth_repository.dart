@@ -1,5 +1,5 @@
 import 'package:obecno/core/api/api_client.dart';
-import 'package:obecno/core/api/api_endpoints.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/auth/data/models/auth_user_model.dart';
@@ -16,7 +16,7 @@ class AuthRepository {
   Future<ApiResponse<bool>> checkEmail(String email) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.login,
+        EmployeeApiEndpoints.login,
         data: {'email': email},
       );
       return _parseCheckEmail(response.data, response.statusCode);
@@ -66,7 +66,7 @@ class AuthRepository {
   }) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.login,
+        EmployeeApiEndpoints.login,
         data: {'email': email, 'password': password, 'remember_me': rememberMe},
       );
       return _parseUserEnvelope(
@@ -84,7 +84,7 @@ class AuthRepository {
   Future<ApiResponse<AuthUserModel>> getCurrentUser() async {
     try {
       final response = await _client.get(
-        ApiEndpoints.currentUser,
+        EmployeeApiEndpoints.currentUser,
         skipAuthInterceptor: true,
       );
       return _parseUserEnvelope(
@@ -139,7 +139,7 @@ class AuthRepository {
 
   Future<ApiResponse<List<Map<String, dynamic>>>> fetchPermissions() async {
     try {
-      final response = await _client.get(ApiEndpoints.perimssion);
+      final response = await _client.get(EmployeeApiEndpoints.perimssion);
       final decoded = _asMap(response.data);
       if (decoded == null) {
         return ApiResponse.failure(
@@ -183,7 +183,7 @@ class AuthRepository {
   Future<ApiResponse<void>> forgotPassword(String email) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.forgot,
+        EmployeeApiEndpoints.forgot,
         data: {'email': email},
       );
       final decoded = _asMap(response.data);
@@ -212,7 +212,7 @@ class AuthRepository {
   }) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.changePassword,
+        EmployeeApiEndpoints.changePassword,
         data: {
           'current_password': currentPassword,
           'new_password': newPassword,

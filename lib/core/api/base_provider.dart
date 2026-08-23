@@ -38,6 +38,12 @@ abstract class BaseProvider extends ChangeNotifier {
   }
 
   @protected
+  void resetViewState() {
+    _status = ViewStatus.idle;
+    _errorMessage = null;
+  }
+
+  @protected
   ApiCancelToken newCancelToken(String operationKey) {
     _activeCalls[operationKey]?.cancel('Superseded by a newer request.');
     final token = ApiCancelToken();

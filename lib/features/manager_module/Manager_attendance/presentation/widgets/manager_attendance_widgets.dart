@@ -1,6 +1,9 @@
 import 'package:obecno/demo/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/filter_dropdown_chip.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
@@ -122,7 +125,7 @@ class _ManagerAttendanceHeaderState extends State<ManagerAttendanceHeader> {
                 closeSearchOnSuffixTap: true,
                 boxShadow: true,
                 animationDurationInMilli: 500,
-              
+
                 textFieldColor: kWhite,
                 searchIconColor: kBlack,
                 textFieldIconColor: kBlack,
@@ -133,7 +136,7 @@ class _ManagerAttendanceHeaderState extends State<ManagerAttendanceHeader> {
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
-               prefixIcon: const Icon(Icons.search, size: 20),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: const Icon(Icons.close, size: 18),
                 onSuffixTap: () {},
                 onSubmitted: (_) {},
@@ -178,6 +181,7 @@ class ManagerFilters extends StatefulWidget {
   const ManagerFilters({
     super.key,
     this.initialStatus,
+    this.initialLocationId,
     this.onStatusChanged,
     this.onLocationChanged,
     this.locations,
@@ -186,6 +190,7 @@ class ManagerFilters extends StatefulWidget {
 
   /// Pre-selected status from Overview (label or id). Null = All Status.
   final String? initialStatus;
+  final String? initialLocationId;
   final ValueChanged<String>? onStatusChanged;
   final ValueChanged<String>? onLocationChanged;
 
@@ -203,18 +208,39 @@ class _ManagerFiltersState extends State<ManagerFilters> {
   late String _selectedStatusId;
   late String _selectedLocationId;
 
-  List<LocationFilterOption> get _locations =>
-      widget.locations ?? LocationFilterOption.demoMulti();
+  List<LocationFilterOption> get _locations {
+    if (widget.locations != null) return widget.locations!;
+    return context.watch<ManagerLocationsProvider>().filterOptions;
+  }
 
-  bool get _hasStatusFilter => _selectedStatusId != StatusFilterOption.allId;
+  List<StatusFilterOption> get _statusOptions =>
+      context.watch<ManagerStatusFiltersProvider>().options;
 
-  bool get _hasLocationFilter =>
-      _selectedLocationId != LocationFilterOption.allId;
+  bool get _hasStatusFilter =>
+      _selectedStatusId != StatusFilterOption.allId &&
+      _selectedStatusId.isNotEmpty;
 
   String get _statusChipLabel {
     if (!_hasStatusFilter) return 'Status';
-    return StatusFilterOption.byId(_selectedStatusId)?.label ?? 'Status';
+    final fromStatic = StatusFilterOption.byId(_selectedStatusId)?.label;
+    if (fromStatic != null && fromStatic.isNotEmpty) return fromStatic;
+    final fromApi = StatusFilterOption.displayLabel(
+      _selectedStatusId,
+      _statusOptions,
+    );
+    if (fromApi.isNotEmpty && fromApi != 'Status') return fromApi;
+    final initial = widget.initialStatus?.trim();
+    if (initial != null &&
+        initial.isNotEmpty &&
+        initial.toLowerCase() != 'status' &&
+        initial.toLowerCase() != 'all status') {
+      return initial;
+    }
+    return 'Status';
   }
+
+  bool get _hasLocationFilter =>
+      _selectedLocationId != LocationFilterOption.allId;
 
   String get _locationChipLabel {
     if (!_hasLocationFilter) return 'Locations';
@@ -228,7 +254,13 @@ class _ManagerFiltersState extends State<ManagerFilters> {
   void initState() {
     super.initState();
     _selectedStatusId = StatusFilterOption.idFromLabel(widget.initialStatus);
-    _selectedLocationId = LocationFilterOption.allId;
+    _selectedLocationId =
+        widget.initialLocationId ?? LocationFilterOption.allId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ManagerStatusFiltersProvider>().ensureLoaded();
+      context.read<ManagerLocationsProvider>().load();
+    });
   }
 
   @override
@@ -241,17 +273,27 @@ class _ManagerFiltersState extends State<ManagerFilters> {
         );
       });
     }
+    if (oldWidget.initialLocationId != widget.initialLocationId &&
+        widget.initialLocationId != null) {
+      setState(() => _selectedLocationId = widget.initialLocationId!);
+    }
   }
 
   Future<void> _openStatusSheet() async {
+    final filtersProvider = context.read<ManagerStatusFiltersProvider>();
+    await filtersProvider.ensureLoaded();
+    if (!mounted) return;
     final result = await StatusFilterSheet.show(
       context,
-      selectedId: _selectedStatusId,
+      selectedId: StatusFilterOption.idFromLabel(
+        _selectedStatusId,
+        filtersProvider.options,
+      ),
+      options: filtersProvider.options,
     );
     if (result == null || !mounted) return;
     setState(() => _selectedStatusId = result);
-    final label = StatusFilterOption.byId(result)?.label ?? 'All Status';
-    widget.onStatusChanged?.call(label);
+    widget.onStatusChanged?.call(result);
   }
 
   Future<void> _openLocationSheet() async {
@@ -266,27 +308,17 @@ class _ManagerFiltersState extends State<ManagerFilters> {
     );
     if (result == null || !mounted) return;
     setState(() => _selectedLocationId = result);
-    if (result == LocationFilterOption.allId) {
-      widget.onLocationChanged?.call('All Locations');
-    } else {
-      final name = _locations
-          .firstWhere(
-            (e) => e.id == result,
-            orElse: () => LocationFilterOption.all,
-          )
-          .name;
-      widget.onLocationChanged?.call(name);
-    }
+    widget.onLocationChanged?.call(result);
   }
 
   void _clearStatus() {
     setState(() => _selectedStatusId = StatusFilterOption.allId);
-    widget.onStatusChanged?.call('All Status');
+    widget.onStatusChanged?.call(StatusFilterOption.allId);
   }
 
   void _clearLocation() {
     setState(() => _selectedLocationId = LocationFilterOption.allId);
-    widget.onLocationChanged?.call('All Locations');
+    widget.onLocationChanged?.call(LocationFilterOption.allId);
   }
 
   @override
@@ -501,10 +533,8 @@ class ManagerAttendanceTile extends StatelessWidget {
     );
   }
 
-  Widget _connector() => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8),
-        child: Dot(),
-      );
+  Widget _connector() =>
+      const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Dot());
 
   /// Right-side: times and/or status badge.
   /// Leave rows: `5 Days` / `09:05 AM` —●——●— `On Leave`

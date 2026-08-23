@@ -2,19 +2,39 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
-class AllLocationsScreen extends StatelessWidget {
+class AllLocationsScreen extends StatefulWidget {
   const AllLocationsScreen({super.key});
 
   @override
+  State<AllLocationsScreen> createState() => _AllLocationsScreenState();
+}
+
+class _AllLocationsScreenState extends State<AllLocationsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ManagerLocationsProvider>().load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final provider = context.watch<ManagerLocationsProvider>();
+    final locations = provider.locations;
+    final isInitialLoad = provider.isLoading && locations.isEmpty;
+
     return Scaffold(
       backgroundColor: kbackground1,
       body: SafeArea(
@@ -32,25 +52,65 @@ class AllLocationsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  itemCount: dummyManagerLocations.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final location = dummyManagerLocations[index];
-                    return _LocationCard(
-                      location: location,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                LocationOverviewScreen(location: location),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                child: RefreshIndicator(
+                  onRefresh: provider.refresh,
+                  child: isInitialLoad
+                      ? const Center(child: CircularProgressIndicator())
+                      : provider.hasError && locations.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 80),
+                            AppText.p1(
+                              provider.errorMessage ??
+                                  'Failed to load locations.',
+                              color: kSubText,
+                              align: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            Center(
+                              child: TextButton(
+                                onPressed: provider.load,
+                                child: const Text('Retry'),
+                              ),
+                            ),
+                          ],
+                        )
+                      : locations.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 80),
+                            AppText.p1(
+                              'No locations found.',
+                              color: kSubText,
+                              align: TextAlign.center,
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 20),
+                          itemCount: locations.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final location = locations[index];
+                            return _LocationCard(
+                              location: location,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => LocationOverviewScreen(
+                                      location: location,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
                 ),
               ),
             ],
@@ -108,7 +168,9 @@ class _LocationCard extends StatelessWidget {
                             const SizedBox(width: 6),
                             Expanded(
                               child: AppText.p2(
-                                location.address,
+                                location.address.isEmpty
+                                    ? 'No Location'
+                                    : location.address,
                                 color: kGreyColor,
                                 align: TextAlign.left,
                               ),
@@ -120,7 +182,10 @@ class _LocationCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   CommonImageView(
-                    imagePath: location.imagePath,
+                    url: location.hasNetworkImage ? location.image : null,
+                    imagePath: location.hasNetworkImage
+                        ? null
+                        : location.imagePath,
                     height: 52,
                     width: 52,
                     fit: BoxFit.cover,
@@ -129,7 +194,6 @@ class _LocationCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 24),
-
               Row(
                 children: [
                   Expanded(

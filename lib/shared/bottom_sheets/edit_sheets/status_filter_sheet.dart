@@ -55,42 +55,89 @@ class StatusFilterOption {
     StatusFilterOption(id: 'absent', label: 'Absent', icon: Assets.AbsentIcon),
   ];
 
-  /// Maps overview / legacy labels → status option id.
-  static String idFromLabel(String? label) {
-    if (label == null || label.trim().isEmpty) return allId;
-    switch (label.toLowerCase().trim()) {
-      case 'all status':
-      case 'status':
-      case 'all':
-        return allId;
-      case 'present today':
-      case 'present':
-        return 'present';
-      case 'active / working':
-      case 'active':
-      case 'working':
-        return 'working';
-      case 'on break':
-      case 'break':
-        return 'break';
-      case 'late check-in':
-      case 'late':
-        return 'late';
-      case 'early check-out':
-      case 'early checkout':
-        return 'early_checkout';
-      case 'absent':
-        return 'absent';
-      default:
-        return allId;
+  static String _norm(String value) =>
+      value.toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
+
+  static const _families = <Set<String>>[
+    {'all', 'allstatus', 'status'},
+    {'present', 'presenttoday'},
+    {'working', 'active', 'activeworking', 'inprogress'},
+    {'break', 'onbreak'},
+    {'late', 'latecheckin'},
+    {'earlycheckout', 'early'},
+    {'absent'},
+  ];
+
+  static bool sameFamily(String a, String b) {
+    final left = _norm(a);
+    final right = _norm(b);
+    if (left.isEmpty || right.isEmpty) return false;
+    if (left == right) return true;
+    for (final family in _families) {
+      if (family.contains(left) && family.contains(right)) return true;
     }
+    return false;
   }
 
-  static StatusFilterOption? byId(String id) {
-    for (final o in options) {
-      if (o.id == id) return o;
+  /// Maps overview / legacy labels → status option id.
+  static String idFromLabel(
+    String? label, [
+    List<StatusFilterOption>? options,
+  ]) {
+    if (label == null || label.trim().isEmpty) return allId;
+    final normalized = label.toLowerCase().trim();
+    final list = options ?? StatusFilterOption.options;
+
+    String? matchIn(List<StatusFilterOption> source, {required bool exact}) {
+      for (final option in source) {
+        if (exact) {
+          if (option.id.toLowerCase() == normalized ||
+              option.label.toLowerCase() == normalized) {
+            return option.id;
+          }
+        } else if (sameFamily(option.id, label) ||
+            sameFamily(option.label, label)) {
+          return option.id;
+        }
+      }
+      return null;
+    }
+
+    return matchIn(list, exact: true) ??
+        matchIn(list, exact: false) ??
+        matchIn(StatusFilterOption.options, exact: true) ??
+        matchIn(StatusFilterOption.options, exact: false) ??
+        allId;
+  }
+
+  static StatusFilterOption? byId(
+    String id, [
+    List<StatusFilterOption>? options,
+  ]) {
+    final list = options ?? StatusFilterOption.options;
+    for (final option in list) {
+      if (option.id == id) return option;
+    }
+    for (final option in list) {
+      if (sameFamily(option.id, id) || sameFamily(option.label, id)) {
+        return option;
+      }
     }
     return null;
+  }
+
+  static String displayLabel(
+    String? idOrLabel, [
+    List<StatusFilterOption>? options,
+  ]) {
+    if (idOrLabel == null || idOrLabel.trim().isEmpty) return 'Status';
+    final resolved = idFromLabel(idOrLabel, options);
+    if (resolved == allId) {
+      return byId(idOrLabel)?.label ?? 'Status';
+    }
+    return byId(resolved, options)?.label ??
+        byId(resolved)?.label ??
+        idOrLabel;
   }
 }
 
@@ -100,20 +147,25 @@ class StatusFilterSheet {
   static Future<String?> show(
     BuildContext context, {
     String selectedId = StatusFilterOption.allId,
+    List<StatusFilterOption>? options,
   }) {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _StatusFilterSheetBody(initialSelectedId: selectedId),
+      builder: (_) => _StatusFilterSheetBody(
+        initialSelectedId: selectedId,
+        options: options,
+      ),
     );
   }
 }
 
 class _StatusFilterSheetBody extends StatefulWidget {
-  const _StatusFilterSheetBody({required this.initialSelectedId});
+  const _StatusFilterSheetBody({required this.initialSelectedId, this.options});
 
   final String initialSelectedId;
+  final List<StatusFilterOption>? options;
 
   @override
   State<_StatusFilterSheetBody> createState() => _StatusFilterSheetBodyState();
@@ -128,8 +180,15 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
     _selectedId = widget.initialSelectedId;
   }
 
+  List<StatusFilterOption> get _options =>
+      (widget.options != null && widget.options!.isNotEmpty)
+      ? widget.options!
+      : StatusFilterOption.options;
+
   @override
   Widget build(BuildContext context) {
+    final options = _options;
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.85,
@@ -169,11 +228,12 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
               child: ListView.separated(
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                itemCount: StatusFilterOption.options.length,
+                itemCount: options.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
-                  final option = StatusFilterOption.options[index];
-                  final selected = option.id == _selectedId;
+                  final option = options[index];
+                  final selected = option.id == _selectedId ||
+                      StatusFilterOption.sameFamily(option.id, _selectedId);
                   return _StatusOptionTile(
                     option: option,
                     selected: selected,

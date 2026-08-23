@@ -15,6 +15,11 @@ import 'package:obecno/features/employee_module/more/providers/profile_provider.
 import 'package:obecno/features/employee_module/more/repositories/privacy_provider.dart';
 import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/features/employee_module/routes/app_routes.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
@@ -87,6 +92,26 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<LocationProvider>(
           notifier: bindings.locationProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ManagerOverviewProvider>(
+          notifier: bindings.managerOverviewProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ManagerLocationsProvider>(
+          notifier: bindings.managerLocationsProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ManagerEmployeesProvider>(
+          notifier: bindings.managerEmployeesProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ManagerStatusFiltersProvider>(
+          notifier: bindings.managerStatusFiltersProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ManagerAttendanceProvider>(
+          notifier: bindings.managerAttendanceProvider,
           child: child,
         ),
         (child) => ChangeNotifierProvider<ThemeProvider>(

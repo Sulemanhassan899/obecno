@@ -1,62 +1,6 @@
-import 'package:obecno/core/generated/assets.dart';
+export 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 
-class ManagerLocationModel {
-  const ManagerLocationModel({
-    required this.id,
-    required this.name,
-    required this.address,
-    this.image,
-    this.latitude,
-    this.longitude,
-    this.present = 0,
-    this.total = 0,
-    this.lateCheckIns = 0,
-    this.createdBy = 'Ava Montgomery',
-    this.createdAt = '20 Jan 2026',
-  });
-
-  final String id;
-  final String name;
-  final String address;
-  final String? image;
-  final double? latitude;
-  final double? longitude;
-  final int present;
-  final int total;
-  final int lateCheckIns;
-  final String createdBy;
-  final String createdAt;
-
-  String get imagePath => image ?? Assets.imagesDummyMaps;
-
-  ManagerLocationModel copyWith({
-    String? id,
-    String? name,
-    String? address,
-    String? image,
-    double? latitude,
-    double? longitude,
-    int? present,
-    int? total,
-    int? lateCheckIns,
-    String? createdBy,
-    String? createdAt,
-  }) {
-    return ManagerLocationModel(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      address: address ?? this.address,
-      image: image ?? this.image,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
-      present: present ?? this.present,
-      total: total ?? this.total,
-      lateCheckIns: lateCheckIns ?? this.lateCheckIns,
-      createdBy: createdBy ?? this.createdBy,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-}
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 
 final List<ManagerLocationModel> dummyManagerLocations = [
   const ManagerLocationModel(

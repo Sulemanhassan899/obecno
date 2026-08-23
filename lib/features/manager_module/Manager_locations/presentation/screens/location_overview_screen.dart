@@ -249,7 +249,9 @@ class _LocationOverviewStatsCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: _OverviewStatItem(data: items[a], onTap: onStatTap)),
+            Expanded(
+              child: _OverviewStatItem(data: items[a], onTap: onStatTap),
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: VerticalDivider(
@@ -258,7 +260,9 @@ class _LocationOverviewStatsCard extends StatelessWidget {
                 color: kDividerColor,
               ),
             ),
-            Expanded(child: _OverviewStatItem(data: items[b], onTap: onStatTap)),
+            Expanded(
+              child: _OverviewStatItem(data: items[b], onTap: onStatTap),
+            ),
           ],
         ),
       );
