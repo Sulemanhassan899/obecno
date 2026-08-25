@@ -15,6 +15,26 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+
+    // Plus plugins (device_info_plus, package_info_plus) still apply
+    // kotlin-android from a 1.7.22 buildscript classpath. That mixed KGP
+    // produces incomplete release class jars, and GeneratedPluginRegistrant
+    // then fails with "cannot find symbol DeviceInfoPlusPlugin".
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id.startsWith("org.jetbrains.kotlin")) {
+                useVersion("2.2.20")
+            }
+        }
+    }
+}
+
+gradle.beforeProject {
+    buildscript.configurations.findByName("classpath")?.resolutionStrategy?.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") {
+            useVersion("2.2.20")
+        }
+    }
 }
 
 plugins {
