@@ -15,7 +15,6 @@ import 'package:obecno/features/manager_module/Manager_attendance/providers/mana
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
-import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:flutter/material.dart';
 
 class ManagerEmployeeAttendanceSheet {
