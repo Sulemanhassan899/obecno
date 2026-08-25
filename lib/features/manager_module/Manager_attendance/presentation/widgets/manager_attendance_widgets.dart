@@ -266,12 +266,10 @@ class _ManagerFiltersState extends State<ManagerFilters> {
   @override
   void didUpdateWidget(covariant ManagerFilters oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialStatus != widget.initialStatus) {
-      setState(() {
-        _selectedStatusId = StatusFilterOption.idFromLabel(
-          widget.initialStatus,
-        );
-      });
+    final nextStatus = StatusFilterOption.idFromLabel(widget.initialStatus);
+    if (oldWidget.initialStatus != widget.initialStatus &&
+        nextStatus != _selectedStatusId) {
+      setState(() => _selectedStatusId = nextStatus);
     }
     if (oldWidget.initialLocationId != widget.initialLocationId &&
         widget.initialLocationId != null) {
@@ -373,9 +371,24 @@ class ManagerAttendanceTile extends StatelessWidget {
 
   bool get _hasTeam => data.team != null && data.team!.trim().isNotEmpty;
 
-  bool get _hasStatus => data.status.trim().isNotEmpty;
+  bool get _isRecognizedStatus {
+    switch (data.status.toLowerCase().trim()) {
+      case "working":
+      case "active":
+      case "break":
+      case "onbreak":
+      case "on break":
+      case "late":
+      case "leave":
+      case "on leave":
+        return true;
+      default:
+        return false;
+    }
+  }
 
-  bool get _showEmptyState => !_hasCheckIn && !_hasCheckOut && !_hasStatus;
+  bool get _showEmptyState =>
+      !_hasCheckIn && !_hasCheckOut && !_isRecognizedStatus;
 
   bool get _isLate => data.status.toLowerCase() == "late";
 
@@ -383,7 +396,6 @@ class ManagerAttendanceTile extends StatelessWidget {
     switch (data.status.toLowerCase().trim()) {
       case "leave":
       case "on leave":
-      case "absent":
         return true;
       default:
         return false;
@@ -405,7 +417,6 @@ class ManagerAttendanceTile extends StatelessWidget {
         return "Late";
       case "leave":
       case "on leave":
-      case "absent":
         return "On Leave";
       default:
         return "";
@@ -425,7 +436,6 @@ class ManagerAttendanceTile extends StatelessWidget {
         return const Color(0xFFFFF4E0);
       case "leave":
       case "on leave":
-      case "absent":
         return const Color(0xFFE8F1FF);
       default:
         return kgreenColorLight;
@@ -445,7 +455,6 @@ class ManagerAttendanceTile extends StatelessWidget {
         return const Color(0xFFCC8B00);
       case "leave":
       case "on leave":
-      case "absent":
         return const Color(0xFF3B82F6);
       default:
         return kPrimaryColor;
@@ -573,7 +582,7 @@ class ManagerAttendanceTile extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -612,13 +621,6 @@ class ManagerAttendanceTile extends StatelessWidget {
                                 color: _roleTextColor(),
                                 weight: FontWeight.w500,
                               ),
-                            ),
-                          if (_hasRole && _hasTeam) const SizedBox(width: 6),
-                          if (_hasTeam)
-                            AppText.caption(
-                              "[${data.team!}]",
-                              color: kGreyColor,
-                              weight: FontWeight.w400,
                             ),
                         ],
                       ),

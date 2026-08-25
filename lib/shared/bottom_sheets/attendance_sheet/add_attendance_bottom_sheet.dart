@@ -31,6 +31,11 @@ class AddAttendanceBottomSheet {
     String? breakStartDetailId,
     String? breakEndDetailId,
     int? attendanceId,
+    int? employeeUserId,
+    bool applyImmediately = false,
+    bool hadInitialCheckOut = false,
+    bool hadInitialBreakStart = false,
+    bool hadInitialBreakEnd = false,
   }) {
     final contentKey = GlobalKey<_AttendanceContentState>();
 
@@ -41,7 +46,9 @@ class AddAttendanceBottomSheet {
       buttonColor: kBlack,
       buttonFontColor: kWhite,
 
-      onButtonTap: () => contentKey.currentState?.handleSave(),
+      onButtonTap: () async {
+        await contentKey.currentState?.handleSave();
+      },
       children: [
         _AttendanceContent(
           key: contentKey,
@@ -60,6 +67,12 @@ class AddAttendanceBottomSheet {
           breakStartDetailId: breakStartDetailId,
           breakEndDetailId: breakEndDetailId,
           attendanceId: attendanceId,
+          employeeUserId: employeeUserId,
+          applyImmediately: applyImmediately,
+          hadInitialCheckOut: hadInitialCheckOut || initialCheckOut != null,
+          hadInitialBreakStart:
+              hadInitialBreakStart || initialBreakStart != null,
+          hadInitialBreakEnd: hadInitialBreakEnd || initialBreakEnd != null,
         ),
       ],
     );
@@ -79,6 +92,11 @@ class _AttendanceContent extends StatefulWidget {
   final String? breakStartDetailId;
   final String? breakEndDetailId;
   final int? attendanceId;
+  final int? employeeUserId;
+  final bool applyImmediately;
+  final bool hadInitialCheckOut;
+  final bool hadInitialBreakStart;
+  final bool hadInitialBreakEnd;
 
   const _AttendanceContent({
     super.key,
@@ -94,6 +112,11 @@ class _AttendanceContent extends StatefulWidget {
     this.breakStartDetailId,
     this.breakEndDetailId,
     this.attendanceId,
+    this.employeeUserId,
+    this.applyImmediately = false,
+    this.hadInitialCheckOut = false,
+    this.hadInitialBreakStart = false,
+    this.hadInitialBreakEnd = false,
   });
 
   @override
@@ -388,7 +411,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
     }
 
     try {
-      if (payloads.isEmpty) {
+      if (payloads.isEmpty && !widget.applyImmediately) {
         if (!mounted) return;
         ToastHelper.error(
           context,
@@ -403,20 +426,56 @@ class _AttendanceContentState extends State<_AttendanceContent>
           (await bindings.deviceInfoService.collect()).deviceDetails;
       final gps = await _currentLatLon();
 
-      final result = await AttendanceService(widget.apiClient)
-          .submitAttendanceChangeRequests(
-            attendanceId: widget.attendanceId,
-            deviceDetails: deviceDetails,
-            lat: gps.lat,
-            lon: gps.lon,
-            changes: payloads,
-          );
+      String clock(TimeOfDay t) =>
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
+
+      String? clockIf(TimeOfDay t, {required bool include}) =>
+          include ? clock(t) : null;
+
+      final result = widget.applyImmediately
+          ? await bindings.managerAttendanceService.saveEmployeeAttendance(
+              attendanceId: widget.attendanceId,
+              userId: widget.employeeUserId,
+              day: widget.day,
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+              checkIn: clock(checkIn),
+              checkOut: clockIf(
+                checkOut,
+                include:
+                    widget.hadInitialCheckOut ||
+                    _timeChanged(widget.initialCheckOut, checkOut),
+              ),
+              breakStart: clockIf(
+                breakStart,
+                include:
+                    widget.hadInitialBreakStart ||
+                    _timeChanged(widget.initialBreakStart, breakStart),
+              ),
+              breakEnd: clockIf(
+                breakEnd,
+                include:
+                    widget.hadInitialBreakEnd ||
+                    _timeChanged(widget.initialBreakEnd, breakEnd),
+              ),
+              changes: payloads,
+            )
+          : await AttendanceService(
+              widget.apiClient,
+            ).submitAttendanceChangeRequests(
+              attendanceId: widget.attendanceId,
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+              changes: payloads,
+            );
 
       if (!mounted) return;
 
       final success = result.success;
 
-      if (success && localRequests.isNotEmpty) {
+      if (success && !widget.applyImmediately && localRequests.isNotEmpty) {
         await AttendanceEditRequestStore.instance.addMany(
           day: widget.day,
           requests: localRequests,
@@ -426,18 +485,30 @@ class _AttendanceContentState extends State<_AttendanceContent>
       if (!mounted) return;
 
       if (success) {
-        ToastHelper.attendanceRequestSent(
-          context,
-          ok: true,
-          message: result.data,
-        );
+        if (widget.applyImmediately) {
+          ToastHelper.changesSaved(context);
+          bindings.managerAttendanceProvider.refresh();
+        } else {
+          ToastHelper.attendanceRequestSent(
+            context,
+            ok: true,
+            message: result.data,
+          );
+        }
         Navigator.of(context).pop();
       } else {
-        ToastHelper.attendanceRequestSent(
-          context,
-          ok: false,
-          message: result.message,
-        );
+        if (widget.applyImmediately) {
+          ToastHelper.error(
+            context,
+            message: result.message ?? 'Failed to update attendance.',
+          );
+        } else {
+          ToastHelper.attendanceRequestSent(
+            context,
+            ok: false,
+            message: result.message,
+          );
+        }
         setState(() => _isSaving = false);
       }
     } catch (_) {

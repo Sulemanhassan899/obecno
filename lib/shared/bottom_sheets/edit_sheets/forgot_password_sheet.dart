@@ -20,7 +20,9 @@ class ForgotPasswordSheet extends StatelessWidget {
       context: context,
       height: 520,
       buttonText: "",
-      onButtonTap: () {},
+      onButtonTap: () async {
+        Navigator.pop(context);
+      },
       children: [_ForgotPasswordContent(email: email)],
     );
   }

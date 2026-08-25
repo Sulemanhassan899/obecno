@@ -114,9 +114,72 @@ class ManagerTeamAttendanceItem {
 
   bool get isActive => isOpen && !isOnBreak;
 
+  bool get isOnLeave {
+    final raw = '${status ?? ''} ${statusLabel ?? ''}'.toLowerCase();
+    return raw.contains('leave');
+  }
+
   bool get isAbsent {
     final key = (status ?? '').trim().toLowerCase();
-    return key == 'absent' || !hasCheckIn;
+    return key == 'absent' || isOnLeave || !hasCheckIn;
+  }
+
+  ManagerTeamAttendanceItem copyWith({
+    int? attendanceId,
+    int? userId,
+    String? employeeName,
+    int? departmentId,
+    String? departmentTitle,
+    String? locationId,
+    String? locationName,
+    String? photoUrl,
+    DateTime? date,
+    String? checkin,
+    String? checkout,
+    String? breakout,
+    String? breakin,
+    bool? isOpen,
+    String? currentLocation,
+    double? lat,
+    double? lon,
+    String? status,
+    String? statusLabel,
+    bool? isLate,
+    bool? isEarlyCheckout,
+    bool? isShortHours,
+    bool? isBreakExceeded,
+    bool? isOnBreak,
+    bool? isOnTime,
+    String? hoursVsExpected,
+  }) {
+    return ManagerTeamAttendanceItem(
+      attendanceId: attendanceId ?? this.attendanceId,
+      userId: userId ?? this.userId,
+      employeeName: employeeName ?? this.employeeName,
+      departmentId: departmentId ?? this.departmentId,
+      departmentTitle: departmentTitle ?? this.departmentTitle,
+      locationId: locationId ?? this.locationId,
+      locationName: locationName ?? this.locationName,
+      photoUrl: photoUrl ?? this.photoUrl,
+      date: date ?? this.date,
+      checkin: checkin ?? this.checkin,
+      checkout: checkout ?? this.checkout,
+      breakout: breakout ?? this.breakout,
+      breakin: breakin ?? this.breakin,
+      isOpen: isOpen ?? this.isOpen,
+      currentLocation: currentLocation ?? this.currentLocation,
+      lat: lat ?? this.lat,
+      lon: lon ?? this.lon,
+      status: status ?? this.status,
+      statusLabel: statusLabel ?? this.statusLabel,
+      isLate: isLate ?? this.isLate,
+      isEarlyCheckout: isEarlyCheckout ?? this.isEarlyCheckout,
+      isShortHours: isShortHours ?? this.isShortHours,
+      isBreakExceeded: isBreakExceeded ?? this.isBreakExceeded,
+      isOnBreak: isOnBreak ?? this.isOnBreak,
+      isOnTime: isOnTime ?? this.isOnTime,
+      hoursVsExpected: hoursVsExpected ?? this.hoursVsExpected,
+    );
   }
 
   factory ManagerTeamAttendanceItem.fromJson(Map<String, dynamic> json) {
@@ -133,7 +196,12 @@ class ManagerTeamAttendanceItem {
         json['location_name'] ?? json['office_name'] ?? json['site_name'],
       ),
       photoUrl: _absoluteUrl(
-        _asNullableString(json['photo_url'] ?? json['photo'] ?? json['avatar']),
+        _asNullableString(
+          json['photo_url'] ??
+              json['profile_picture'] ??
+              json['photo'] ??
+              json['avatar'],
+        ),
       ),
       date: _asDate(json['date']),
       checkin: _asNullableString(json['checkin']),

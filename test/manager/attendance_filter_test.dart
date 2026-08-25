@@ -1,10 +1,32 @@
 import 'package:obecno/demo/demo_list.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_attendance_repository.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('StatusFilterOption', () {
+    test('does not treat Late check in and Late as the same selected row', () {
+      expect(StatusFilterOption.isSelected('late_check_in', 'late'), isFalse);
+      expect(StatusFilterOption.isSelected('late', 'late_check_in'), isFalse);
+      expect(
+        StatusFilterOption.isSelected('late_check_in', 'late_check_in'),
+        isTrue,
+      );
+      expect(StatusFilterOption.isSelected('late', 'late'), isTrue);
+    });
+  });
+
   group('ManagerAttendanceFilters', () {
     test('maps status labels', () {
       expect(
@@ -101,6 +123,270 @@ void main() {
       expect(tile.checkOut, '05:07 PM');
       expect(tile.status, 'working');
       expect(tile.team, 'Head Office');
+    });
+
+    test('leaves employees without punch data as empty status', () {
+      const item = ManagerTeamAttendanceItem(employeeName: 'Shea');
+      final tile = TeamAttendanceMapper.toTile(item);
+      expect(tile.status, isEmpty);
+      expect(tile.checkIn, isNull);
+      expect(tile.checkOut, isNull);
+    });
+
+    test('merges team members so everyone appears by default', () {
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 31,
+          employeeName: 'Employee3',
+          checkin: '11:33:44',
+          isOpen: true,
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(id: '10', name: 'Javier Escher', role: 'Sales'),
+        ManagerEmployeeModel(id: '31', name: 'Employee3', role: 'Sales'),
+        ManagerEmployeeModel(id: '44', name: 'Ava Cole', role: 'Design'),
+      ];
+
+      final merged = TeamAttendanceMapper.mergeWithMembers(
+        attendance: attendance,
+        members: members,
+      );
+      expect(merged.length, 3);
+      expect(merged.map((e) => e.employeeName), [
+        'Employee3',
+        'Javier Escher',
+        'Ava Cole',
+      ]);
+      expect(merged.first.checkin, '11:33:44');
+      expect(TeamAttendanceMapper.uiStatus(merged.first), 'working');
+      expect(TeamAttendanceMapper.uiStatus(merged[1]), isEmpty);
+    });
+
+    test('puts people with a status above empty-state rows', () {
+      const items = [
+        ManagerTeamAttendanceItem(employeeName: 'Employee1'),
+        ManagerTeamAttendanceItem(
+          employeeName: 'Employee3',
+          checkin: '11:33:44',
+          isLate: true,
+        ),
+        ManagerTeamAttendanceItem(employeeName: 'Manager 1'),
+        ManagerTeamAttendanceItem(
+          employeeName: 'Jonas',
+          checkin: '09:10:00',
+          isOpen: true,
+          isOnBreak: true,
+        ),
+      ];
+
+      expect(
+        TeamAttendanceMapper.statusFirst(items).map((e) => e.employeeName),
+        ['Employee3', 'Jonas', 'Employee1', 'Manager 1'],
+      );
+    });
+  });
+
+  group('EmployeeAttendanceMapper', () {
+    test('maps API history details instead of demo timeline', () {
+      final data = ManagerEmployeeAttendanceData.fromJson({
+        'employee': {
+          'id': 31,
+          'name': 'Employee3',
+          'profile_picture': 'https://cdn.example.com/employee3.jpg',
+        },
+        'date_from': '2026-08-24',
+        'date_to': '2026-08-30',
+        'history': [
+          {
+            'id': 163,
+            'date': '2026-08-24',
+            'checkin': '11:33:44',
+            'checkout': '',
+            'hours_worked': '',
+            'is_open': true,
+            'attendance_details': [
+              {
+                'type': 'check in',
+                'attendance_time': '11:33:44',
+                'occurred_at_iso': '2026-08-24T11:33:44+05:00',
+                'current_location': '33.7373416,73.1715552',
+                'lat': 33.7373416,
+                'lon': 73.1715552,
+              },
+              {
+                'type': 'break out',
+                'attendance_time': '11:35:25',
+                'occurred_at_iso': '2026-08-24T11:35:25+05:00',
+                'lat': 33.7373401,
+                'lon': 73.1715564,
+              },
+              {
+                'type': 'break in',
+                'attendance_time': '11:35:33',
+                'occurred_at_iso': '2026-08-24T11:35:33+05:00',
+                'lat': 33.737345,
+                'lon': 73.1715665,
+              },
+            ],
+          },
+        ],
+        'hours_totals': {'actual_minutes': 0, 'actual_hours': '00:00:00'},
+      });
+
+      final details = EmployeeAttendanceMapper.toDetails(
+        data: data,
+        day: DateTime(2026, 8, 24),
+        fallbackRole: 'Sales',
+      );
+
+      expect(details.name, 'Employee3');
+      expect(details.checkIn, '11:33 AM');
+      expect(details.checkOut, isNull);
+      expect(details.durationLabel, '0h 00m');
+      expect(details.timeline.length, 3);
+      expect(details.timeline.map((e) => e.type).toList(), [
+        ManagerAttendanceEventType.breakEnd,
+        ManagerAttendanceEventType.breakStart,
+        ManagerAttendanceEventType.checkIn,
+      ]);
+      expect(details.timeline.map((e) => e.timeLabel).toList(), [
+        '11:35 AM',
+        '11:35 AM',
+        '11:33 AM',
+      ]);
+      expect(details.checkInLat, 33.7373416);
+      expect(details.checkInLon, 73.1715552);
+      expect(details.attendanceId, 163);
+      expect(details.userId, 31);
+      expect(details.photo, 'https://cdn.example.com/employee3.jpg');
+      expect(
+        details.timeline.any((e) => e.timeLabel.contains('01:00')),
+        isFalse,
+      );
+      expect(
+        details.timeline.any((e) => e.timeLabel.contains('02:00')),
+        isFalse,
+      );
+    });
+
+    test('keeps list photo and attendance id when day payload omits them', () {
+      final data = ManagerEmployeeAttendanceData.fromJson({
+        'employee': {'id': 31, 'name': 'Employee3'},
+        'history': [
+          {
+            'date': '2026-08-24',
+            'attendance': {'attendance_id': 163, 'checkin': '11:33:44'},
+            'attendance_details': const [],
+          },
+        ],
+      });
+
+      final details = EmployeeAttendanceMapper.toDetails(
+        data: data,
+        day: DateTime(2026, 8, 24),
+        fallbackName: 'Employee3',
+        fallbackRole: 'Sales',
+        fallbackPhoto: 'https://cdn.example.com/from-team.jpg',
+        fallbackAttendanceId: 999,
+      );
+
+      expect(details.photo, 'https://cdn.example.com/from-team.jpg');
+      expect(details.attendanceId, 163);
+    });
+  });
+
+  group('ManagerAttendanceRepository.editSaveBody', () {
+    test('sends date and attendance_id and omits empty checkout', () {
+      final body = ManagerAttendanceRepository.editSaveBody(
+        attendanceId: 163,
+        userId: 31,
+        date: '2026-08-24',
+        deviceDetails: 'iPhone',
+        lat: 33.73,
+        lon: 73.17,
+        checkIn: '11:30:00',
+        checkOut: null,
+        breakStart: '11:35:00',
+        breakEnd: '11:36:00',
+        changes: const [],
+      );
+
+      expect(body['id'], 163);
+      expect(body['attendance_id'], 163);
+      expect(body['user_id'], 31);
+      expect(body['date'], '2026-08-24');
+      expect(body['checkin'], '11:30:00');
+      expect(body.containsKey('checkout'), isFalse);
+      expect(body['breakout'], '11:35:00');
+      expect(body['breakin'], '11:36:00');
+    });
+  });
+
+  group('ManagerEmployeeHistoryMapper', () {
+    test('shows punched times without seconds and fills leave/weekend days', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 7, 1),
+        history: [
+          ManagerEmployeeAttendanceDay(
+            date: DateTime(2026, 7, 1),
+            checkin: '09:00:33',
+            checkout: '17:05:12',
+          ),
+        ],
+        scheduledCheckIn: const TimeOfDay(hour: 9, minute: 0),
+        graceMinutes: 0,
+        scheduledCheckOut: const TimeOfDay(hour: 17, minute: 0),
+      );
+
+      final worked = month.records.firstWhere((record) => record.date.day == 1);
+      expect(worked.checkIn, '09:00 AM');
+      expect(worked.checkOut, '05:05 PM');
+      expect(month.summary.workingDays, 1);
+      expect(month.summary.absentOrLeaves, greaterThan(0));
+      expect(
+        month.records.any((e) => e.status == AttendanceDayStatus.weekend),
+        isTrue,
+      );
+    });
+  });
+
+  group('ManagerEmployeePolicy', () {
+    test('parses check-in times and grace minutes', () {
+      expect(
+        ManagerEmployeePolicy.parseTime('08:00 AM'),
+        const TimeOfDay(hour: 8, minute: 0),
+      );
+      expect(ManagerEmployeePolicy.parseMinutes('15 mins'), 15);
+      expect(
+        const ManagerEmployeePolicy(breakTime: '60').breakLabel,
+        '60:00 mins',
+      );
+    });
+  });
+
+  group('ManagerEmployeeModel', () {
+    test('reads account and location fields from profile json', () {
+      final employee = ManagerEmployeeModel.fromJson({
+        'id': 31,
+        'name': 'Employee3',
+        'email': 'emp3@obecno.com',
+        'phone': '5551234',
+        'employee_code': 'EMP-31',
+        'address': 'Al Wasl Road, Dubai',
+        'default_location_id': '12',
+        'location_ids': ['12', '15'],
+        'location_name': 'Head Office',
+        'created_by': {'name': 'Ava Montgomery'},
+        'created_at': '2026-01-20',
+      });
+
+      expect(employee.userId, 31);
+      expect(employee.email, 'emp3@obecno.com');
+      expect(employee.employeeCode, 'EMP-31');
+      expect(employee.locationId, '12');
+      expect(employee.locationIds, ['12', '15']);
+      expect(employee.createdBy, 'Ava Montgomery');
     });
   });
 }

@@ -3,6 +3,8 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -52,21 +54,28 @@ class ManagerLinkedDevicesSheet {
   static Future<void> show({
     required BuildContext context,
     required String employeeName,
+    int? userId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) =>
-          _ManagerLinkedDevicesSheetBody(employeeName: employeeName),
+      builder: (_) => _ManagerLinkedDevicesSheetBody(
+        employeeName: employeeName,
+        userId: userId,
+      ),
     );
   }
 }
 
 class _ManagerLinkedDevicesSheetBody extends StatefulWidget {
-  const _ManagerLinkedDevicesSheetBody({required this.employeeName});
+  const _ManagerLinkedDevicesSheetBody({
+    required this.employeeName,
+    this.userId,
+  });
 
   final String employeeName;
+  final int? userId;
 
   @override
   State<_ManagerLinkedDevicesSheetBody> createState() =>
@@ -75,88 +84,159 @@ class _ManagerLinkedDevicesSheetBody extends StatefulWidget {
 
 class _ManagerLinkedDevicesSheetBodyState
     extends State<_ManagerLinkedDevicesSheetBody> {
-  late final List<ManagerLinkedDevice> _devices;
+  List<ManagerLinkedDevice> _devices = const [];
+  bool _loading = true;
+  String? _error;
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _devices = [
-      ManagerLinkedDevice(
-        id: '1',
-        name: 'iPhone 16pro max',
-        platform: 'ios',
-        status: ManagerDeviceStatus.active,
-        detail: 'Last used: Today at 9:12 AM',
-        actionedBy: '[Username]',
-        isCurrent: true,
-      ),
-      ManagerLinkedDevice(
-        id: '2',
-        name: 'iPhone 16pro max',
-        platform: 'android',
-        status: ManagerDeviceStatus.pending,
-        detail: 'Requested: Jan 12, 2026',
-      ),
-      ManagerLinkedDevice(
-        id: '3',
-        name: 'iPhone 13pro max',
-        platform: 'ios',
-        status: ManagerDeviceStatus.blocked,
-        detail: 'Last used: Oct 10, 2025',
-        actionedBy: 'Ava Montgomery',
-      ),
-      ManagerLinkedDevice(
-        id: '4',
-        name: 'MacBook Pro',
-        platform: 'desktop',
-        status: ManagerDeviceStatus.rejected,
-        detail: 'Last used: Oct 10, 2025',
-        actionedBy: 'Ava Montgomery',
-      ),
-    ];
+    _load();
+  }
+
+  Future<void> _load() async {
+    final userId = widget.userId;
+    if (userId == null) {
+      setState(() {
+        _loading = false;
+        _error = 'Missing employee.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final result = await bindings.managerEmployeesService.loadEmployeeDevices(
+      userId: userId,
+    );
+    if (!mounted) return;
+    if (!result.success) {
+      setState(() {
+        _loading = false;
+        _error = result.message ?? 'Failed to load devices.';
+      });
+      return;
+    }
+
+    setState(() {
+      _devices = (result.data ?? const []).map(_fromApi).toList();
+      _loading = false;
+    });
+  }
+
+  ManagerLinkedDevice _fromApi(DeviceModel device) {
+    return ManagerLinkedDevice(
+      id: device.id.isNotEmpty ? device.id : device.deviceId,
+      name: device.displayName.isEmpty ? 'Device' : device.displayName,
+      platform: (device.platform.isEmpty ? device.os : device.platform)
+          .toLowerCase(),
+      status: _statusFrom(device),
+      detail: device.isPending && !device.isApproved
+          ? _formatRequested(device.requestedAt)
+          : _formatLastUsed(device.lastActive ?? device.requestedAt),
+      actionedBy: device.actionedBy,
+      isCurrent: device.isCurrent,
+    );
+  }
+
+  ManagerDeviceStatus _statusFrom(DeviceModel device) {
+    if (device.isRejected) return ManagerDeviceStatus.rejected;
+    if (device.isBlocked) return ManagerDeviceStatus.blocked;
+    if (device.isApproved) return ManagerDeviceStatus.active;
+    return ManagerDeviceStatus.pending;
+  }
+
+  String _formatTime(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final min = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'AM' : 'PM';
+    return '$hour:$min $period';
+  }
+
+  String _formatLastUsed(DateTime? dt) {
+    if (dt == null) return 'No recent activity';
+    final now = DateTime.now();
+    final local = dt.toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(local.year, local.month, local.day);
+    if (day == today) return 'Last used: Today at ${_formatTime(local)}';
+    return 'Last used: ${_months[local.month - 1]} ${local.day}, ${local.year}';
+  }
+
+  String _formatRequested(DateTime? dt) {
+    if (dt == null) return 'Requested: —';
+    final local = dt.toLocal();
+    return 'Requested: ${_months[local.month - 1]} ${local.day}, ${local.year}';
   }
 
   String _iconFor(ManagerLinkedDevice device) {
-    switch (device.platform) {
-      case 'ios':
-        return Assets.imagesApple;
-      case 'android':
-        return Assets.imagesAndroid;
-      default:
-        return Assets.imagesDesktop;
+    final platform = device.platform.toLowerCase();
+    if (platform.contains('ios') || platform.contains('iphone') || platform.contains('apple')) {
+      return Assets.imagesApple;
     }
+    if (platform.contains('android')) {
+      return Assets.imagesAndroid;
+    }
+    return Assets.imagesDesktop;
+  }
+
+  Future<void> _review(
+    ManagerLinkedDevice device,
+    String action,
+    void Function(BuildContext) toast,
+  ) async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    final result = await bindings.managerEmployeesService.reviewEmployeeDevice(
+      userId: userId,
+      deviceId: device.id,
+      action: action,
+    );
+    if (!mounted) return;
+    if (!result.success) {
+      ToastHelper.error(
+        context,
+        message: result.message ?? 'Failed to update device.',
+      );
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    toast(context);
   }
 
   void _approve(ManagerLinkedDevice device) {
-    setState(() {
-      device.status = ManagerDeviceStatus.active;
-      device.actionedBy = 'You';
-    });
-    ToastHelper.deviceApproved(context);
+    _review(device, 'approve', ToastHelper.deviceApproved);
   }
 
   void _reject(ManagerLinkedDevice device) {
-    setState(() {
-      device.status = ManagerDeviceStatus.rejected;
-      device.actionedBy = 'You';
-    });
-    ToastHelper.deviceRejected(context);
+    _review(device, 'reject', ToastHelper.deviceRejected);
   }
 
   void _block(ManagerLinkedDevice device) {
-    setState(() {
-      device.status = ManagerDeviceStatus.blocked;
-      device.actionedBy = 'You';
-    });
-    ToastHelper.deviceBlocked(context);
+    _review(device, 'block', ToastHelper.deviceBlocked);
   }
 
   void _unblock(ManagerLinkedDevice device) {
-    setState(() {
-      device.status = ManagerDeviceStatus.active;
-      device.actionedBy = 'You';
-    });
-    ToastHelper.deviceUnblocked(context);
+    _review(device, 'unblock', ToastHelper.deviceUnblocked);
   }
 
   @override
@@ -216,21 +296,32 @@ class _ManagerLinkedDevicesSheetBodyState
               ),
             ),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                itemCount: _devices.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  return _DeviceCard(
-                    device: _devices[index],
-                    iconPath: _iconFor(_devices[index]),
-                    onApprove: () => _approve(_devices[index]),
-                    onReject: () => _reject(_devices[index]),
-                    onBlock: () => _block(_devices[index]),
-                    onUnblock: () => _unblock(_devices[index]),
-                  );
-                },
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(child: AppText.p2(_error!, color: kGreyColor))
+                  : _devices.isEmpty
+                  ? Center(
+                      child: AppText.p2(
+                        'No linked devices yet',
+                        color: kGreyColor,
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                      itemCount: _devices.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        return _DeviceCard(
+                          device: _devices[index],
+                          iconPath: _iconFor(_devices[index]),
+                          onApprove: () => _approve(_devices[index]),
+                          onReject: () => _reject(_devices[index]),
+                          onBlock: () => _block(_devices[index]),
+                          onUnblock: () => _unblock(_devices[index]),
+                        );
+                      },
+                    ),
             ),
           ],
         ),

@@ -2,6 +2,8 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
@@ -34,6 +36,9 @@ class ManagerEmployeeProfileSheet {
               ManagerEmployeeAttendanceSheet.show(
                 context: sheetContext,
                 employeeName: data.name,
+                userId: data.userId,
+                role: data.role,
+                photo: data.photo,
               );
             },
         onLocationsTap:
@@ -42,6 +47,7 @@ class ManagerEmployeeProfileSheet {
               EmployeeDefaultLocationsSheet.show(
                 context: sheetContext,
                 employeeName: data.name,
+                userId: data.userId,
               );
             },
         onSettingsTap:
@@ -50,6 +56,7 @@ class ManagerEmployeeProfileSheet {
               AccountInformationSheet.show(
                 context: sheetContext,
                 employeeName: data.name,
+                userId: data.userId,
               );
             },
       ),
@@ -111,7 +118,10 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                         children: [
                           ClipOval(
                             child: CommonImageView(
-                              imagePath: data.photo ?? Assets.imagesUserimage,
+                              url: data.hasNetworkPhoto ? data.photo : null,
+                              imagePath: data.hasNetworkPhoto
+                                  ? null
+                                  : data.photoPath,
                               height: 96,
                               width: 96,
                               fit: BoxFit.cover,
@@ -190,6 +200,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                             ManagerLinkedDevicesSheet.show(
                               context: context,
                               employeeName: data.name,
+                              userId: data.userId,
                             );
                           },
                         ),
@@ -210,6 +221,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                             EmployeeDefaultLocationsSheet.show(
                               context: context,
                               employeeName: data.name,
+                              userId: data.userId,
                             );
                           },
                         ),
@@ -225,24 +237,28 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                               color: kbackground2,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: AppText.caption(
-                              "Attendance rules are set by the [ location name ]",
-                              color: kGreyColor,
-                              align: TextAlign.left,
-                            ),
+                              child: _AttendanceRulesBanner(userId: data.userId),
                           ),
                         ),
                         const Divider(height: 1, color: kDividerColor),
                         _settingsTile(
                           iconAsset: Assets.ClockIcon,
                           title: "Check In / Out Timing",
-                          onTap: () => CheckInOutTimingSheet.show(context),
+                          onTap: () => CheckInOutTimingSheet.show(
+                            context,
+                            userId: data.userId,
+                            employeeName: data.name,
+                          ),
                         ),
                         const Divider(height: 1, color: kDividerColor),
                         _settingsTile(
                           iconAsset: Assets.BreakIcon,
                           title: "Break Timing",
-                          onTap: () => BreakTimingSheet.show(context),
+                          onTap: () => BreakTimingSheet.show(
+                            context,
+                            userId: data.userId,
+                            employeeName: data.name,
+                          ),
                         ),
                       ],
                     ),
@@ -258,17 +274,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    AppText.p2(
-                      "Created by [Name]",
-                      color: kGreyColor,
-                      align: TextAlign.left,
-                    ),
-                    const SizedBox(height: 4),
-                    AppText.p2(
-                      "Created at 20 Jan 2026",
-                      color: kGreyColor,
-                      align: TextAlign.left,
-                    ),
+                    _ProfileCreatedFooter(userId: data.userId),
                   ],
                 ),
               ),
@@ -379,5 +385,136 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
 
     if (onTap == null) return row;
     return ButtonAnimations.press(onTap: onTap, child: row);
+  }
+}
+
+class _AttendanceRulesBanner extends StatefulWidget {
+  const _AttendanceRulesBanner({this.userId});
+
+  final int? userId;
+
+  @override
+  State<_AttendanceRulesBanner> createState() => _AttendanceRulesBannerState();
+}
+
+class _AttendanceRulesBannerState extends State<_AttendanceRulesBanner> {
+  String _locationName = 'location';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    final profile = await bindings.managerEmployeesService.loadEmployeeProfile(
+      userId: userId,
+    );
+    if (!mounted) return;
+    var name = profile.data?.locationName?.trim();
+    if (name == null || name.isEmpty) {
+      final permissions = await bindings.managerEmployeesService
+          .loadEmployeePermissions(userId: userId);
+      if (!mounted) return;
+      name = ManagerEmployeePolicy.fromItems(
+        permissions.data ?? const [],
+      ).locationName;
+    }
+    if (name != null && name.trim().isNotEmpty) {
+      final resolved = name.trim();
+      setState(() => _locationName = resolved);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppText.caption(
+      'Attendance rules are set by the $_locationName',
+      color: kGreyColor,
+      align: TextAlign.left,
+    );
+  }
+}
+
+class _ProfileCreatedFooter extends StatefulWidget {
+  const _ProfileCreatedFooter({this.userId});
+
+  final int? userId;
+
+  @override
+  State<_ProfileCreatedFooter> createState() => _ProfileCreatedFooterState();
+}
+
+class _ProfileCreatedFooterState extends State<_ProfileCreatedFooter> {
+  String? _createdBy;
+  String? _createdAt;
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    final result = await bindings.managerEmployeesService.loadEmployeeProfile(
+      userId: userId,
+    );
+    if (!mounted || result.data == null) return;
+    setState(() {
+      _createdBy = result.data!.createdBy;
+      _createdAt = _formatDate(result.data!.createdAt);
+    });
+  }
+
+  String? _formatDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    return '${parsed.day} ${_months[parsed.month - 1]} ${parsed.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_createdBy == null && _createdAt == null) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_createdBy != null && _createdBy!.isNotEmpty)
+          AppText.p2(
+            'Created by $_createdBy',
+            color: kGreyColor,
+            align: TextAlign.left,
+          ),
+        if (_createdAt != null && _createdAt!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          AppText.p2(
+            'Created at $_createdAt',
+            color: kGreyColor,
+            align: TextAlign.left,
+          ),
+        ],
+      ],
+    );
   }
 }

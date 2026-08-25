@@ -174,6 +174,7 @@ class OverviewStatsCard extends StatelessWidget {
         showShare: true,
         statusFilter: "Absent",
       ),
+      
     ];
 
     return LayoutBuilder(

@@ -14,8 +14,15 @@ class ManagerEmployeeModel {
     this.phone,
     this.photo,
     this.locationId,
+    this.locationIds = const [],
+    this.locationName,
     this.departmentId,
     this.departmentTitle,
+    this.employeeCode,
+    this.address,
+    this.createdBy,
+    this.createdAt,
+    this.schedule,
     this.status = ManagerEmployeeStatus.active,
     this.badge = ManagerEmployeeBadge.none,
   });
@@ -27,10 +34,44 @@ class ManagerEmployeeModel {
   final String? phone;
   final String? photo;
   final String? locationId;
+  final List<String> locationIds;
+  final String? locationName;
   final String? departmentId;
   final String? departmentTitle;
+  final String? employeeCode;
+  final String? address;
+  final String? createdBy;
+  final String? createdAt;
+  final Map<String, dynamic>? schedule;
   final ManagerEmployeeStatus status;
   final ManagerEmployeeBadge badge;
+
+  int? get userId => int.tryParse(id.trim());
+
+  bool get isRegularEmployee {
+    if (badge == ManagerEmployeeBadge.owner ||
+        badge == ManagerEmployeeBadge.manager) {
+      return false;
+    }
+    final value = role.trim().toLowerCase();
+    return value.isEmpty || value == 'employee';
+  }
+
+  bool assignedToLocation({required String id, String? name}) {
+    final selectedId = id.trim().toLowerCase();
+    if (selectedId.isEmpty || selectedId == 'all') return true;
+
+    if (locationId != null && locationId!.trim().toLowerCase() == selectedId) {
+      return true;
+    }
+    for (final item in locationIds) {
+      if (item.trim().toLowerCase() == selectedId) return true;
+    }
+
+    final selectedName = (name ?? '').trim().toLowerCase();
+    if (selectedName.isEmpty) return false;
+    return (locationName ?? '').trim().toLowerCase() == selectedName;
+  }
 
   bool get hasNetworkPhoto =>
       photo != null && photo!.isNotEmpty && photo!.startsWith('http');
@@ -71,26 +112,61 @@ class ManagerEmployeeModel {
           json['department_title'],
     );
 
+    final locationIds = _locationIdsFrom(json);
+    final defaultLocationId = _asNullableString(
+      json['default_location_id'] ?? json['location_id'] ?? json['office_id'],
+    ) ?? _defaultIdFromLocations(json['locations']);
+    final locationName = _asNullableString(
+      json['location_name'] ??
+          json['office_name'] ??
+          json['default_location_name'] ??
+          _nestedName(json['location'] ?? json['office'] ?? json['default_location']),
+    );
+    final createdByRaw = json['created_by'] ?? json['createdBy'];
+    final scheduleRaw = json['schedule'];
+
     return ManagerEmployeeModel(
       id: _asString(json['id'] ?? json['user_id']),
       name: _asString(json['name'] ?? json['employee_name'] ?? json['title']),
       role: role.isEmpty ? 'Employee' : role,
       email: _asNullableString(json['email']),
-      phone: _asNullableString(json['phone']),
+      phone: _asNullableString(json['phone'] ?? json['phone_number']),
       photo: _absoluteUrl(
-        _asNullableString(json['photo_url'] ?? json['photo'] ?? json['avatar']),
+        _asNullableString(
+          json['photo_url'] ??
+              json['profile_picture'] ??
+              json['photo'] ??
+              json['avatar'],
+        ),
       ),
-      locationId: _asNullableString(
-        json['location_id'] ?? json['office_id'] ?? json['default_location_id'],
-      ),
+      locationId: defaultLocationId ??
+          (locationIds.isEmpty ? null : locationIds.first),
+      locationIds: locationIds,
+      locationName: locationName,
       departmentId: _asNullableString(json['department_id']),
       departmentTitle: _asNullableString(
         json['department_title'] ?? json['department'],
       ),
+      employeeCode: _asNullableString(
+        json['employee_code'] ??
+            json['company_id'] ??
+            json['staff_id'] ??
+            json['employee_id_number'],
+      ),
+      address: _asNullableString(json['address'] ?? json['home_address']),
+      createdBy: createdByRaw is Map
+          ? _asNullableString(createdByRaw['name'] ?? createdByRaw['title'])
+          : _asNullableString(createdByRaw),
+      createdAt: _asNullableString(json['created_at'] ?? json['joining_date']),
+      schedule: scheduleRaw is Map
+          ? Map<String, dynamic>.from(scheduleRaw)
+          : null,
       status: _parseStatus(
         json['status'] ?? json['account_status'] ?? json['status_label'],
       ),
-      badge: _parseBadge(json['badge'] ?? json['job_title'] ?? json['role']),
+      badge: _parseBadge(
+        json['badge'] ?? json['job_title'] ?? json['role'] ?? json['name'],
+      ),
     );
   }
 
@@ -110,8 +186,15 @@ class ManagerEmployeeModel {
     String? phone,
     String? photo,
     String? locationId,
+    List<String>? locationIds,
+    String? locationName,
     String? departmentId,
     String? departmentTitle,
+    String? employeeCode,
+    String? address,
+    String? createdBy,
+    String? createdAt,
+    Map<String, dynamic>? schedule,
     ManagerEmployeeStatus? status,
     ManagerEmployeeBadge? badge,
   }) {
@@ -123,8 +206,15 @@ class ManagerEmployeeModel {
       phone: phone ?? this.phone,
       photo: photo ?? this.photo,
       locationId: locationId ?? this.locationId,
+      locationIds: locationIds ?? this.locationIds,
+      locationName: locationName ?? this.locationName,
       departmentId: departmentId ?? this.departmentId,
       departmentTitle: departmentTitle ?? this.departmentTitle,
+      employeeCode: employeeCode ?? this.employeeCode,
+      address: address ?? this.address,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      schedule: schedule ?? this.schedule,
       status: status ?? this.status,
       badge: badge ?? this.badge,
     );
@@ -208,6 +298,63 @@ String? _asNullableString(dynamic raw) {
   if (raw == null) return null;
   final value = raw.toString().trim();
   return value.isEmpty ? null : value;
+}
+
+String? _nestedName(dynamic raw) {
+  if (raw is Map) {
+    return _asNullableString(raw['name'] ?? raw['title'] ?? raw['label']);
+  }
+  if (raw is String) return _asNullableString(raw);
+  return null;
+}
+
+List<String> _locationIdsFrom(Map<String, dynamic> json) {
+  final ids = <String>[];
+
+  void add(dynamic raw) {
+    final value = _asNullableString(raw);
+    if (value == null) return;
+    if (ids.any((id) => id.toLowerCase() == value.toLowerCase())) return;
+    ids.add(value);
+  }
+
+  void addFrom(dynamic raw) {
+    if (raw is Map) {
+      add(raw['id'] ?? raw['location_id'] ?? raw['office_id']);
+      return;
+    }
+    if (raw is List) {
+      for (final item in raw) {
+        addFrom(item);
+      }
+      return;
+    }
+    add(raw);
+  }
+
+  add(json['location_id'] ?? json['office_id'] ?? json['default_location_id']);
+  addFrom(json['location_ids']);
+  addFrom(json['locations']);
+  addFrom(json['location'] ?? json['office'] ?? json['default_location']);
+  return ids;
+}
+
+String? _defaultIdFromLocations(dynamic raw) {
+  if (raw is! List) return null;
+  String? firstId;
+  for (final item in raw) {
+    if (item is! Map) continue;
+    final id = _asNullableString(
+      item['id'] ?? item['location_id'] ?? item['office_id'],
+    );
+    if (id == null) continue;
+    firstId ??= id;
+    final isDefault = item['is_default'] == true ||
+        item['is_default'] == 1 ||
+        item['is_default']?.toString() == '1';
+    if (isDefault) return id;
+  }
+  return firstId;
 }
 
 String? _absoluteUrl(String? path) {

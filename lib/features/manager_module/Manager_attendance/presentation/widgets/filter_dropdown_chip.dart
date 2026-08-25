@@ -18,34 +18,40 @@ class SelectedFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
-      onTap: onTap,
-      child: Container(
-        height: 40,
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: kPrimaryColor2,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: kBlack.withOpacity(0.08)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
+    return Container(
+      height: 40,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: kPrimaryColor2,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: kBlack.withOpacity(0.08)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ButtonAnimations.press(
+              onTap: onTap,
               child: AppText.p2(
                 label,
                 color: kBlack,
                 weight: FontWeight.w500,
                 align: TextAlign.left,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 8),
-            ButtonAnimations.press(
-              onTap: onClear,
-              child: const Icon(Icons.close, size: 16, color: kBlack),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onClear,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Icon(Icons.close, size: 16, color: kBlack),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -74,7 +80,13 @@ class FilterChipButton extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: AppText.p2(label, color: kBlack, align: TextAlign.left),
+              child: AppText.p2(
+                label,
+                color: kBlack,
+                align: TextAlign.left,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(width: 6),
             const Icon(Icons.keyboard_arrow_down, size: 18),

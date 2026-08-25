@@ -39,12 +39,19 @@ class DeviceModel {
     this.actionedBy,
   });
 
-  factory DeviceModel.fromJson(Map<String, dynamic> json) {
+    factory DeviceModel.fromJson(Map<String, dynamic> json) {
     // The approval state lives in `approval_status` (a string like
     // "approved"/"pending"/"blocked"). `status` is a *separate*,
     // numeric device-active flag (0/1) the backend also sends -- it must
     // never be treated as the approval string, or a plain "1" masks the
     // real "approved"/"pending"/"blocked" value.
+    final nestedDevice = json['device'];
+    final nestedName = nestedDevice is Map
+        ? (nestedDevice['name'] ?? nestedDevice['device_name'])
+        : nestedDevice is String
+        ? nestedDevice
+        : null;
+
     final approvalStatus = json['approval_status']?.toString().trim();
     final deviceStatus = json['device_status']?.toString().trim();
     final state = json['state']?.toString().trim();
@@ -77,30 +84,115 @@ class DeviceModel {
             ?.toString()
             .trim();
 
+    final id = _string(json['id'] ?? json['device_pk']);
+    final deviceId = _string(
+      json['device_id'] ?? json['mac_address'] ?? json['uuid'],
+    );
+    final name = _string(
+      json['name'] ?? json['device_name'] ?? nestedName,
+    );
+
     return DeviceModel(
-      id: json['id']?.toString() ?? '',
+      id: id.isNotEmpty ? id : deviceId,
       // The backend doesn't always echo `device_id` -- it stores what we
       // sent as our device identifier under `mac_address` instead. Try
       // both so a device is still recognized as "this device".
-      deviceId: (json['device_id'] ?? json['mac_address'])?.toString() ?? '',
-      name: json['name'] ?? json['device_name'] ?? '',
-      model: json['model'] ?? '',
-      manufacturer: json['manufacturer'] ?? '',
-      os: json['os'] ?? '',
-      osVersion: json['os_version'] ?? '',
-      appVersion: json['app_version'] ?? '',
-      ipAddress: json['ip_address'] ?? '',
-      timezone: json['timezone'] ?? '',
-      platform: json['platform'] ?? '',
+      deviceId: deviceId.isNotEmpty ? deviceId : id,
+      name: name,
+      model: _string(json['model']),
+      manufacturer: _string(json['manufacturer']),
+      os: _string(json['os']),
+      osVersion: _string(json['os_version']),
+      appVersion: _string(json['app_version']),
+      ipAddress: _string(json['ip_address']),
+      timezone: _string(json['timezone']),
+      platform: _string(json['platform'] ?? json['os']),
       lastActive: parseDt(json['last_active'] ?? json['last_used']),
       requestedAt: parseDt(
         json['requested_at'] ?? json['created_at'] ?? json['request_date'],
       ),
       status: resolvedStatus,
-      isCurrent: json['is_current'] ?? false,
-      approvedFlag: json['is_approved'] == true,
+      isCurrent: _asBool(json['is_current'] ?? json['current']),
+      approvedFlag: _asBool(json['is_approved'] ?? json['approved']),
       actionedBy: (actionedBy?.isNotEmpty ?? false) ? actionedBy : null,
     );
+  }
+
+  /// Collects device objects from any documented/legacy envelope, including
+  /// nested `pending` / `approved` / `current_device` groups.
+  static List<DeviceModel> listFromEnvelope(dynamic json) {
+    final collected = <DeviceModel>[];
+    final seen = <String>{};
+
+    void add(DeviceModel device) {
+      final key = [
+        device.id,
+        device.deviceId,
+        device.name,
+      ].where((value) => value.isNotEmpty).join('|');
+      if (key.isEmpty) return;
+      if (seen.add(key)) collected.add(device);
+    }
+
+    void walk(dynamic node, int depth) {
+      if (node == null || depth > 8) return;
+      if (node is List) {
+        for (final item in node) {
+          walk(item, depth + 1);
+        }
+        return;
+      }
+      if (node is! Map) return;
+      final map = Map<String, dynamic>.from(node);
+      if (_looksLikeDevice(map)) {
+        add(DeviceModel.fromJson(map));
+      }
+      for (final value in map.values) {
+        if (value is Map || value is List) walk(value, depth + 1);
+      }
+    }
+
+    walk(json, 0);
+    return collected;
+  }
+
+  static String _string(dynamic raw) => raw?.toString().trim() ?? '';
+
+  static bool _asBool(dynamic raw) {
+    if (raw == true || raw == 1) return true;
+    if (raw == false || raw == 0 || raw == null) return false;
+    final value = raw.toString().trim().toLowerCase();
+    return value == '1' ||
+        value == 'true' ||
+        value == 'yes' ||
+        value == 'approved';
+  }
+
+  static bool _looksLikeDevice(Map<String, dynamic> map) {
+    if (map['devices'] is List ||
+        map['permission_items'] is List ||
+        map['members'] is List ||
+        map['employees'] is List) {
+      return false;
+    }
+    if (map.containsKey('mac_address') ||
+        map.containsKey('device_id') ||
+        map.containsKey('device_name') ||
+        map.containsKey('approval_status') ||
+        map.containsKey('is_approved') ||
+        map.containsKey('is_current')) {
+      return true;
+    }
+    if (map['device'] is String && _string(map['device']).isNotEmpty) {
+      return true;
+    }
+    if (_string(map['name']).isEmpty) return false;
+    return map.containsKey('platform') ||
+        map.containsKey('os') ||
+        map.containsKey('model') ||
+        map.containsKey('manufacturer') ||
+        map.containsKey('last_active') ||
+        map.containsKey('last_used');
   }
 
   Map<String, dynamic> toJson() {
@@ -157,7 +249,14 @@ class DeviceModel {
 
   /// Scenario 6: ONLY an explicit approved status counts.
   /// Pending / empty / "active" / request-already-sent must NOT be approved.
-  bool get isApproved => approvedFlag || normalizedStatus == 'approved';
+  bool get isApproved {
+    if (normalizedStatus.contains('not approved') ||
+        normalizedStatus.contains('not_approved') ||
+        normalizedStatus == 'unapproved') {
+      return false;
+    }
+    return approvedFlag || normalizedStatus == 'approved';
+  }
 
   bool get isRejected =>
       !isApproved &&
@@ -177,6 +276,9 @@ class DeviceModel {
       (normalizedStatus == 'pending' ||
           normalizedStatus.contains('pending') ||
           normalizedStatus.contains('awaiting') ||
+          normalizedStatus.contains('not approved') ||
+          normalizedStatus.contains('not_approved') ||
+          normalizedStatus == 'unapproved' ||
           normalizedStatus.isEmpty ||
           normalizedStatus == 'registered' ||
           normalizedStatus == 'active');

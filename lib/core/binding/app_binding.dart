@@ -206,6 +206,7 @@ class AppBindings {
     managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
     managerAttendanceService = ManagerAttendanceService(
       managerAttendanceRepository,
+      employeesRepository: managerEmployeesRepository,
     );
     managerAttendanceProvider = ManagerAttendanceProvider(
       managerAttendanceService,

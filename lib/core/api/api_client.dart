@@ -127,6 +127,7 @@ class ApiClient {
     Future<http.Response> Function() call, {
     bool skipAuthInterceptor = false,
     ApiCancelToken? cancelToken,
+    dynamic data,
   }) async {
     if (cancelToken?.isCancelled == true) {
       throw ApiError(
@@ -142,7 +143,7 @@ class ApiClient {
       );
     }
 
-    AppLogger.request(method, uri.toString());
+    AppLogger.request(method, uri.toString(), data: data);
 
     late final http.Response response;
 
@@ -338,15 +339,20 @@ class ApiClient {
   }) {
     final uri = _resolve(path, queryParameters);
 
-    return _guard('POST', uri, () async {
-      final headers = await _headers(uri);
-
-      return _http.post(
-        uri,
-        headers: headers,
-        body: data != null ? jsonEncode(data) : null,
-      );
-    }, cancelToken: cancelToken);
+    return _guard(
+      'POST',
+      uri,
+      () async {
+        final headers = await _headers(uri);
+        return _http.post(
+          uri,
+          headers: headers,
+          body: data != null ? jsonEncode(data) : null,
+        );
+      },
+      cancelToken: cancelToken,
+      data: data,
+    );
   }
 
   Future<RawApiResponse> put(
@@ -357,15 +363,20 @@ class ApiClient {
   }) {
     final uri = _resolve(path, queryParameters);
 
-    return _guard('PUT', uri, () async {
-      final headers = await _headers(uri);
-
-      return _http.put(
-        uri,
-        headers: headers,
-        body: data != null ? jsonEncode(data) : null,
-      );
-    }, cancelToken: cancelToken);
+    return _guard(
+      'PUT',
+      uri,
+      () async {
+        final headers = await _headers(uri);
+        return _http.put(
+          uri,
+          headers: headers,
+          body: data != null ? jsonEncode(data) : null,
+        );
+      },
+      cancelToken: cancelToken,
+      data: data,
+    );
   }
 
   Future<RawApiResponse> patch(
@@ -376,15 +387,20 @@ class ApiClient {
   }) {
     final uri = _resolve(path, queryParameters);
 
-    return _guard('PATCH', uri, () async {
-      final headers = await _headers(uri);
-
-      return _http.patch(
-        uri,
-        headers: headers,
-        body: data != null ? jsonEncode(data) : null,
-      );
-    }, cancelToken: cancelToken);
+    return _guard(
+      'PATCH',
+      uri,
+      () async {
+        final headers = await _headers(uri);
+        return _http.patch(
+          uri,
+          headers: headers,
+          body: data != null ? jsonEncode(data) : null,
+        );
+      },
+      cancelToken: cancelToken,
+      data: data,
+    );
   }
 
   Future<RawApiResponse> delete(
@@ -395,15 +411,20 @@ class ApiClient {
   }) {
     final uri = _resolve(path, queryParameters);
 
-    return _guard('DELETE', uri, () async {
-      final headers = await _headers(uri);
-
-      return _http.delete(
-        uri,
-        headers: headers,
-        body: data != null ? jsonEncode(data) : null,
-      );
-    }, cancelToken: cancelToken);
+    return _guard(
+      'DELETE',
+      uri,
+      () async {
+        final headers = await _headers(uri);
+        return _http.delete(
+          uri,
+          headers: headers,
+          body: data != null ? jsonEncode(data) : null,
+        );
+      },
+      cancelToken: cancelToken,
+      data: data,
+    );
   }
 
   Future<RawApiResponse> postMultipart(

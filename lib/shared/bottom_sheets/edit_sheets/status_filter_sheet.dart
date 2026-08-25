@@ -79,6 +79,12 @@ class StatusFilterOption {
     return false;
   }
 
+  /// Radio selection must be exact. API lists can include both `late` and
+  /// `late_check_in`, which share a filter family but are separate rows.
+  static bool isSelected(String optionId, String selectedId) {
+    return optionId.trim().toLowerCase() == selectedId.trim().toLowerCase();
+  }
+
   /// Maps overview / legacy labels → status option id.
   static String idFromLabel(
     String? label, [
@@ -232,8 +238,10 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final option = options[index];
-                  final selected = option.id == _selectedId ||
-                      StatusFilterOption.sameFamily(option.id, _selectedId);
+                  final selected = StatusFilterOption.isSelected(
+                    option.id,
+                    _selectedId,
+                  );
                   return _StatusOptionTile(
                     option: option,
                     selected: selected,

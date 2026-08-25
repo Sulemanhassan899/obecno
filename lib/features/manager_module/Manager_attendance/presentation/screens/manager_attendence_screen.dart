@@ -11,9 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 
 class ManagerAttendanceScreen extends StatefulWidget {
-  const ManagerAttendanceScreen({super.key, this.initialStatus});
-
-  final String? initialStatus;
+  const ManagerAttendanceScreen({super.key});
 
   @override
   State<ManagerAttendanceScreen> createState() =>
@@ -41,12 +39,16 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
   }
 
   void _openDetails(ManagerAttendanceModel employee, DateTime day) {
+    final provider = context.read<ManagerAttendanceProvider>();
     ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(
         employee: employee,
         day: day,
       ),
+      loadDetails: employee.userId == null
+          ? null
+          : () => provider.loadEmployeeDay(employee: employee, day: day),
     );
   }
 
@@ -99,9 +101,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
               else ...[
                 SliverToBoxAdapter(
                   child: ManagerFilters(
-                    initialStatus: !provider.isAllStatus
-                        ? provider.statusFilterId
-                        : widget.initialStatus,
+                    initialStatus: provider.statusFilterId,
                     initialLocationId: provider.locationId,
                     onStatusChanged: provider.setStatus,
                     onLocationChanged: (id) {

@@ -58,7 +58,6 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       case 2:
         return ManagerAttendanceScreen(
           key: ValueKey(_attendanceStatusFilter ?? 'Status'),
-          initialStatus: _attendanceStatusFilter,
         );
       case 3:
         return const ManagerAlertsScreen();

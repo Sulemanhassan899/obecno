@@ -28,7 +28,7 @@ class CommonBottomSheet extends StatelessWidget {
   final Function(String)? onDropdownChanged;
 
   final String? buttonText;
-  final VoidCallback? onButtonTap;
+  final Future<void> Function()? onButtonTap;
   final String? buttonRightIcon;
   final bool hasRightIcon;
   final double buttonRadius;
@@ -79,7 +79,7 @@ class CommonBottomSheet extends StatelessWidget {
     String? selectedDropdownValue,
     Function(String)? onDropdownChanged,
     required String buttonText,
-    VoidCallback? onButtonTap,
+    Future<void> Function()? onButtonTap,
     String? buttonRightIcon,
     bool hasRightIcon = false,
     double buttonRadius = 28,
@@ -179,9 +179,9 @@ class CommonBottomSheet extends StatelessWidget {
                         MyButton(
                           onTap: onButtonTap != null
                               ? () async {
-                                  onButtonTap();
+                                  await onButtonTap();
                                 }
-                              : () async {},
+                              : null,
                           buttonText: buttonText,
                           choiceIconRight: buttonRightIcon,
                           radius: buttonRadius,

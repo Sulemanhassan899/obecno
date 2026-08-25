@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:obecno/core/state/multi_provider.dart';
 import 'package:flutter/material.dart';
-
 import 'package:obecno/core/binding/app_binding.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';

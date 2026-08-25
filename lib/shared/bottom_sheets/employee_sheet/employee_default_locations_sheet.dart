@@ -3,6 +3,9 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/confirm_location_change_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -15,6 +18,7 @@ class EmployeeDefaultLocationsSheet {
   static Future<void> show({
     required BuildContext context,
     required String employeeName,
+    int? userId,
     String? initialDefaultId,
     Set<String>? initialSelectedIds,
   }) {
@@ -24,8 +28,9 @@ class EmployeeDefaultLocationsSheet {
       backgroundColor: Colors.transparent,
       builder: (_) => _EmployeeDefaultLocationsSheetBody(
         employeeName: employeeName,
-        initialDefaultId: initialDefaultId ?? 'head',
-        initialSelectedIds: initialSelectedIds ?? {'head', 'south'},
+        userId: userId,
+        initialDefaultId: initialDefaultId,
+        initialSelectedIds: initialSelectedIds,
       ),
     );
   }
@@ -34,13 +39,15 @@ class EmployeeDefaultLocationsSheet {
 class _EmployeeDefaultLocationsSheetBody extends StatefulWidget {
   const _EmployeeDefaultLocationsSheetBody({
     required this.employeeName,
-    required this.initialDefaultId,
-    required this.initialSelectedIds,
+    this.userId,
+    this.initialDefaultId,
+    this.initialSelectedIds,
   });
 
   final String employeeName;
-  final String initialDefaultId;
-  final Set<String> initialSelectedIds;
+  final int? userId;
+  final String? initialDefaultId;
+  final Set<String>? initialSelectedIds;
 
   @override
   State<_EmployeeDefaultLocationsSheetBody> createState() =>
@@ -49,41 +56,72 @@ class _EmployeeDefaultLocationsSheetBody extends StatefulWidget {
 
 class _EmployeeDefaultLocationsSheetBodyState
     extends State<_EmployeeDefaultLocationsSheetBody> {
-  late final List<LocationFilterOption> _locations;
-  late Set<String> _selectedIds;
-  late String _defaultId;
-  late String _initialDefaultId;
-  late Set<String> _initialSelectedIds;
+  List<LocationFilterOption> _locations = const [];
+  Set<String> _selectedIds = {};
+  String _defaultId = '';
+  bool _loading = true;
+  String? _error;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _locations = [
-      ...LocationFilterOption.demoMulti(),
-      const LocationFilterOption(
-        id: 'factory',
-        name: 'Factory A',
-        address: 'Bailey St, Stafford ST17 4BG, United Kingdom',
-      ),
-    ];
-    _selectedIds = Set.from(widget.initialSelectedIds);
-    _defaultId = widget.initialDefaultId;
-    _initialDefaultId = widget.initialDefaultId;
-    _initialSelectedIds = Set.from(widget.initialSelectedIds);
+    _load();
   }
 
-  void _toggle(String id) {
+  Future<void> _load() async {
     setState(() {
-      if (_selectedIds.contains(id)) {
-        if (_selectedIds.length == 1) return;
-        _selectedIds.remove(id);
-        if (_defaultId == id) {
-          _defaultId = _selectedIds.first;
-        }
-      } else {
-        _selectedIds.add(id);
-      }
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final locationsProvider = context.read<ManagerLocationsProvider>();
+      if (locationsProvider.locations.isEmpty) {
+        await locationsProvider.load();
+      }
+
+      var defaultId = widget.initialDefaultId ?? '';
+      var selected = Set<String>.from(widget.initialSelectedIds ?? const {});
+      if (widget.userId != null) {
+        final profile = await bindings.managerEmployeesService
+            .loadEmployeeProfile(userId: widget.userId!);
+        if (profile.success && profile.data != null) {
+          defaultId = profile.data!.locationId ?? defaultId;
+          if (profile.data!.locationIds.isNotEmpty) {
+            selected = profile.data!.locationIds.toSet();
+          } else if (defaultId.isNotEmpty) {
+            selected = {defaultId};
+          }
+        }
+      }
+
+      final company = locationsProvider.filterOptions;
+      var assigned = company
+          .where((option) => selected.contains(option.id))
+          .toList();
+      if (assigned.isEmpty) assigned = company;
+      if (defaultId.isEmpty && assigned.isNotEmpty) {
+        defaultId = assigned.first.id;
+      }
+      if (selected.isEmpty) {
+        selected = assigned.map((e) => e.id).toSet();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _locations = assigned;
+        _selectedIds = selected;
+        _defaultId = defaultId;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Failed to load locations.';
+      });
+    }
   }
 
   void _setDefault(String id) {
@@ -94,18 +132,45 @@ class _EmployeeDefaultLocationsSheetBodyState
   }
 
   Future<void> _save() async {
-    // Capture root context before closing sheet/dialog.
     final rootContext = Navigator.of(context, rootNavigator: true).context;
-
     final confirmed = await ConfirmLocationChangeDialog.show(context);
     if (confirmed != true || !mounted) return;
 
-    _initialDefaultId = _defaultId;
-    _initialSelectedIds = Set.from(_selectedIds);
+    if (widget.userId != null) {
+      setState(() => _saving = true);
+      final result = await bindings.managerEmployeesService
+          .updateEmployeeLocations(
+            userId: widget.userId!,
+            defaultLocationId: _defaultId,
+            locationIds: _selectedIds.toList(),
+          );
+      if (!mounted) return;
+      if (!result.success) {
+        setState(() => _saving = false);
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to update locations.',
+        );
+        return;
+      }
 
-    // Close the bottom sheet after dialog already popped itself.
+      final profile = await bindings.managerEmployeesService
+          .loadEmployeeProfile(userId: widget.userId!);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (profile.success &&
+          profile.data != null &&
+          (profile.data!.locationId ?? '').trim().isNotEmpty &&
+          (profile.data!.locationId ?? '').trim() != _defaultId.trim()) {
+        ToastHelper.error(
+          context,
+          message: 'Location update did not persist. Please try again.',
+        );
+        return;
+      }
+    }
+
     Navigator.of(context).pop();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!rootContext.mounted) return;
       ToastHelper.changesSaved(rootContext);
@@ -145,7 +210,7 @@ class _EmployeeDefaultLocationsSheetBodyState
                   Expanded(
                     child: Column(
                       children: [
-                        AppText.h4('Default Locations'),
+                        AppText.h5('Default Locations'),
                         const SizedBox(height: 2),
                         AppText.p2(widget.employeeName, color: kGreyColor),
                       ],
@@ -171,23 +236,36 @@ class _EmployeeDefaultLocationsSheetBodyState
             ),
             const Divider(height: 1, color: kDividerColor),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                itemCount: _locations.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final option = _locations[index];
-                  final selected = _selectedIds.contains(option.id);
-                  final isDefault = option.id == _defaultId;
-                  return _LocationCard(
-                    option: option,
-                    selected: selected,
-                    isDefault: isDefault,
-                    onTap: () => _toggle(option.id),
-                    onLongPress: () => _setDefault(option.id),
-                  );
-                },
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(
+                      child: AppText.p2(_error!, color: kGreyColor),
+                    )
+                  : _locations.isEmpty
+                  ? Center(
+                      child: AppText.p2(
+                        'No locations assigned',
+                        color: kGreyColor,
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                      itemCount: _locations.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final option = _locations[index];
+                        final selected = _selectedIds.contains(option.id);
+                        final isDefault = option.id == _defaultId;
+                        return _LocationCard(
+                          option: option,
+                          selected: selected,
+                          isDefault: isDefault,
+                          onTap: () => _setDefault(option.id),
+                          onLongPress: () => _setDefault(option.id),
+                        );
+                      },
+                    ),
             ),
             const Divider(height: 1, color: kDividerColor),
             Padding(
@@ -195,6 +273,8 @@ class _EmployeeDefaultLocationsSheetBodyState
               child: MyButton(
                 buttonText: 'Save',
                 backgroundColor: kPrimaryButtonColor,
+                isactive: !_saving && !_loading,
+                isLoadingExternally: _saving,
                 onTap: _save,
               ),
             ),

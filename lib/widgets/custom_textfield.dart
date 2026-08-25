@@ -70,6 +70,7 @@ class CustomTextField extends StatelessWidget {
 
   final ValueChanged<String>? onChanged;
   final String? Function(String?)? validator;
+  final String? errorText;
 
   /// =====================
   /// LAYOUT
@@ -136,6 +137,7 @@ class CustomTextField extends StatelessWidget {
     this.onTextFieldTap,
     this.onChanged,
     this.validator,
+    this.errorText,
 
     /// LAYOUT
     this.contentPaddingLeft = 16,
@@ -172,7 +174,11 @@ class CustomTextField extends StatelessWidget {
           if (haveLebelText)
             Row(
               children: [
-                AppText.p2(labelText ?? '', weight: FontWeight.w500),
+                AppText.p2(
+                  labelText ?? '',
+                  weight: FontWeight.w500,
+                  color: errorText != null ? kRed : lableColor,
+                ),
 
                 if (hasStar)
                   const TextWidget(
@@ -216,9 +222,9 @@ class CustomTextField extends StatelessWidget {
                 onChanged: onChanged,
 
                 decoration: InputDecoration(
-                  /// FIX: prevent layout jump
-                  helperText: ' ', // ✅ KEY FIX
-                  errorMaxLines: 1,
+                  helperText: errorText == null ? ' ' : null,
+                  errorText: errorText,
+                  errorMaxLines: 2,
 
                   /// ICONS
                   prefixIcon: havePrefixIcon
@@ -255,14 +261,17 @@ class CustomTextField extends StatelessWidget {
                   ),
 
                   /// BORDERS
-                  border: _border(enabledBorderColor, enabledBorderWidth),
+                  border: _border(
+                    errorText != null ? errorBorderColor : enabledBorderColor,
+                    errorText != null ? errorBorderWidth : enabledBorderWidth,
+                  ),
                   enabledBorder: _border(
-                    enabledBorderColor,
-                    enabledBorderWidth,
+                    errorText != null ? errorBorderColor : enabledBorderColor,
+                    errorText != null ? errorBorderWidth : enabledBorderWidth,
                   ),
                   focusedBorder: _border(
-                    focusedBorderColor,
-                    focusedBorderWidth,
+                    errorText != null ? errorBorderColor : focusedBorderColor,
+                    errorText != null ? errorBorderWidth : focusedBorderWidth,
                   ),
                   errorBorder: _border(errorBorderColor, errorBorderWidth),
                   focusedErrorBorder: _border(

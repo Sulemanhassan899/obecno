@@ -57,6 +57,7 @@ class EditAccountFieldSheet {
     required String employeeName,
     required AccountEditField field,
     required String initialValue,
+    Future<String?> Function(String value)? persist,
   }) {
     return showModalBottomSheet<String>(
       context: context,
@@ -66,6 +67,7 @@ class EditAccountFieldSheet {
         employeeName: employeeName,
         field: field,
         initialValue: initialValue,
+        persist: persist,
       ),
     );
   }
@@ -76,11 +78,13 @@ class _EditAccountFieldSheetBody extends StatefulWidget {
     required this.employeeName,
     required this.field,
     required this.initialValue,
+    this.persist,
   });
 
   final String employeeName;
   final AccountEditField field;
   final String initialValue;
+  final Future<String?> Function(String value)? persist;
 
   @override
   State<_EditAccountFieldSheetBody> createState() =>
@@ -90,6 +94,7 @@ class _EditAccountFieldSheetBody extends StatefulWidget {
 class _EditAccountFieldSheetBodyState
     extends State<_EditAccountFieldSheetBody> {
   late final TextEditingController _controller;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -105,13 +110,21 @@ class _EditAccountFieldSheetBodyState
 
   Future<void> _save() async {
     final value = _controller.text.trim();
-    if (value.isEmpty) return;
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    if (value.isEmpty || _saving) return;
+    final persist = widget.persist;
+    if (persist == null) {
+      Navigator.pop(context, value);
+      return;
+    }
+    setState(() => _saving = true);
+    final error = await persist(value);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (error != null) {
+      ToastHelper.error(context, message: error);
+      return;
+    }
     Navigator.pop(context, value);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootContext.mounted) return;
-      ToastHelper.changesSaved(rootContext);
-    });
   }
 
   @override
@@ -206,6 +219,7 @@ class _EditAccountFieldSheetBodyState
                         backgroundColor: kWhite,
                         fontColor: kBlack,
                         outlineColor: kBorderColor,
+                        isactive: !_saving,
                         onTap: () async => Navigator.pop(context),
                       ),
                     ),
@@ -215,6 +229,8 @@ class _EditAccountFieldSheetBodyState
                       child: MyButton(
                         buttonText: 'Save',
                         backgroundColor: kPrimaryButtonColor,
+                        isactive: !_saving,
+                        isLoadingExternally: _saving,
                         onTap: _save,
                       ),
                     ),

@@ -39,7 +39,11 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     _selectedLocationId = widget.locationId ?? LocationFilterOption.allId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ManagerEmployeesProvider>().load();
+      context.read<ManagerEmployeesProvider>().load(
+        locationId: _selectedLocationId == LocationFilterOption.allId
+            ? null
+            : _selectedLocationId,
+      );
       context.read<ManagerLocationsProvider>().load();
     });
   }
@@ -51,18 +55,25 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   }
 
   List<ManagerEmployeeModel> _locationEmployees(
-    List<ManagerEmployeeModel> source,
-  ) {
+    List<ManagerEmployeeModel> source, {
+    String? locationName,
+  }) {
     return ManagerEmployeeFilters.byLocation(
       source: source,
       selectedLocationId: _selectedLocationId,
+      selectedLocationName: locationName,
     );
   }
 
-  List<ManagerEmployeeModel> _filtered(List<ManagerEmployeeModel> source) {
-    return ManagerEmployeeFilters.byQuery(
-      source: _locationEmployees(source),
-      query: _query,
+  List<ManagerEmployeeModel> _filtered(
+    List<ManagerEmployeeModel> source, {
+    String? locationName,
+  }) {
+    return ManagerEmployeeFilters.roleFirst(
+      ManagerEmployeeFilters.byQuery(
+        source: _locationEmployees(source, locationName: locationName),
+        query: _query,
+      ),
     );
   }
 
@@ -82,7 +93,14 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
       selectedId: _selectedLocationId,
     );
     if (selected == null || !mounted) return;
-    setState(() => _selectedLocationId = selected);
+    await _applyLocation(selected);
+  }
+
+  Future<void> _applyLocation(String locationId) async {
+    setState(() => _selectedLocationId = locationId);
+    await context.read<ManagerEmployeesProvider>().load(
+      locationId: locationId == LocationFilterOption.allId ? null : locationId,
+    );
   }
 
   void _openProfile(ManagerEmployeeModel employee) {
@@ -93,6 +111,7 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
         name: employee.name,
         role: employee.role,
         photo: employee.photo,
+        userId: employee.userId,
       ),
     );
   }
@@ -111,8 +130,15 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   Widget build(BuildContext context) {
     final employeesProvider = context.watch<ManagerEmployeesProvider>();
     final locationsProvider = context.watch<ManagerLocationsProvider>();
-    final locationEmployees = _locationEmployees(employeesProvider.members);
-    final employees = _filtered(employeesProvider.members);
+    final locationName = _locationChipLabel(locationsProvider);
+    final locationEmployees = _locationEmployees(
+      employeesProvider.members,
+      locationName: locationName == 'Locations' ? null : locationName,
+    );
+    final employees = _filtered(
+      employeesProvider.members,
+      locationName: locationName == 'Locations' ? null : locationName,
+    );
     final counts = EmployeeDirectoryCounts.from(locationEmployees);
     final searchWidth = MediaQuery.sizeOf(context).width - 32;
     final isInitialLoad =
@@ -124,7 +150,11 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
         child: RefreshIndicator(
           onRefresh: () async {
             await Future.wait([
-              employeesProvider.refresh(),
+              employeesProvider.load(
+                locationId: _selectedLocationId == LocationFilterOption.allId
+                    ? null
+                    : _selectedLocationId,
+              ),
               locationsProvider.refresh(),
             ]);
           },
@@ -211,10 +241,8 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
                         SelectedFilterChip(
                           label: _locationChipLabel(locationsProvider),
                           onTap: () => _openLocationFilter(locationsProvider),
-                          onClear: () => setState(
-                            () => _selectedLocationId =
-                                LocationFilterOption.allId,
-                          ),
+                          onClear: () =>
+                              _applyLocation(LocationFilterOption.allId),
                         ),
                       const SizedBox(height: 14),
                     ],
@@ -383,7 +411,6 @@ class _EmployeeCard extends StatelessWidget {
             ClipOval(
               child: CommonImageView(
                 url: employee.hasNetworkPhoto ? employee.photo : null,
-                imagePath: employee.hasNetworkPhoto ? null : employee.photoPath,
                 height: 44,
                 width: 44,
                 fit: BoxFit.cover,
@@ -406,19 +433,20 @@ class _EmployeeCard extends StatelessWidget {
                           maxLines: 1,
                         ),
                       ),
-                      if (employee.badgeLabel != null) ...[
-                        const SizedBox(width: 8),
-                        _Badge(label: employee.badgeLabel!),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 2),
-                  AppText.caption(
-                    employee.role,
-                    color: kGreyColor,
-                    weight: FontWeight.w400,
-                    align: TextAlign.left,
-                  ),
+                  if (employee.badgeLabel != null) ...[
+                    const SizedBox(width: 8),
+                    _Badge(label: employee.badgeLabel!),
+                  ] else ...[
+                    AppText.caption(
+                      employee.role,
+                      color: kGreyColor,
+                      weight: FontWeight.w400,
+                      align: TextAlign.left,
+                    ),
+                  ],
                 ],
               ),
             ),

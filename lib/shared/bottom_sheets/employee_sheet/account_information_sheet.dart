@@ -2,6 +2,9 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/edit_account_field_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
@@ -12,10 +15,11 @@ class AccountInformationSheet {
   static Future<void> show({
     required BuildContext context,
     required String employeeName,
-    String email = 'theaddress@email.com',
-    String phone = '(555) 123-4567',
-    String companyId = '1234567890',
-    String address = 'Al Wasl Road, Dubai',
+    int? userId,
+    String email = '',
+    String phone = '',
+    String companyId = '',
+    String address = '',
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -23,6 +27,7 @@ class AccountInformationSheet {
       backgroundColor: Colors.transparent,
       builder: (_) => _AccountInformationSheetBody(
         employeeName: employeeName,
+        userId: userId,
         email: email,
         phone: phone,
         companyId: companyId,
@@ -35,6 +40,7 @@ class AccountInformationSheet {
 class _AccountInformationSheetBody extends StatefulWidget {
   const _AccountInformationSheetBody({
     required this.employeeName,
+    this.userId,
     required this.email,
     required this.phone,
     required this.companyId,
@@ -42,6 +48,7 @@ class _AccountInformationSheetBody extends StatefulWidget {
   });
 
   final String employeeName;
+  final int? userId;
   final String email;
   final String phone;
   final String companyId;
@@ -58,6 +65,7 @@ class _AccountInformationSheetBodyState
   late String _phone;
   late String _companyId;
   late String _address;
+  bool _loading = false;
 
   @override
   void initState() {
@@ -66,6 +74,58 @@ class _AccountInformationSheetBodyState
     _phone = widget.phone;
     _companyId = widget.companyId;
     _address = widget.address;
+    _load();
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    if (showSpinner) setState(() => _loading = true);
+    final result = await bindings.managerEmployeesService.loadEmployeeProfile(
+      userId: userId,
+    );
+    if (!mounted) return;
+    if (showSpinner) setState(() => _loading = false);
+    if (!result.success || result.data == null) return;
+    final profile = result.data!;
+    setState(() {
+      _email = profile.email ?? _email;
+      _phone = profile.phone ?? _phone;
+      _companyId = profile.employeeCode ?? _companyId;
+      _address = profile.address ?? _address;
+      _loading = false;
+    });
+  }
+
+  Map<String, dynamic> _payloadFor(AccountEditField field, String value) {
+    switch (field) {
+      case AccountEditField.email:
+        return {'email': value};
+      case AccountEditField.phone:
+        return {'phone': value, 'phone_number': value};
+      case AccountEditField.companyId:
+        return {'company_id': value, 'employee_code': value};
+      case AccountEditField.address:
+        return {'address': value};
+    }
+  }
+
+  bool _matches(
+    AccountEditField field,
+    String value,
+    ManagerEmployeeModel profile,
+  ) {
+    final expected = value.trim();
+    switch (field) {
+      case AccountEditField.email:
+        return (profile.email ?? '').trim() == expected;
+      case AccountEditField.phone:
+        return (profile.phone ?? '').trim() == expected;
+      case AccountEditField.companyId:
+        return (profile.employeeCode ?? '').trim() == expected;
+      case AccountEditField.address:
+        return (profile.address ?? '').trim() == expected;
+    }
   }
 
   Future<void> _edit(AccountEditField field, String current) async {
@@ -74,8 +134,26 @@ class _AccountInformationSheetBodyState
       employeeName: widget.employeeName,
       field: field,
       initialValue: current,
+      persist: widget.userId == null
+          ? null
+          : (value) async {
+              final result = await bindings.managerEmployeesService
+                  .updateEmployee(
+                    userId: widget.userId!,
+                    payload: _payloadFor(field, value),
+                  );
+              if (!result.success) {
+                return result.message ?? 'Failed to update ${field.label}.';
+              }
+              if (result.data != null &&
+                  !_matches(field, value, result.data!)) {
+                return '${field.label} update did not persist. Please try again.';
+              }
+              return null;
+            },
     );
     if (updated == null || !mounted) return;
+
     setState(() {
       switch (field) {
         case AccountEditField.email:
@@ -88,6 +166,9 @@ class _AccountInformationSheetBodyState
           _address = updated;
       }
     });
+    await _load(showSpinner: false);
+    if (!mounted) return;
+    ToastHelper.changesSaved(context);
   }
 
   Widget _editPen(VoidCallback onTap) {
@@ -114,7 +195,7 @@ class _AccountInformationSheetBodyState
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             AppText.caption('Email', align: TextAlign.left),
-                  const SizedBox(width: 6),
+            const SizedBox(width: 6),
 
             Row(
               children: [
@@ -130,7 +211,7 @@ class _AccountInformationSheetBodyState
                   child: AppText.caption(
                     'Primary',
                     color: kBlue,
-                    weight: FontWeight.w600,
+                    weight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -162,7 +243,7 @@ class _AccountInformationSheetBodyState
           CommonImageView(imagePath: Assets.imagesInfo, height: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: AppText.p1(
+            child: AppText.caption(
               'Managed by your company administrator.',
               align: TextAlign.left,
             ),
@@ -272,37 +353,41 @@ class _AccountInformationSheetBodyState
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  _emailCard(),
-                  const SizedBox(height: 12),
-                  _infoBanner(),
-                  const SizedBox(height: 18),
-                  _groupCard(
-                    children: [
-                      _settingTile(
-                        title: 'Phone Number',
-                        value: _phone,
-                        onEdit: () => _edit(AccountEditField.phone, _phone),
-                      ),
-                      _divider(),
-                      _settingTile(
-                        title: 'Company ID',
-                        value: _companyId,
-                        onEdit: () =>
-                            _edit(AccountEditField.companyId, _companyId),
-                      ),
-                      _divider(),
-                      _settingTile(
-                        title: 'Address',
-                        value: _address,
-                        onEdit: () => _edit(AccountEditField.address, _address),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      children: [
+                        _emailCard(),
+                        const SizedBox(height: 12),
+                        _infoBanner(),
+                        const SizedBox(height: 18),
+                        _groupCard(
+                          children: [
+                            _settingTile(
+                              title: 'Phone Number',
+                              value: _phone,
+                              onEdit: () =>
+                                  _edit(AccountEditField.phone, _phone),
+                            ),
+                            _divider(),
+                            _settingTile(
+                              title: 'Company ID',
+                              value: _companyId,
+                              onEdit: () =>
+                                  _edit(AccountEditField.companyId, _companyId),
+                            ),
+                            _divider(),
+                            _settingTile(
+                              title: 'Address',
+                              value: _address,
+                              onEdit: () =>
+                                  _edit(AccountEditField.address, _address),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),

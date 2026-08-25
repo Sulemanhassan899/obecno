@@ -15,8 +15,10 @@ class ManagerLocationsProvider extends BaseProvider {
       LocationFilterMapper.toFilterOptions(locations);
 
   ManagerLocationModel? byId(String id) {
+    final selected = id.trim().toLowerCase();
+    if (selected.isEmpty) return null;
     for (final location in locations) {
-      if (location.id == id) return location;
+      if (location.id.trim().toLowerCase() == selected) return location;
     }
     return null;
   }

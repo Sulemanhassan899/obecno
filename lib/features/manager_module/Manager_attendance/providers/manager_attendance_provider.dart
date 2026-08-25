@@ -1,9 +1,11 @@
 import 'package:obecno/core/api/base_provider.dart';
 import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/services/manager_attendance_service.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
+import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 
@@ -60,6 +62,46 @@ class ManagerAttendanceProvider extends BaseProvider {
         }
       },
     );
+  }
+
+  Future<ManagerAttendanceDetailsData> loadEmployeeDay({
+    required ManagerAttendanceModel employee,
+    required DateTime day,
+  }) async {
+    final fallback = ManagerAttendanceDetailsData.fromEmployee(
+      employee: employee,
+      day: day,
+    );
+    final userId = employee.userId;
+    if (userId == null) return fallback;
+
+    try {
+      final photoFuture = _service.loadEmployeePhoto(userId: userId);
+
+      final response = await _service.loadEmployeeAttendance(
+        userId: userId,
+        date: day,
+      );
+      final fetchedPhoto = await photoFuture;
+      final photo = _networkPhoto(employee.photo) ?? fetchedPhoto;
+
+      if (!response.success || response.data == null) {
+        if (photo == null || photo.isEmpty) return fallback;
+        return fallback.copyWith(photo: photo);
+      }
+
+      return EmployeeAttendanceMapper.toDetails(
+        data: response.data!,
+        day: day,
+        fallbackName: employee.name,
+        fallbackRole: employee.role,
+        fallbackPhoto: photo,
+        fallbackAttendanceId: employee.attendanceId,
+        fallbackUserId: employee.userId,
+      );
+    } catch (_) {
+      return fallback;
+    }
   }
 
   Future<bool> refresh() => load();
@@ -126,4 +168,11 @@ class ManagerAttendanceProvider extends BaseProvider {
 
   static DateTime _dateOnly(DateTime date) =>
       DateTime(date.year, date.month, date.day);
+
+  static String? _networkPhoto(String? photo) {
+    if (photo == null) return null;
+    final value = photo.trim();
+    if (value.isEmpty || value.startsWith('assets/')) return null;
+    return value;
+  }
 }
