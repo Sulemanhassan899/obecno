@@ -1,7 +1,7 @@
-import 'package:Obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/widgets/text_widget.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/widgets/text_widget.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 
 /// ===============================
 /// APP TEXT STYLES (CENTRAL SYSTEM)
@@ -317,6 +317,46 @@ class AppText {
       weight: weight,
       color: color ?? kBlack,
       textAlign: align ?? TextAlign.center,
+    );
+  }
+
+  /// Full-width / primary buttons — used by [MyButtonSize.big]
+  static Widget ButtonText(
+    String text, {
+    Color? color,
+    String? fontFamily,
+    FontWeight weight = FontWeight.w400,
+    TextAlign? align,
+  }) {
+    return TextWidget(
+      text: text,
+      size: 16,
+      fontFamily: fontFamily ?? AppFonts.Poppins,
+      weight: weight,
+      color: color ?? kBlack,
+      textAlign: align ?? TextAlign.center,
+      maxLines: 1,
+      textOverflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// Narrower buttons — used by [MyButtonSize.normal]
+  static Widget ButtonTextSmall(
+    String text, {
+    Color? color,
+    String? fontFamily,
+    FontWeight weight = FontWeight.w400,
+    TextAlign? align,
+  }) {
+    return TextWidget(
+      text: text,
+      size: 14,
+      fontFamily: fontFamily ?? AppFonts.Poppins,
+      weight: weight,
+      color: color ?? kBlack,
+      textAlign: align ?? TextAlign.center,
+      maxLines: 1,
+      textOverflow: TextOverflow.ellipsis,
     );
   }
 }

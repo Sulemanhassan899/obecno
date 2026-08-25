@@ -1,9 +1,9 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class LocationFilterOption {
@@ -25,7 +25,7 @@ class LocationFilterOption {
 
   static const all = LocationFilterOption(id: allId, name: 'All Locations');
 
-  /// Demo multi-location list. Mark nearest with [isNear].
+  /// Demo multi-location list. Prefer [ManagerLocationsProvider.filterOptions].
   static List<LocationFilterOption> demoMulti({String? nearestId}) {
     final items = [
       const LocationFilterOption(
@@ -48,10 +48,7 @@ class LocationFilterOption {
         name: 'Distribution Center',
         address: 'Bailey St, Stafford ST17 4BG, United Kingdom',
       ),
-      const LocationFilterOption(
-        id: 'service',
-        name: 'Service Works',
-      ),
+      const LocationFilterOption(id: 'service', name: 'Service Works'),
     ];
 
     final nearId = nearestId ?? 'north';
@@ -69,12 +66,12 @@ class LocationFilterOption {
 
   /// Demo single-location case → empty / create-location sheet.
   static List<LocationFilterOption> demoSingle() => const [
-        LocationFilterOption(
-          id: 'head',
-          name: 'Head Office',
-          address: 'Bailey St, Stafford ST17 4BG, United Kingdom',
-        ),
-      ];
+    LocationFilterOption(
+      id: 'head',
+      name: 'Head Office',
+      address: 'Bailey St, Stafford ST17 4BG, United Kingdom',
+    ),
+  ];
 }
 
 class LocationsFilterSheet {
@@ -165,8 +162,8 @@ class _SingleLocationSheetBody extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   MyButton(
+                    size: MyButtonSize.normal,
                     width: 200,
-                    height: 48,
                     backgroundColor: kWhite,
                     outlineColor: kBlack200,
                     fontColor: kBlack,
@@ -272,7 +269,8 @@ class _MultiLocationsSheetBodyState extends State<_MultiLocationsSheetBody> {
                 children: [
                   Expanded(
                     flex: 2,
-                    child: MyButton(         height: 45,
+                    child: MyButton(
+                      size: MyButtonSize.normal,
                       backgroundColor: kWhite,
                       outlineColor: kBorderColor,
                       fontColor: kBlack,
@@ -289,7 +287,7 @@ class _MultiLocationsSheetBodyState extends State<_MultiLocationsSheetBody> {
                     flex: 4,
                     child: MyButton(
                       backgroundColor: kPrimaryButtonColor,
-                      buttonText: 'Save',          height: 45,
+                      buttonText: 'Save',
                       onTap: () async {
                         Navigator.pop(context, _selectedId);
                       },
@@ -344,10 +342,10 @@ class _LocationOptionTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        AppText.p2(
+                        AppText.p1(
                           option.name,
                           color: kBlack,
-                          weight: FontWeight.w600,
+                          weight: FontWeight.w500,
                           align: TextAlign.left,
                         ),
                         if (!_isAll) ...[
@@ -387,8 +385,10 @@ class _LocationOptionTile extends StatelessWidget {
             if (option.isNear)
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 color: const Color(0xFFEAF4FF),
                 child: Row(
                   children: [
@@ -422,8 +422,8 @@ class _LocationRadio extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 22,
-      height: 22,
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(

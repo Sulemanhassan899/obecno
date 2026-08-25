@@ -1,4 +1,4 @@
-import 'package:Obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/demo/manager_attendence_model.dart';
 
 final List<ManagerAttendanceModel> dummyManagerAttendance = [
   /// Name + Owner + Team | check-in — check-out

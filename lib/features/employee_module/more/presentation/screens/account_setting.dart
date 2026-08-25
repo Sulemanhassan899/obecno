@@ -1,16 +1,16 @@
 // ignore_for_file: non_constant_identifier_names
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
-import 'package:Obecno/features/auth/providers/permission_provider.dart';
-import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
-import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/providers/permission_provider.dart';
+import 'package:obecno/features/employee_module/more/data/models/employee_profile_model.dart';
+import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 
 class AccountSetting extends StatefulWidget {
   const AccountSetting({super.key});

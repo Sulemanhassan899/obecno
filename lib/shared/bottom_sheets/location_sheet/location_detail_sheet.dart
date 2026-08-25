@@ -1,9 +1,8 @@
-import 'package:Obecno/core/animations/app_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_strings.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class LocationModel {
@@ -122,6 +121,7 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             CommonImageView(
                               url: item.image,
@@ -145,20 +145,29 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                                   AppText.p1(
                                     item.name,
                                     weight: FontWeight.w600,
+                                    align: TextAlign.left,
                                   ),
                                   const SizedBox(height: 4),
                                   Row(
-                                    spacing: 5,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      CommonImageView(
-                                        imagePath: Assets.imagesLocationDot,
-                                        height: 12,
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: CommonImageView(
+                                          imagePath: Assets.imagesLocationDot,
+                                          height: 12,
+                                        ),
                                       ),
-                                      AppText.caption(
-                                        displayAddress,
-                                        color: kGreyColor,
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
+                                      const SizedBox(width: 5),
+                                      Expanded(
+                                        child: AppText.caption(
+                                          displayAddress,
+                                          color: kGreyColor,
+                                          align: TextAlign.left,
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 2,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -166,6 +175,7 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                               ),
                             ),
 
+                            const SizedBox(width: 8),
                             Container(
                               height: 16,
                               width: 16,

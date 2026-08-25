@@ -1,7 +1,7 @@
 
 import 'package:sqflite/sqflite.dart';
 
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'attendance_db.dart';
 
 class AttendanceDao {

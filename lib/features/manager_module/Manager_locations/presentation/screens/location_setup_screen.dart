@@ -1,18 +1,18 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/demo/manager_location_model.dart';
-import 'package:Obecno/features/manager_module/Manager_locations/presentation/screens/setup_location_map_screen.dart';
-import 'package:Obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/location_sheet/delete_location_dialog.dart';
-import 'package:Obecno/shared/bottom_sheets/edit_sheets/working_days_sheet.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/setup_location_map_screen.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/delete_location_dialog.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/working_days_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class LocationSetupScreen extends StatefulWidget {
@@ -177,22 +177,22 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                           Row(
                             children: [
                               MyButton(
-                                height: 45,
+                                size: MyButtonSize.normal,
                                 width: 200,
+                                height: 40,
                                 buttonText: 'Deactivated location',
                                 backgroundColor: kredColor,
-                                fontSize: 13,
                                 onTap: () async => _onDelete(),
                               ),
                               const SizedBox(width: 10),
                               MyButton(
-                                height: 45,
+                                size: MyButtonSize.normal,
                                 width: 130,
+                                height: 40,
                                 buttonText: 'Delete location',
                                 backgroundColor: kWhite,
                                 fontColor: kredColor,
                                 outlineColor: kredColor,
-                                fontSize: 13,
                                 onTap: () async => _onDeactivate(),
                               ),
                             ],

@@ -1,13 +1,14 @@
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/core/validators/validators.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/custom_textfield.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/custom_textfield.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class ChangePassword extends StatefulWidget {
@@ -29,32 +30,24 @@ class _ChangePasswordState extends State<ChangePassword> {
   String? _error;
 
   bool _validate() {
-    String current = _currentController.text.trim();
-    String newPass = _newController.text.trim();
-    String confirm = _confirmController.text.trim();
+    final current = _currentController.text.trim();
+    final newPass = _newController.text.trim();
+    final confirm = _confirmController.text.trim();
 
     if (current.isEmpty) {
-      setState(() => _error = "Current password is required");
+      setState(() => _error = 'Current password is required');
       return false;
     }
 
-    if (newPass.length < 8) {
-      setState(() => _error = "Minimum 8 characters required");
+    final passwordError = Validators.password(newPass);
+    if (passwordError != null) {
+      setState(() => _error = passwordError);
       return false;
     }
 
-    if (!RegExp(r'[A-Z]').hasMatch(newPass)) {
-      setState(() => _error = "At least 1 uppercase required");
-      return false;
-    }
-
-    if (!RegExp(r'[0-9]').hasMatch(newPass)) {
-      setState(() => _error = "At least 1 number required");
-      return false;
-    }
-
-    if (newPass != confirm) {
-      setState(() => _error = "Passwords do not match");
+    final confirmError = Validators.confirmPassword(confirm, newPass);
+    if (confirmError != null) {
+      setState(() => _error = confirmError);
       return false;
     }
 
@@ -64,7 +57,10 @@ class _ChangePasswordState extends State<ChangePassword> {
 
   bool get hasMinLength => _newController.text.length >= 8;
   bool get hasUpper => RegExp(r'[A-Z]').hasMatch(_newController.text);
+  bool get hasLower => RegExp(r'[a-z]').hasMatch(_newController.text);
   bool get hasNumber => RegExp(r'[0-9]').hasMatch(_newController.text);
+  bool get hasSymbol =>
+      RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=]').hasMatch(_newController.text);
 
   Future<void> _submit() async {
     if (!_validate()) return;
@@ -252,7 +248,9 @@ class _ChangePasswordState extends State<ChangePassword> {
 
             _buildRule("At least 8 characters", hasMinLength),
             _buildRule("1 uppercase", hasUpper),
+            _buildRule("1 lowercase", hasLower),
             _buildRule("1 number", hasNumber),
+            _buildRule("1 symbol", hasSymbol),
 
             if (_error != null)
               Padding(

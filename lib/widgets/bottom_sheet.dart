@@ -1,6 +1,6 @@
 // ignore_for_file: non_constant_identifier_names
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
 import 'package:flutter/material.dart';
 
 import 'common_image_view_widget.dart';
@@ -28,7 +28,7 @@ class CommonBottomSheet extends StatelessWidget {
   final Function(String)? onDropdownChanged;
 
   final String? buttonText;
-  final VoidCallback? onButtonTap;
+  final Future<void> Function()? onButtonTap;
   final String? buttonRightIcon;
   final bool hasRightIcon;
   final double buttonRadius;
@@ -79,7 +79,7 @@ class CommonBottomSheet extends StatelessWidget {
     String? selectedDropdownValue,
     Function(String)? onDropdownChanged,
     required String buttonText,
-    VoidCallback? onButtonTap,
+    Future<void> Function()? onButtonTap,
     String? buttonRightIcon,
     bool hasRightIcon = false,
     double buttonRadius = 28,
@@ -179,18 +179,15 @@ class CommonBottomSheet extends StatelessWidget {
                         MyButton(
                           onTap: onButtonTap != null
                               ? () async {
-                                  onButtonTap();
+                                  await onButtonTap();
                                 }
-                              : () async {},
+                              : null,
                           buttonText: buttonText,
                           choiceIconRight: buttonRightIcon,
                           radius: buttonRadius,
                           hasiconRight: hasRightIcon,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
                           backgroundColor: buttonColor,
                           fontColor: buttonFontColor,
-                          height: 56,
                         ),
                         const SizedBox(height: 20),
                       ],

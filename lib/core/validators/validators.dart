@@ -27,10 +27,23 @@ class Validators {
     return null;
   }
 
+  /// Requires min length, upper, lower, digit, and a symbol.
   static String? password(String? value, {int minLength = 8}) {
     if (value == null || value.isEmpty) return 'Password is required.';
     if (value.length < minLength) {
       return 'Password must be at least $minLength characters.';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Password must include a lowercase letter.';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Password must include an uppercase letter.';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Password must include a number.';
+    }
+    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=]').hasMatch(value)) {
+      return 'Password must include a symbol.';
     }
     return null;
   }

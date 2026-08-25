@@ -1,12 +1,14 @@
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
-/// Renders the edit-request / response rows under a timeline card
-/// (Fix Request Sent, Approved, Rejected). Supports multiple entries.
+/// Renders the edit-request / response rows under a timeline card.
+///
+/// Approved and rejected requests keep the original "Fix Request Sent" row
+/// and add a separate outcome row above it, so the full history is visible.
 class AttendanceEditHistorySection extends StatelessWidget {
   const AttendanceEditHistorySection({super.key, required this.requests});
 
@@ -35,6 +37,40 @@ class AttendanceEditHistorySection extends StatelessWidget {
     return '${d.day} ${months[d.month - 1]} - ${d.year} $hour:$min$period';
   }
 
+  static List<Widget> _rowsFor(AttendanceEditRequest request) {
+    final fixRequestRow = _StatusRow(
+      icon: Assets.imagesEmail,
+      title: 'Fix Request Sent',
+      atLabel: dateTimeLabel(request.requestedAt),
+      timeLabels: ['New time : ${request.newTime}'],
+    );
+
+    switch (request.status) {
+      case AttendanceEditRequestStatus.rejected:
+        return [
+          _StatusRow(
+            icon: Assets.imagesXmark,
+            title: 'Rejected by : ${request.actionedBy ?? '-'}',
+            atLabel: dateTimeLabel(request.actionedAt ?? request.requestedAt),
+            timeLabels: ['Original time : ${request.originalTime}'],
+          ),
+          fixRequestRow,
+        ];
+      case AttendanceEditRequestStatus.approved:
+        return [
+          _StatusRow(
+            icon: Assets.imagesCheck,
+            title: 'Approved by : ${request.actionedBy ?? '-'}',
+            atLabel: dateTimeLabel(request.actionedAt ?? request.requestedAt),
+            timeLabels: ['Original time : ${request.originalTime}'],
+          ),
+          fixRequestRow,
+        ];
+      case AttendanceEditRequestStatus.pending:
+        return [fixRequestRow];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (requests.isEmpty) return const SizedBox.shrink();
@@ -45,41 +81,7 @@ class AttendanceEditHistorySection extends StatelessWidget {
         const SizedBox(height: 14),
         const Divider(height: 1, color: kBorderColor),
         const SizedBox(height: 14),
-        ...requests.map((request) {
-          switch (request.status) {
-            case AttendanceEditRequestStatus.rejected:
-              return _StatusRow(
-                icon: Assets.imagesXmark,
-                title: 'Rejected by : ${request.actionedBy ?? '-'}',
-                atLabel: dateTimeLabel(
-                  request.actionedAt ?? request.requestedAt,
-                ),
-                timeLabels: [
-                  'Original time : ${request.originalTime}',
-                  'New time : ${request.newTime}',
-                ],
-              );
-            case AttendanceEditRequestStatus.approved:
-              return _StatusRow(
-                icon: Assets.imagesCheck,
-                title: 'Approved by : ${request.actionedBy ?? '-'}',
-                atLabel: dateTimeLabel(
-                  request.actionedAt ?? request.requestedAt,
-                ),
-                timeLabels: [
-                  'Original time : ${request.originalTime}',
-                  'New time : ${request.newTime}',
-                ],
-              );
-            case AttendanceEditRequestStatus.pending:
-              return _StatusRow(
-                icon: Assets.imagesEmail,
-                title: 'Fix Request Sent',
-                atLabel: dateTimeLabel(request.requestedAt),
-                timeLabels: ['New time : ${request.newTime}'],
-              );
-          }
-        }),
+        ...requests.expand(_rowsFor),
       ],
     );
   }

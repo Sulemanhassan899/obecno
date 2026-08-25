@@ -1,11 +1,10 @@
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/terms_provider.dart';
-import 'package:Obecno/widgets/back_button.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/widgets/my_button.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
 
 class TermsScreen extends StatefulWidget {
   const TermsScreen({super.key});

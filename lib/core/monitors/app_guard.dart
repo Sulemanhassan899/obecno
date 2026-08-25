@@ -1,10 +1,10 @@
 // import 'dart:async';
-// import 'package:Obecno/core/services/connectivity_service.dart';
-// import 'package:Obecno/core/services/notification_helper.dart';
-// import 'package:Obecno/core/services/permission_helper.dart';
-// import 'package:Obecno/core/state/change_notifier_provider.dart';
-// import 'package:Obecno/features/auth/providers/auth_provider.dart';
-// import 'package:Obecno/routes/app_routes.dart';
+// import 'package:obecno/core/services/connectivity_service.dart';
+// import 'package:obecno/core/services/notification_helper.dart';
+// import 'package:obecno/core/services/permission_helper.dart';
+// import 'package:obecno/core/state/change_notifier_provider.dart';
+// import 'package:obecno/features/auth/providers/auth_provider.dart';
+// import 'package:obecno/routes/app_routes.dart';
 // import 'package:flutter/material.dart';
 // import 'package:permission_handler/permission_handler.dart';
 
@@ -231,15 +231,15 @@
 // }
 
 import 'dart:async';
-import 'package:Obecno/core/helpers/dialog.dart';
-import 'package:Obecno/core/services/connectivity_service.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/notification_helper.dart';
-import 'package:Obecno/core/services/permission_helper.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/core/services/connectivity_service.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/services/notification_helper.dart';
+import 'package:obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/employee_module/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -270,7 +270,6 @@ class AppGuard extends StatefulWidget {
 }
 
 class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
-  Timer? _timer;
   Timer? _offlineDebounce;
   StreamSubscription<bool>? _connectivitySub;
   bool _dialogOpen = false;
@@ -301,10 +300,9 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
 
     ConnectivityService.start();
 
-    _timer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _checkAll(trigger: 'BACKGROUND'),
-    );
+    // No periodic timer: permission/device checks run on app start and when
+    // the app resumes (see didChangeAppLifecycleState). Connectivity is
+    // handled by the stream below.
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // FIX: resolve AuthProvider *before* the first `_checkAll()` runs.
@@ -346,7 +344,6 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
     _offlineDebounce?.cancel();
     _connectivitySub?.cancel();
     ConnectivityService.stop();

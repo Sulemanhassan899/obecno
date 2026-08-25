@@ -1,10 +1,10 @@
-import 'package:Obecno/core/api/api_cancel_token.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/core/api/base_repository.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
+import 'package:obecno/core/api/api_cancel_token.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/base_repository.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
 
 class AttendanceChangeRequestPayload {
   const AttendanceChangeRequestPayload({
@@ -39,7 +39,7 @@ class AttendanceService extends BaseRepository {
     };
 
     return getRequest<AttendanceHistoryData>(
-      ApiEndpoints.attendance,
+      EmployeeApiEndpoints.attendance,
       queryParameters: query.isEmpty ? null : query,
       cancelToken: cancelToken,
       parser: (json) {
@@ -61,7 +61,7 @@ class AttendanceService extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return getRequest<AttendanceDetailsData>(
-      ApiEndpoints.attendanceDetails,
+      EmployeeApiEndpoints.attendanceDetails,
       queryParameters: {'date': date},
       cancelToken: cancelToken,
       parser: (json) {
@@ -110,7 +110,7 @@ class AttendanceService extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return postRequest<String>(
-      ApiEndpoints.attendanceEdit,
+      EmployeeApiEndpoints.attendanceEdit,
       cancelToken: cancelToken,
       data: editRequestBody(
         attendanceId: attendanceId,
@@ -146,7 +146,7 @@ class AttendanceService extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return getRequest<AttendanceCalendarData>(
-      ApiEndpoints.attendanceCalendar,
+      EmployeeApiEndpoints.attendanceCalendar,
       queryParameters: {'month': month},
       cancelToken: cancelToken,
       parser: (json) {

@@ -1,4 +1,4 @@
-import 'package:Obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/api_response.dart';
 import 'package:flutter/foundation.dart';
 
 import './api_cancel_token.dart';
@@ -35,6 +35,12 @@ abstract class BaseProvider extends ChangeNotifier {
     _status = ViewStatus.error;
     _errorMessage = message;
     notifyListeners();
+  }
+
+  @protected
+  void resetViewState() {
+    _status = ViewStatus.idle;
+    _errorMessage = null;
   }
 
   @protected

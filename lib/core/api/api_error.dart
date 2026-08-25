@@ -81,8 +81,7 @@ class ApiError implements Exception {
     if (decodedBody != null) {
       message = (decodedBody['message'] ?? decodedBody['error'] ?? message)
           .toString();
-      final errors = decodedBody['errors'];
-      if (errors is Map<String, dynamic>) fieldErrors = errors;
+      fieldErrors = mapApiFieldErrors(decodedBody);
     }
 
     if (statusCode == 401 || statusCode == 403 || statusCode == 419) {
@@ -122,4 +121,36 @@ class ApiError implements Exception {
   @override
   String toString() =>
       'ApiError(type: $type, statusCode: $statusCode, message: $message)';
+}
+
+Map<String, dynamic>? mapApiFieldErrors(Map<String, dynamic> body) {
+  final raw =
+      body['errors'] ??
+      body['field_errors'] ??
+      (body['data'] is Map ? (body['data'] as Map)['errors'] : null);
+  if (raw is! Map) return null;
+  return {for (final entry in raw.entries) entry.key.toString(): entry.value};
+}
+
+String? fieldErrorText(dynamic value) {
+  if (value == null) return null;
+  if (value is String) {
+    final text = value.trim();
+    return text.isEmpty ? null : text;
+  }
+  if (value is List) {
+    for (final item in value) {
+      final text = fieldErrorText(item);
+      if (text != null) return text;
+    }
+    return null;
+  }
+  if (value is Map) {
+    return fieldErrorText(value['message']) ??
+        fieldErrorText(value['error']) ??
+        fieldErrorText(value['0']) ??
+        fieldErrorText(value.values.isEmpty ? null : value.values.first);
+  }
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
 }

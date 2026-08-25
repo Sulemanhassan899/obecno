@@ -1,37 +1,34 @@
 import 'dart:async';
 
-import 'package:Obecno/core/constants/app_strings.dart';
-import 'package:Obecno/core/helpers/dialog.dart';
-import 'package:Obecno/features/auth/services/auth_service.dart';
-import 'package:Obecno/features/clock/domain/controllers/clock_controller.dart';
-import 'package:Obecno/core/animations/app_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/services/connectivity_service.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/constants/app_strings.dart';
+import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/features/auth/services/auth_service.dart';
+import 'package:obecno/features/clock/domain/controllers/clock_controller.dart';
+import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/services/connectivity_service.dart';
+import 'package:obecno/core/services/permission_helper.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:Obecno/core/constants/app_enums.dart'
+import 'package:obecno/core/constants/app_enums.dart'
     hide AttendanceActionResult;
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/features/clock/domain/controllers/synced_clock_screen_controller.dart';
-import 'package:Obecno/features/clock/repositories/clock_attendance_repository.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/main.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/clock/domain/controllers/synced_clock_screen_controller.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/main.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
 
-import 'package:Obecno/shared/bottom_sheets/detail_sheets/company_detail_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
-import 'package:Obecno/shared/location/service/attendance_permission_service.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
-import 'package:Obecno/core/monitors/app_guard.dart';
-import 'package:Obecno/core/monitors/device_approval_guard.dart';
-import 'package:Obecno/features/clock/services/sync_service.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
+import 'package:obecno/shared/location/service/attendance_permission_service.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/core/monitors/device_approval_guard.dart';
+import 'package:obecno/features/clock/services/sync_service.dart';
 
-import 'package:Obecno/widgets/check_in_button.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/check_in_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -557,6 +554,7 @@ class ClockScreenState extends State<ClockScreen>
 
   Future<void> _onMainTap() async {
     final result = await _controller.handleMainTap();
+    if (!mounted) return;
     _showResultToast(result);
 
     final syncedController = _controller as SyncedClockScreenController;
@@ -574,6 +572,7 @@ class ClockScreenState extends State<ClockScreen>
 
   Future<void> _onBreakTap() async {
     final result = await _controller.handleBreakTap();
+    if (!mounted) return;
     _showResultToast(result);
 
     final syncedController = _controller as SyncedClockScreenController;

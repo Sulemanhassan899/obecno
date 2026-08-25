@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/features/employee_module/more/data/models/employee_profile_model.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/features/employee_module/more/data/models/employee_profile_model.dart';
 
 class ProfileRepository {
   ProfileRepository(this._client);
@@ -56,7 +56,7 @@ class ProfileRepository {
 
   Future<ApiResponse<EmployeeProfileModel>> getProfile() async {
     try {
-      final response = await _client.get(ApiEndpoints.employeeProfile);
+      final response = await _client.get(EmployeeApiEndpoints.employeeProfile);
       return _parseProfile(
         response.data,
         response.statusCode,
@@ -74,7 +74,7 @@ class ProfileRepository {
   ) async {
     try {
       final response = await _client.put(
-        ApiEndpoints.employeeProfile,
+        EmployeeApiEndpoints.employeeProfile,
         data: payload,
       );
       return _parseProfile(
@@ -96,7 +96,7 @@ class ProfileRepository {
   }) async {
     try {
       final response = await _client.postMultipart(
-        ApiEndpoints.employeeProfilePhoto,
+        EmployeeApiEndpoints.employeeProfilePhoto,
         fields: removePhoto ? {'remove_photo': '1'} : null,
         fileFieldName: photoBytes != null ? 'photo' : null,
         fileBytes: photoBytes,

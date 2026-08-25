@@ -1,23 +1,23 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/animations/scroll_animations.dart';
-import 'package:Obecno/core/constants/app_fonts.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/animations/scroll_animations.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+
+enum MyButtonSize { big, normal }
 
 class MyButton extends StatefulWidget {
   const MyButton({
     super.key,
     required this.onTap,
     required this.buttonText,
-    this.height = 59,
+    this.size = MyButtonSize.big,
+    this.height = 48,
     this.width,
     this.backgroundColor,
     this.fontColor,
-    this.fontSize,
     this.customChild,
     this.outlineColor = kBorderColor,
     this.radius = 50,
@@ -27,20 +27,23 @@ class MyButton extends StatefulWidget {
     this.mBottom = 0,
     this.mTop = 0,
     this.isactive = true,
-    this.fontWeight,
     this.hasicon = false,
     this.hasiconRight = false,
     this.leftWidget,
     this.rightWidget,
     this.isLoadingExternally = false,
+    this.compact = false,
   });
+
+  static const double defaultHeight = 48;
 
   final String buttonText;
   final Future<void> Function()? onTap;
+  final MyButtonSize size;
 
-  final double? height, width;
+  final double height;
+  final double? width;
   final double radius;
-  final double? fontSize;
   final Color outlineColor;
 
   final Color? backgroundColor, fontColor;
@@ -52,14 +55,15 @@ class MyButton extends StatefulWidget {
   final bool isactive;
   final bool hasicon, hasiconRight;
 
-  final FontWeight? fontWeight;
-
   final Widget? customChild;
   final Widget? leftWidget;
   final Widget? rightWidget;
 
   /// 🔥 allow external loading control if needed
   final bool isLoadingExternally;
+
+  /// When true, the button hugs its label instead of expanding to the parent.
+  final bool compact;
 
   @override
   State<MyButton> createState() => _MyButtonState();
@@ -112,37 +116,48 @@ class _MyButtonState extends State<MyButton> {
       _isDisabled ? 0.4 : 1,
     );
 
+    final button = Container(
+      margin: EdgeInsets.only(
+        top: widget.mTop,
+        bottom: widget.mBottom,
+        left: widget.mhoriz,
+        right: widget.mhoriz,
+      ),
+      height: widget.height,
+      width: widget.compact ? null : widget.width,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(widget.radius),
+        border: Border.all(color: borderColor),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(widget.radius),
+          onTap: _isDisabled ? null : _handleTap,
+          child: widget.compact
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: widget.customChild ?? _buildContent(textColor),
+                )
+              : Center(child: widget.customChild ?? _buildContent(textColor)),
+        ),
+      ),
+    );
+
     return ScrollAnimations.fadeSlide(
       duration: const Duration(milliseconds: 400),
       curve: Curves.fastLinearToSlowEaseIn,
       travel: 50,
       child: ButtonAnimations.press(
         onTap: _handleTap,
-        child: Container(
-          margin: EdgeInsets.only(
-            top: widget.mTop,
-            bottom: widget.mBottom,
-            left: widget.mhoriz,
-            right: widget.mhoriz,
-          ),
-          height: widget.height,
-          width: widget.width,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(widget.radius),
-            border: Border.all(color: borderColor),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(widget.radius),
-              onTap: _isDisabled ? null : _handleTap,
-              child: Center(
-                child: widget.customChild ?? _buildContent(textColor),
-              ),
-            ),
-          ),
-        ),
+        child: widget.compact
+            ? Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: 1,
+                child: button,
+              )
+            : button,
       ),
     );
   }
@@ -160,55 +175,49 @@ class _MyButtonState extends State<MyButton> {
       );
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (widget.hasicon)
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child:
-                widget.leftWidget ??
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: widget.compact ? 0 : 12),
+      child: Row(
+        mainAxisSize: widget.compact ? MainAxisSize.min : MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (widget.hasicon)
+            widget.leftWidget ??
                 (widget.choiceIcon != null
                     ? Image.asset(widget.choiceIcon!, height: 20)
                     : const SizedBox()),
-          ),
 
-        if (widget.hasicon) const SizedBox(width: 10),
+          if (widget.hasicon) const SizedBox(width: 8),
 
-        _buildText(textColor),
+          widget.compact
+              ? _buildText(textColor)
+              : Flexible(child: _buildText(textColor)),
 
-        if (widget.hasiconRight) const SizedBox(width: 10),
+          if (widget.hasiconRight) const SizedBox(width: 8),
 
-        if (widget.hasiconRight)
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child:
-                widget.rightWidget ??
+          if (widget.hasiconRight)
+            widget.rightWidget ??
                 (widget.choiceIconRight != null
                     ? CommonImageView(imagePath: widget.choiceIconRight!)
                     : const SizedBox()),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildText(Color textColor) {
-    if (widget.fontSize == null && widget.fontWeight == null) {
-      return AppText.p3(
+    if (widget.size == MyButtonSize.normal) {
+      return AppText.ButtonTextSmall(
         widget.buttonText,
         color: textColor,
         align: TextAlign.center,
       );
     }
 
-    return TextWidget(
-      text: widget.buttonText,
-      textAlign: TextAlign.center,
-      size: widget.fontSize ?? 18,
-      letterSpacing: 0.5,
-      fontFamily: AppFonts.Poppins,
+    return AppText.ButtonText(
+      widget.buttonText,
       color: textColor,
-      weight: widget.fontWeight ?? FontWeight.w400,
+      align: TextAlign.center,
     );
   }
 }

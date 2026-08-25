@@ -1739,7 +1739,7 @@ Files listed only because they participate in the employee flow above. Manager-o
 Base: `https://app.obecno.com/` + `apiVersion` default `/api/v1` (`AppConstants`).  
 Full URL example: `https://app.obecno.com/api/v1/auth/login`.
 
-Legend: **Used** = referenced from a repository/service call. **Declared unused** = in `ApiEndpoints` only.
+Legend: **Used** = referenced from a repository/service call. **Declared unused** = in `EmployeeApiEndpoints` only.
 
 ### 21.1 Used by Employee Side
 
@@ -1790,9 +1790,9 @@ Legend: **Used** = referenced from a repository/service call. **Declared unused*
 | `ticketsMeta` | `/employee/tickets/meta` | Unused |
 | `ticketReply` | `/employee/tickets/reply` | Unused |
 
-`shared/location/service/ticket_repository.dart` also posts `ApiEndpoints.tickets` (same book-demo/support endpoint). Confirm it is not a second employee feature without PDF coverage.
+`shared/location/service/ticket_repository.dart` also posts `EmployeeApiEndpoints.tickets` (same book-demo/support endpoint). Confirm it is not a second employee feature without PDF coverage.
 
-### 21.3 External / non-ApiEndpoints
+### 21.3 External / non-EmployeeApiEndpoints
 
 | Call | Purpose |
 | --- | --- |

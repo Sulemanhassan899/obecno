@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/constants.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/auth/data/models/token_model.dart';
+import 'package:obecno/core/api/constants.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/auth/data/models/token_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenService {
@@ -41,9 +41,10 @@ class TokenService {
     await _storage.write(key: 'remember_me', value: value ? 'true' : 'false');
   }
 
+  /// Defaults to **false** when the key is missing (user must opt in).
   Future<bool> get isRememberMe async {
     final flag = await _storage.read(key: 'remember_me');
-    return flag != 'false';
+    return flag == 'true';
   }
 
   Future<void> saveLastEmail(String email) async {
@@ -184,7 +185,17 @@ class TokenService {
     AppLogger.info('TokenService: session cleared.');
   }
 
+  /// Checks whether the stored access token is still usable.
+  ///
+  /// Full refresh-token rotation requires a backend `/auth/refresh` endpoint.
+  /// Until that exists: expired tokens clear the session and return false so
+  /// callers log the user out instead of sending dead credentials.
   Future<bool> tryRefreshSession() async {
+    final token = await accessToken;
+    if (token == null) return false;
+    if (!token.isExpired) return true;
+    await clearSession();
+    AppLogger.info('TokenService: access token expired; session cleared.');
     return false;
   }
 }

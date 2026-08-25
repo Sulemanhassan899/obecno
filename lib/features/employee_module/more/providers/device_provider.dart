@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/api/base_provider.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/employee_module/more/data/models/device_model.dart';
-import 'package:Obecno/features/employee_module/more/repositories/device_repository.dart';
-import 'package:Obecno/features/employee_module/more/services/device_cache_service.dart';
-import 'package:Obecno/features/employee_module/more/services/device_service.dart';
-import 'package:Obecno/core/monitors/device_approval_guard.dart';
+import 'package:obecno/core/api/base_provider.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/employee_module/more/repositories/device_repository.dart';
+import 'package:obecno/features/employee_module/more/services/device_cache_service.dart';
+import 'package:obecno/features/employee_module/more/services/device_service.dart';
+import 'package:obecno/core/monitors/device_approval_guard.dart';
 
 enum LoginDeviceCheck {
   registeredSilently,
@@ -221,6 +221,9 @@ class DeviceProvider extends BaseProvider {
     String? userId,
     bool isFirstLogin = false,
   }) async {
+    // [context] is retained for call-site API compatibility. After the await
+    // below we must not reuse it across the async gap; DeviceApprovalGuard
+    // already falls back to [rootNavigatorKey] when context is null.
     final ok = await fetchDevices();
 
     // Scenario 6: current device is approved ONLY when status == approved.
@@ -263,7 +266,7 @@ class DeviceProvider extends BaseProvider {
       AppLogger.info('[DeviceProvider] checkDeviceStatus: approved');
       _lastKnownStatus = 'approved';
       DeviceApprovalGuard.handle(
-        context: context,
+        context: null,
         status: DeviceApprovalStatus.approved,
       );
       return true;
@@ -282,7 +285,7 @@ class DeviceProvider extends BaseProvider {
         unawaited(_reregisterAfterBlock());
       }
       DeviceApprovalGuard.handle(
-        context: context,
+        context: null,
         status: DeviceApprovalStatus.blocked,
         isRejected: current.isRejected,
       );
@@ -298,7 +301,7 @@ class DeviceProvider extends BaseProvider {
     // Ensure toast/dialog can fire again on every login / app reopen.
     DeviceApprovalGuard.reset();
     DeviceApprovalGuard.handle(
-      context: context,
+      context: null,
       status: DeviceApprovalStatus.unregistered,
       loginMessage: true,
     );

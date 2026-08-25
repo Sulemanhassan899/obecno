@@ -1,14 +1,13 @@
 import 'dart:async';
 
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/shared/location/service/location_service.dart';
-import 'package:Obecno/shared/location/service/place_search_service.dart';
-import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
+import 'package:obecno/shared/location/service/place_search_service.dart';
+import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -213,14 +212,14 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                           ),
                         )
                       : (_searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _results = const []);
-                              },
-                            )),
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _results = const []);
+                                },
+                              )),
                   filled: true,
                   fillColor: kWhite,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -308,7 +307,8 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                   Positioned(
                     right: 16,
                     bottom: 16,
-                    child: ButtonAnimations.press(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: _locating ? null : () => _goToCurrentLocation(),
                       child: Container(
                         height: 48,

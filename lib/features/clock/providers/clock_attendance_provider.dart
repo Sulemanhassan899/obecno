@@ -1,13 +1,13 @@
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/features/clock/repositories/clock_attendance_repository.dart';
-import 'package:Obecno/shared/location/data/location_model.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
-import 'package:Obecno/shared/location/service/attendance_permission_service.dart';
-import 'package:Obecno/shared/location/service/location_service.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/attendance_permission_service.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:flutter/foundation.dart';
 
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
 
 enum AttendanceSubmitStatus {
   idle,

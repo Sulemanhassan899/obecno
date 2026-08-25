@@ -1,7 +1,7 @@
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_strings.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/core/helpers/snackbar_helper.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_strings.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/snackbar_helper.dart';
 import 'package:flutter/material.dart';
 
 class ToastHelper {

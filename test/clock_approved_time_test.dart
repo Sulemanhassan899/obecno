@@ -1,8 +1,8 @@
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

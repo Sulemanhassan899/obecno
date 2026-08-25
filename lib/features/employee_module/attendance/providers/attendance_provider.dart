@@ -1,7 +1,7 @@
-import 'package:Obecno/core/api/base_provider.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_day.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendence_model.dart';
-import 'package:Obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
+import 'package:obecno/core/api/base_provider.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
+import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 
 class AttendanceProvider extends BaseProvider {
   AttendanceProvider({

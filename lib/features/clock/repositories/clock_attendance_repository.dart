@@ -1,18 +1,17 @@
-
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_cancel_token.dart';
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_service.dart';
-import 'package:Obecno/shared/location/service/attendance_connectivity_service.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
-import 'package:Obecno/shared/location/service/local_queue_service.dart';
+import 'package:obecno/core/api/api_cancel_token.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/shared/location/service/attendance_connectivity_service.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/local_queue_service.dart';
 import 'package:flutter/foundation.dart';
 
 class AttendanceApiException implements Exception {
@@ -126,8 +125,7 @@ class AttendanceRepository {
   Future<String?> sendQueuedPayload(
     AttendancePayloadModel payload, {
     ApiCancelToken? cancelToken,
-  }) =>
-      _sendToApi(payload, cancelToken: cancelToken);
+  }) => _sendToApi(payload, cancelToken: cancelToken);
 
   Future<List<AttendanceEvent>?> fetchTodayEvents({
     ApiCancelToken? cancelToken,
@@ -139,16 +137,16 @@ class AttendanceRepository {
       // Prefer /employee/attendance/details — includes approved times
       // and change_requests used by the clock card / bottom sheet.
       try {
-        final details = await AttendanceService(_client).getAttendanceDetails(
-          date: today,
-          cancelToken: cancelToken,
-        );
+        final details = await AttendanceService(
+          _client,
+        ).getAttendanceDetails(date: today, cancelToken: cancelToken);
         if (details.success && details.data != null) {
-          final events = details.data!
-              .toClockEvents()
-              .where((e) => _isSameCalendarDay(e.effectiveTime, todayDate))
-              .toList()
-            ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+          final events =
+              details.data!
+                  .toClockEvents()
+                  .where((e) => _isSameCalendarDay(e.effectiveTime, todayDate))
+                  .toList()
+                ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
           if (events.isNotEmpty) {
             debugPrint(
               '[AttendanceRepository] fetchTodayEvents: parsed '
@@ -174,7 +172,7 @@ class AttendanceRepository {
       }
 
       final response = await _client.get(
-        ApiEndpoints.attendance,
+        EmployeeApiEndpoints.attendance,
         queryParameters: {'date_from': today, 'date_to': today},
         cancelToken: cancelToken,
       );
@@ -277,7 +275,8 @@ class AttendanceRepository {
     required DateTime today,
   }) {
     final direct =
-        container['attendance_details'] ?? todayAttendance?['attendance_details'];
+        container['attendance_details'] ??
+        todayAttendance?['attendance_details'];
     if (direct is List && direct.isNotEmpty) return direct;
 
     final history = container['history'];
@@ -300,14 +299,15 @@ class AttendanceRepository {
     List detailsRaw,
     DateTime today,
   ) {
-    final parsed = detailsRaw
-        .whereType<Map>()
-        .map((raw) => _eventFromDetail(Map<String, dynamic>.from(raw)))
-        .whereType<AttendanceEvent>()
-        // Strict today-only filter — never leak other days into clock UI.
-        .where((e) => _isSameCalendarDay(e.effectiveTime, today))
-        .toList()
-      ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+    final parsed =
+        detailsRaw
+            .whereType<Map>()
+            .map((raw) => _eventFromDetail(Map<String, dynamic>.from(raw)))
+            .whereType<AttendanceEvent>()
+            // Strict today-only filter — never leak other days into clock UI.
+            .where((e) => _isSameCalendarDay(e.effectiveTime, today))
+            .toList()
+          ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
 
     final seen = <String>{};
     final events = <AttendanceEvent>[];
@@ -465,7 +465,7 @@ class AttendanceRepository {
     late final RawApiResponse response;
     try {
       response = await _client.post(
-        ApiEndpoints.attendance,
+        EmployeeApiEndpoints.attendance,
         data: body,
         cancelToken: cancelToken,
       );

@@ -1,56 +1,6 @@
-import 'package:Obecno/core/generated/assets.dart';
+export 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 
-enum ManagerEmployeeStatus { active, pending, disabled, deleted }
-
-enum ManagerEmployeeBadge { none, owner, manager, you }
-
-class ManagerEmployeeModel {
-  const ManagerEmployeeModel({
-    required this.id,
-    required this.name,
-    required this.role,
-    this.photo,
-    this.locationId,
-    this.status = ManagerEmployeeStatus.active,
-    this.badge = ManagerEmployeeBadge.none,
-  });
-
-  final String id;
-  final String name;
-  final String role;
-  final String? photo;
-  final String? locationId;
-  final ManagerEmployeeStatus status;
-  final ManagerEmployeeBadge badge;
-
-  String get photoPath => photo ?? Assets.imagesUserimage;
-
-  String? get badgeLabel {
-    switch (badge) {
-      case ManagerEmployeeBadge.owner:
-        return 'Owner';
-      case ManagerEmployeeBadge.manager:
-        return 'Manager';
-      case ManagerEmployeeBadge.you:
-        return 'You';
-      case ManagerEmployeeBadge.none:
-        return null;
-    }
-  }
-
-  String? get statusLabel {
-    switch (status) {
-      case ManagerEmployeeStatus.pending:
-        return 'Pending';
-      case ManagerEmployeeStatus.disabled:
-        return 'Disabled';
-      case ManagerEmployeeStatus.deleted:
-        return 'Deleted';
-      case ManagerEmployeeStatus.active:
-        return null;
-    }
-  }
-}
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 
 final List<ManagerEmployeeModel> dummyManagerEmployees = [
   const ManagerEmployeeModel(

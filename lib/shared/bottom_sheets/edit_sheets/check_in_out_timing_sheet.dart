@@ -1,28 +1,54 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/main.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class CheckInOutTimingSheet {
   CheckInOutTimingSheet._();
 
-  static Future<void> show(BuildContext context) {
+  static Future<void> show(
+    BuildContext context, {
+    int? userId,
+    String? employeeName,
+    TimeOfDay? checkIn,
+    TimeOfDay? checkOut,
+    int? graceMinutes,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _CheckInOutTimingSheetBody(),
+      builder: (_) => _CheckInOutTimingSheetBody(
+        userId: userId,
+        employeeName: employeeName,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        graceMinutes: graceMinutes,
+      ),
     );
   }
 }
 
 class _CheckInOutTimingSheetBody extends StatefulWidget {
-  const _CheckInOutTimingSheetBody();
+  const _CheckInOutTimingSheetBody({
+    this.userId,
+    this.employeeName,
+    this.checkIn,
+    this.checkOut,
+    this.graceMinutes,
+  });
+
+  final int? userId;
+  final String? employeeName;
+  final TimeOfDay? checkIn;
+  final TimeOfDay? checkOut;
+  final int? graceMinutes;
 
   @override
   State<_CheckInOutTimingSheetBody> createState() =>
@@ -38,8 +64,45 @@ class _CheckInOutTimingSheetBodyState
   String? _editingField;
   int _graceMinutes = 5;
   int _initialGraceMinutes = 5;
+  bool _loading = false;
+  bool _saving = false;
 
   static const _graceOptions = [0, 5, 10, 15, 30];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIn = widget.checkIn ?? _checkIn;
+    _checkOut = widget.checkOut ?? _checkOut;
+    _graceMinutes = widget.graceMinutes ?? _graceMinutes;
+    _initialCheckIn = _checkIn;
+    _initialCheckOut = _checkOut;
+    _initialGraceMinutes = _graceMinutes;
+    _load();
+  }
+
+  Future<void> _load() async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    setState(() => _loading = true);
+    final result = await bindings.managerEmployeesService
+        .loadEmployeePolicy(userId: userId);
+    if (!mounted) return;
+    if (result.success && result.data != null) {
+      final policy = result.data!;
+      setState(() {
+        _checkIn = policy.checkIn;
+        _checkOut = policy.checkOut;
+        _graceMinutes = policy.graceMinutes;
+        _initialCheckIn = _checkIn;
+        _initialCheckOut = _checkOut;
+        _initialGraceMinutes = _graceMinutes;
+        _loading = false;
+      });
+      return;
+    }
+    setState(() => _loading = false);
+  }
 
   String _formatTime(TimeOfDay t) {
     final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
@@ -78,7 +141,73 @@ class _CheckInOutTimingSheetBodyState
     });
   }
 
+  String _formatHms(TimeOfDay t) {
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
+  }
+
+  bool _sameTime(TimeOfDay a, TimeOfDay b) =>
+      a.hour == b.hour && a.minute == b.minute;
+
   Future<void> _save() async {
+    if (widget.userId != null) {
+      setState(() => _saving = true);
+      final wantedIn = _checkIn;
+      final wantedOut = _checkOut;
+      final wantedGrace = _graceMinutes;
+      final result = await bindings.managerEmployeesService
+          .updateEmployeeSchedule(
+            userId: widget.userId!,
+            payload: {
+              'check_in': _formatHms(wantedIn),
+              'check_out': _formatHms(wantedOut),
+              'grace_minutes': wantedGrace,
+              'check_in_time': _formatTime(wantedIn),
+              'check_out_time': _formatTime(wantedOut),
+              'grace_period': wantedGrace,
+              'attendance': {
+                'check_in_time': _formatTime(wantedIn),
+                'check_out_time': _formatTime(wantedOut),
+                'grace_period': '$wantedGrace',
+              },
+            },
+          );
+      if (!mounted) return;
+      if (!result.success) {
+        setState(() => _saving = false);
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to save timing.',
+        );
+        return;
+      }
+
+      final verify = await bindings.managerEmployeesService.loadEmployeePolicy(
+        userId: widget.userId!,
+      );
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (!verify.success || verify.data == null) {
+        ToastHelper.error(
+          context,
+          message: verify.message ?? 'Timing update could not be confirmed.',
+        );
+        return;
+      }
+      final policy = verify.data!;
+      if (!_sameTime(policy.checkIn, wantedIn) ||
+          !_sameTime(policy.checkOut, wantedOut) ||
+          policy.graceMinutes != wantedGrace) {
+        ToastHelper.error(
+          context,
+          message: 'Timing update did not persist. Please try again.',
+        );
+        return;
+      }
+      _checkIn = policy.checkIn;
+      _checkOut = policy.checkOut;
+      _graceMinutes = policy.graceMinutes;
+    }
+
     _initialCheckIn = _checkIn;
     _initialCheckOut = _checkOut;
     _initialGraceMinutes = _graceMinutes;
@@ -258,7 +387,8 @@ class _CheckInOutTimingSheetBodyState
                 children: [
                   Expanded(
                     flex: 2,
-                    child: MyButton(         height: 45,
+                    child: MyButton(
+                      size: MyButtonSize.normal,
                       buttonText: 'Reset',
                       backgroundColor: kWhite,
                       fontColor: kBlack,
@@ -267,14 +397,16 @@ class _CheckInOutTimingSheetBodyState
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: MyButton(          height: 45,
-                      buttonText: 'Save',
-                      backgroundColor: kPrimaryButtonColor,
-                      onTap: _save,
+                    Expanded(
+                      flex: 4,
+                      child: MyButton(
+                        buttonText: 'Save',
+                        backgroundColor: kPrimaryButtonColor,
+                        isactive: !_loading && !_saving,
+                        isLoadingExternally: _saving,
+                        onTap: _save,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -331,7 +463,8 @@ class _TimingRow extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  ButtonAnimations.press(
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap: onTap,
                     child: Row(
                       children: [
@@ -362,10 +495,7 @@ class _TimingRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (picker != null) ...[
-                    const SizedBox(height: 8),
-                    picker!,
-                  ],
+                  if (picker != null) ...[const SizedBox(height: 8), picker!],
                   if (!isLast) const SizedBox(height: 12),
                 ],
               ),
@@ -482,7 +612,8 @@ class _GraceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

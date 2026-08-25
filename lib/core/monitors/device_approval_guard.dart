@@ -8,14 +8,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:system_clock/system_clock.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/helpers/dialog.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/main.dart';
-import 'package:Obecno/core/monitors/app_guard.dart';
-import 'package:Obecno/features/employee_module/routes/app_routes.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/main.dart';
+import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
 
 enum DeviceApprovalStatus { approved, unregistered, blocked, permissionDenied }
 

@@ -1,25 +1,22 @@
 import 'dart:async';
-import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
-import 'package:Obecno/features/employee_module/more/presentation/screens/policy.dart';
-import 'package:Obecno/features/employee_module/more/presentation/screens/terms.dart';
+import 'package:obecno/features/employee_module/more/presentation/screens/policy.dart';
+import 'package:obecno/features/employee_module/more/presentation/screens/terms.dart';
 
-import 'package:Obecno/core/constants/app_fonts.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/features/launch/book_demo/presentation/book_demo.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/text_styles.dart';
 
-import 'package:Obecno/widgets/term_text.dart';
+import 'package:obecno/widgets/term_text.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/generated/assets.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/generated/assets.dart';
 
-import 'package:Obecno/core/services/token_service.dart';
+import 'package:obecno/core/services/token_service.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 
 class OnBoardingScreen extends StatefulWidget {
   const OnBoardingScreen({super.key});
@@ -218,7 +215,6 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
               mTop: 10,
               mBottom: 10,
               buttonText: 'Already have an account',
-              fontWeight: FontWeight.w400,
               backgroundColor: kPrimaryButtonColor,
               onTap: () async {
                 await TokenService().markOnboardingCompleted();
@@ -232,7 +228,6 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
               mBottom: 12,
               buttonText: 'Book a demo',
               hasiconRight: true,
-              fontWeight: FontWeight.w400,
               rightWidget: CommonImageView(
                 imagePath: Assets.imagesRightArrow,
                 height: 12,

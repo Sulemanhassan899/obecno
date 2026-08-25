@@ -1,20 +1,20 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_fonts.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/demo/demo_list.dart';
-import 'package:Obecno/demo/manager_attendence_model.dart';
-import 'package:Obecno/demo/manager_location_model.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
-import 'package:Obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
-import 'package:Obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/share_button.dart';
-import 'package:Obecno/widgets/text_widget.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_fonts.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/demo/demo_list.dart';
+import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
+import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
+import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/share_button.dart';
+import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
 class LocationOverviewScreen extends StatelessWidget {
@@ -249,7 +249,9 @@ class _LocationOverviewStatsCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: _OverviewStatItem(data: items[a], onTap: onStatTap)),
+            Expanded(
+              child: _OverviewStatItem(data: items[a], onTap: onStatTap),
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: VerticalDivider(
@@ -258,7 +260,9 @@ class _LocationOverviewStatsCard extends StatelessWidget {
                 color: kDividerColor,
               ),
             ),
-            Expanded(child: _OverviewStatItem(data: items[b], onTap: onStatTap)),
+            Expanded(
+              child: _OverviewStatItem(data: items[b], onTap: onStatTap),
+            ),
           ],
         ),
       );

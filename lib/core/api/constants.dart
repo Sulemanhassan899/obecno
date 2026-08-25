@@ -46,8 +46,10 @@ static const String apiVersion = String.fromEnvironment(
   static const String keyTokenJson = 'session_token_json';
   static const String keyPermissionsJson = 'session_permissions_json';
 
+  /// Off in release. Enable only with:
+  /// `--dart-define=OBECNO_DEBUG_LOGS=true`
   static const bool enableApiLogging = bool.fromEnvironment(
     'OBECNO_DEBUG_LOGS',
-    defaultValue: true,
+    defaultValue: false,
   );
 }

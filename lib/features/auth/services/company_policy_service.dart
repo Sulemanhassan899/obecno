@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:Obecno/core/services/token_service.dart';
-import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
-import 'package:Obecno/features/auth/repositories/auth_repository.dart';
+import 'package:obecno/core/services/token_service.dart';
+import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/repositories/auth_repository.dart';
 
 class CompanyPolicyService {
   CompanyPolicyService(this._tokenService, this._authRepository);

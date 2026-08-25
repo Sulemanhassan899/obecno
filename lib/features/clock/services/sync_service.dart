@@ -3,11 +3,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_cancel_token.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/shared/location/data/queue_model.dart';
-import 'package:Obecno/shared/location/service/attendance_connectivity_service.dart';
-import 'package:Obecno/shared/location/service/local_queue_service.dart';
+import 'package:obecno/core/api/api_cancel_token.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/shared/location/data/queue_model.dart';
+import 'package:obecno/shared/location/service/attendance_connectivity_service.dart';
+import 'package:obecno/shared/location/service/local_queue_service.dart';
 
 import '../repositories/clock_attendance_repository.dart';
 

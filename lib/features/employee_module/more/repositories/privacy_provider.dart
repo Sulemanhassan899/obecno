@@ -1,6 +1,6 @@
-import 'package:Obecno/core/api/base_provider.dart';
-import 'package:Obecno/features/employee_module/more/data/models/privacy_model.dart';
-import 'package:Obecno/features/employee_module/more/services/privacy_service.dart';
+import 'package:obecno/core/api/base_provider.dart';
+import 'package:obecno/features/employee_module/more/data/models/privacy_model.dart';
+import 'package:obecno/features/employee_module/more/services/privacy_service.dart';
 
 class PrivacyProvider extends BaseProvider {
   PrivacyProvider(this._service);

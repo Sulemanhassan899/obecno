@@ -1,4 +1,4 @@
-import 'package:Obecno/core/services/network_checker.dart';
+import 'package:obecno/core/services/network_checker.dart';
 
 abstract class AttendanceConnectivityService {
   Future<bool> isOnline();

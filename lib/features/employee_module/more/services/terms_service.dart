@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
-import 'package:Obecno/features/employee_module/more/data/models/terms_model.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/features/employee_module/more/data/models/terms_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TermsService {
@@ -60,7 +60,9 @@ class TermsService {
 
   Future<ApiResponse<TermsModel>> fetchFromApi() async {
     try {
-      final response = await _client.get(ApiEndpoints.termsAndConditions);
+      final response = await _client.get(
+        EmployeeApiEndpoints.termsAndConditions,
+      );
       final decoded = _unwrapEnvelope(response.data);
       if (decoded == null) {
         return ApiResponse.failure(

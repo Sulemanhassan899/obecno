@@ -2,30 +2,30 @@
 // attendance_details_sheet.dart
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/core/animations/app_animations.dart';
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/core/constants/text_styles.dart';
 
-import 'package:Obecno/features/employee_module/attendance/data/models/attendence_event.dart'
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
     hide AttendanceFormat;
-import 'package:Obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart'
+import 'package:obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart'
     show AttendanceFormat, KnownLocation;
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
-import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
-import 'package:Obecno/main.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
+import 'package:obecno/main.dart';
 
-import 'package:Obecno/core/generated/assets.dart';
+import 'package:obecno/core/generated/assets.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/resolved_location_text.dart';
-import 'package:Obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
-import 'package:Obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
-import 'package:Obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/widgets/resolved_location_text.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
 class AttendanceDetailsSheet {
   AttendanceDetailsSheet._();
@@ -422,7 +422,7 @@ class _AttendanceDetailsSheetBodyState
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 24),
+           const SizedBox(height: 32),
 
                             /// ================= TIMELINE HEADER =================
                             Row(
@@ -456,8 +456,19 @@ class _AttendanceDetailsSheetBodyState
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    GestureDetector(
-                      onTap: () {
+                    MyButton(
+                      size: MyButtonSize.normal,
+                      width: 200,
+                      buttonText: 'Edit Attendance',
+                      backgroundColor: kWhite,
+                      fontColor: kBlack,
+                      outlineColor: kBorderColor,
+                      hasicon: true,
+                      leftWidget: CommonImageView(
+                        imagePath: Assets.imagesPen,
+                        height: 16,
+                      ),
+                      onTap: () async {
                         Navigator.of(context).pop();
 
                         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -488,33 +499,6 @@ class _AttendanceDetailsSheetBodyState
                           onEditAttendance?.call();
                         });
                       },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: kWhite,
-                          border: Border.all(color: kBorderColor),
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                        child: Row(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: 4,
-                                left: 6,
-                              ),
-                              child: CommonImageView(
-                                imagePath: Assets.imagesPen,
-                                height: 16,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            AppText.caption(
-                              "Edit Attendance",
-                              weight: FontWeight.w500,
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ],
                 ),

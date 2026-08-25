@@ -2,25 +2,23 @@
 
 import 'dart:async';
 
-import 'package:Obecno/core/constants/app_strings.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/auth/services/company_policy_service.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/core/constants/app_strings.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/auth/services/company_policy_service.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:flutter/foundation.dart';
-import 'package:Obecno/features/clock/domain/controllers/clock_controller.dart';
-import 'package:Obecno/shared/location/data/location_model.dart';
-import 'package:Obecno/shared/location/service/attendance_payload_model.dart';
-import 'package:Obecno/shared/location/service/attendance_permission_service.dart';
-import 'package:Obecno/shared/location/service/location_service.dart';
-import 'package:Obecno/shared/location/service/geofence_helper.dart';
-import 'package:Obecno/shared/location/service/reverse_geocoding_service.dart';
+import 'package:obecno/features/clock/domain/controllers/clock_controller.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
+import 'package:obecno/shared/location/service/attendance_permission_service.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 
-import '../../../../core/constants/app_enums.dart'
-    hide AttendanceActionResult;
 import '../../repositories/clock_attendance_repository.dart';
 import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';
-import 'package:Obecno/main.dart';
+import 'package:obecno/main.dart';
 
 class SyncedClockScreenController extends ClockScreenController {
   SyncedClockScreenController({

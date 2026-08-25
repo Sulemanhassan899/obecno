@@ -1,18 +1,18 @@
 // import 'dart:async';
 
-// import 'package:Obecno/core/constants/all_colors.dart';
-// import 'package:Obecno/core/constants/app_sizes.dart';
-// import 'package:Obecno/core/constants/text_styles.dart';
-// import 'package:Obecno/core/services/permission_helper.dart';
-// import 'package:Obecno/core/state/change_notifier_provider.dart';
-// import 'package:Obecno/features/auth/presentation/screens/forgot_password.dart';
-// import 'package:Obecno/features/auth/providers/auth_provider.dart';
-// import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-// import 'package:Obecno/monitors/app_guard.dart';
-// import 'package:Obecno/widgets/back_button.dart';
-// import 'package:Obecno/widgets/custom_checkbox_widget.dart';
-// import 'package:Obecno/widgets/custom_textfield.dart';
-// import 'package:Obecno/widgets/my_button.dart';
+// import 'package:obecno/core/constants/all_colors.dart';
+// import 'package:obecno/core/constants/app_sizes.dart';
+// import 'package:obecno/core/constants/text_styles.dart';
+// import 'package:obecno/core/services/permission_helper.dart';
+// import 'package:obecno/core/state/change_notifier_provider.dart';
+// import 'package:obecno/features/auth/presentation/screens/forgot_password.dart';
+// import 'package:obecno/features/auth/providers/auth_provider.dart';
+// import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+// import 'package:obecno/monitors/app_guard.dart';
+// import 'package:obecno/widgets/back_button.dart';
+// import 'package:obecno/widgets/custom_checkbox_widget.dart';
+// import 'package:obecno/widgets/custom_textfield.dart';
+// import 'package:obecno/widgets/my_button.dart';
 // import 'package:flutter/material.dart';
 // import 'package:go_router/go_router.dart';
 
@@ -291,19 +291,19 @@
 
 // import 'dart:async';
 
-// import 'package:Obecno/core/constants/all_colors.dart';
-// import 'package:Obecno/core/constants/app_sizes.dart';
-// import 'package:Obecno/core/constants/text_styles.dart';
-// import 'package:Obecno/core/services/permission_helper.dart';
-// import 'package:Obecno/core/state/change_notifier_provider.dart';
-// import 'package:Obecno/features/auth/presentation/screens/forgot_password.dart';
-// import 'package:Obecno/features/auth/providers/auth_provider.dart';
-// import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-// import 'package:Obecno/monitors/app_guard.dart';
-// import 'package:Obecno/widgets/back_button.dart';
-// import 'package:Obecno/widgets/custom_checkbox_widget.dart';
-// import 'package:Obecno/widgets/custom_textfield.dart';
-// import 'package:Obecno/widgets/my_button.dart';
+// import 'package:obecno/core/constants/all_colors.dart';
+// import 'package:obecno/core/constants/app_sizes.dart';
+// import 'package:obecno/core/constants/text_styles.dart';
+// import 'package:obecno/core/services/permission_helper.dart';
+// import 'package:obecno/core/state/change_notifier_provider.dart';
+// import 'package:obecno/features/auth/presentation/screens/forgot_password.dart';
+// import 'package:obecno/features/auth/providers/auth_provider.dart';
+// import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+// import 'package:obecno/monitors/app_guard.dart';
+// import 'package:obecno/widgets/back_button.dart';
+// import 'package:obecno/widgets/custom_checkbox_widget.dart';
+// import 'package:obecno/widgets/custom_textfield.dart';
+// import 'package:obecno/widgets/my_button.dart';
 // import 'package:flutter/material.dart';
 // import 'package:go_router/go_router.dart';
 
@@ -582,20 +582,19 @@
 
 import 'dart:async';
 
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/permission_helper.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/presentation/screens/forgot_password.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/core/monitors/app_guard.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/custom_checkbox_widget.dart';
-import 'package:Obecno/widgets/custom_textfield.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/presentation/screens/forgot_password.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/custom_textfield.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 

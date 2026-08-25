@@ -114,12 +114,17 @@ abstract class BaseRepository {
         );
       }
     } on ApiError catch (e) {
-      return ApiResponse.failure(e.message, statusCode: e.statusCode);
+      return ApiResponse.failure(
+        e.message,
+        statusCode: e.statusCode,
+        fieldErrors: e.fieldErrors,
+      );
     } catch (e) {
       final apiError = ApiError.fromException(e);
       return ApiResponse.failure(
         apiError.message,
         statusCode: apiError.statusCode,
+        fieldErrors: apiError.fieldErrors,
       );
     }
   }

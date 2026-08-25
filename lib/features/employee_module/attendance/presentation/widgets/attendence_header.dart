@@ -1,10 +1,10 @@
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -55,9 +55,7 @@ class AttendanceMonthHeader extends StatelessWidget {
               onTap: () {
                 onPrevious();
               },
-              child: GestureDetector(
-                child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
-              ),
+              child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
             ),
           ),
         ),

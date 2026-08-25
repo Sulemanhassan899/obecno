@@ -1,22 +1,34 @@
-import 'package:Obecno/core/animations/app_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
-import 'package:Obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart.dart';
+import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/features/clock/presentation/screens/clock_screen.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class ManagerBottomNavBar extends StatefulWidget {
   const ManagerBottomNavBar({super.key});
 
-  /// Switch to Attendance tab with an optional status filter.
-  static void goToAttendance(BuildContext context, {String? statusFilter}) {
+  /// Switch to Attendance tab with an optional status filter and date.
+  static void goToAttendance(
+    BuildContext context, {
+    String? statusFilter,
+    DateTime? date,
+  }) {
+    context.read<ManagerAttendanceProvider>().open(
+      date: date,
+      statusFilter: statusFilter,
+    );
     context
         .findAncestorStateOfType<_ManagerBottomNavBarState>()
         ?.openAttendance(statusFilter: statusFilter);
@@ -46,7 +58,6 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       case 2:
         return ManagerAttendanceScreen(
           key: ValueKey(_attendanceStatusFilter ?? 'Status'),
-          initialStatus: _attendanceStatusFilter,
         );
       case 3:
         return const ManagerAlertsScreen();
@@ -106,6 +117,13 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
                 setState(() {
                   if (index != 2) {
                     _attendanceStatusFilter = null;
+                  } else if (_attendanceStatusFilter == null) {
+                    context.read<ManagerAttendanceProvider>().setStatus(
+                      StatusFilterOption.allId,
+                    );
+                    context.read<ManagerAttendanceProvider>().setLocation(
+                      id: LocationFilterOption.allId,
+                    );
                   }
                   selectedIndex = index;
                 });

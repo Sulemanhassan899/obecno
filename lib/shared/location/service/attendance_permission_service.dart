@@ -1,6 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 
-import 'package:Obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/services/permission_helper.dart';
 
 class AttendancePermissionService {
   const AttendancePermissionService();

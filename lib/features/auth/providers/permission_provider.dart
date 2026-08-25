@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:Obecno/features/auth/data/models/permission_item_model.dart';
-import 'package:Obecno/features/auth/services/auth_service.dart';
-import 'package:Obecno/features/auth/services/company_policy_service.dart';
+import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/services/auth_service.dart';
+import 'package:obecno/features/auth/services/company_policy_service.dart';
 
 class PermissionProvider extends ChangeNotifier {
   PermissionProvider(this._policyService, this._authService);

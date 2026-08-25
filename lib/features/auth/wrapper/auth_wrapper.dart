@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:Obecno/core/services/connectivity_service.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/auth/presentation/screens/login_email.dart';
+import 'package:obecno/core/services/connectivity_service.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:flutter/material.dart';
 
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
 
 import '../providers/auth_provider.dart';
 

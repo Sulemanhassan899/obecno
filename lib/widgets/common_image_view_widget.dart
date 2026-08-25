@@ -3,7 +3,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:Obecno/core/animations/app_shimmer.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 
 class CommonImageView extends StatelessWidget {
   final String? url;
@@ -104,24 +104,12 @@ class CommonImageView extends StatelessWidget {
     }
 
     /// =========================
-    /// ASSET IMAGE
-    /// =========================
-    if (imagePath != null && imagePath!.isNotEmpty) {
-      return Image.asset(
-        imagePath!,
-        height: height,
-        width: width,
-        fit: fit,
-        errorBuilder: (_, __, ___) => _errorWidget(),
-      );
-    }
-
-    /// =========================
     /// NETWORK IMAGE (WITH SHIMMER)
     /// =========================
-    if (url != null && url!.isNotEmpty) {
+    final networkUrl = _networkUrl(url) ?? _networkUrl(imagePath);
+    if (networkUrl != null) {
       return CachedNetworkImage(
-        imageUrl: url!,
+        imageUrl: networkUrl,
         height: height,
         width: width,
         fit: fit,
@@ -139,8 +127,30 @@ class CommonImageView extends StatelessWidget {
     }
 
     /// =========================
+    /// ASSET IMAGE
+    /// =========================
+    if (imagePath != null && imagePath!.isNotEmpty) {
+      return Image.asset(
+        imagePath!,
+        height: height,
+        width: width,
+        fit: fit,
+        errorBuilder: (_, __, ___) => _errorWidget(),
+      );
+    }
+
+    /// =========================
     /// NOTHING PROVIDED → DEFAULT
     /// =========================
     return _errorWidget();
+  }
+
+  static String? _networkUrl(String? value) {
+    if (value == null) return null;
+    final path = value.trim();
+    if (path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (path.startsWith('//')) return 'https:$path';
+    return null;
   }
 }

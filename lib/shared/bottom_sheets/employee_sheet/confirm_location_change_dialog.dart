@@ -1,8 +1,8 @@
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class ConfirmLocationChangeDialog {
@@ -32,26 +32,21 @@ class ConfirmLocationChangeDialog {
                   fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 18),
-                AppText.h2(
-                  'Confirm Location Change',
-                ),
+                AppText.h2('Confirm Location Change'),
                 const SizedBox(height: 10),
                 AppText.p1(
                   "Changing the default location will update the existing location’s attendance rules and settings to this user.",
                   color: kGreyColor,
                 ),
                 const SizedBox(height: 16),
-                AppText.p1(
-                  'Do you want to continue?',
-                  color: kGreyColor,
-                ),
+                AppText.p1('Do you want to continue?', color: kGreyColor),
                 const SizedBox(height: 22),
                 Row(
                   children: [
-                 Flexible(
+                    Flexible(
                       flex: 2,
                       child: MyButton(
-                        height: 48,
+                        size: MyButtonSize.normal,
                         buttonText: 'Cancel',
                         backgroundColor: kWhite,
                         fontColor: kBlack,
@@ -63,10 +58,9 @@ class ConfirmLocationChangeDialog {
                     Flexible(
                       flex: 4,
                       child: MyButton(
-                        height: 48,
+                        size: MyButtonSize.normal,
                         buttonText: 'Confirm Change',
                         backgroundColor: kredColor,
-                        fontSize: 13,
                         onTap: () async => Navigator.pop(dialogContext, true),
                       ),
                     ),

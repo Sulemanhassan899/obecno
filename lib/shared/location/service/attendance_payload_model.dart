@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 import 'dart:math';
 
-import 'package:Obecno/shared/location/data/location_model.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
 
 class AttendanceAction {
   AttendanceAction._();

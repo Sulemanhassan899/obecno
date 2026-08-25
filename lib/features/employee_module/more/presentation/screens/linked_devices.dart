@@ -1,17 +1,17 @@
 // ignore_for_file: non_constant_identifier_names
 
-import 'package:Obecno/core/constants/app_sizes.dart';
-import 'package:Obecno/core/helpers/toast_helper.dart';
-import 'package:Obecno/core/state/change_notifier_provider.dart';
-import 'package:Obecno/features/employee_module/more/data/models/device_model.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/core/generated/assets.dart';
-import 'package:Obecno/widgets/back_button.dart';
-import 'package:Obecno/widgets/my_button.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
-import 'package:Obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 
 class LinkedDevices extends StatefulWidget {
   const LinkedDevices({super.key});
@@ -167,10 +167,9 @@ class _LinkedDevicesState extends State<LinkedDevices> {
                             ),
                             const SizedBox(height: 16),
                             MyButton(
+                              size: MyButtonSize.normal,
                               width: 140,
-                              height: 40,
                               buttonText: "Retry",
-                              fontSize: 12,
                               onTap: () => deviceProvider.fetchDevices(),
                             ),
                           ],
@@ -292,12 +291,11 @@ class _LinkedDevicesState extends State<LinkedDevices> {
           ],
           const SizedBox(height: 16),
           MyButton(
-            width: 120,
-            height: 44,
+            size: MyButtonSize.normal,
+            compact: true,
             buttonText: isDeleting ? 'Deleting...' : 'Delete Request',
             backgroundColor: kWhite,
             fontColor: kRed,
-            fontSize: 12,
             outlineColor: kRed,
             radius: 25,
             onTap: isDeleting

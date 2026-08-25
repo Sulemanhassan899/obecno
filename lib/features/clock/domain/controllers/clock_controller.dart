@@ -5,10 +5,10 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:Obecno/core/constants/app_enums.dart';
-import 'package:Obecno/features/auth/services/company_policy_service.dart';
-import 'package:Obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:Obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/auth/services/company_policy_service.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
 
 enum AttendanceActionResult {
   checkedIn,

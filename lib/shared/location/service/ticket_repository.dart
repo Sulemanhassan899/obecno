@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/api_endpoints.dart';
-import 'package:Obecno/core/api/api_error.dart';
-import 'package:Obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/employee_api_endpoints.dart';
+import 'package:obecno/core/api/api_error.dart';
+import 'package:obecno/core/api/api_response.dart';
 
 class TicketRepository {
   TicketRepository(this._client);
@@ -43,7 +43,7 @@ class TicketRepository {
   }) async {
     try {
       final response = await _client.post(
-        ApiEndpoints.tickets,
+        EmployeeApiEndpoints.tickets,
         data: {'user_email': userEmail, 'subject': subject, 'content': content},
       );
 

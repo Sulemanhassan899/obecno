@@ -8,9 +8,9 @@
 // happened to be harmless to the compiler. Removed; kept exactly one
 // copy of each import actually used below.
 import 'package:flutter/material.dart';
-import 'package:Obecno/core/animations/button_animations.dart';
-import 'package:Obecno/core/constants/all_colors.dart';
-import 'package:Obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/text_styles.dart';
 
 class BackButtonBg extends StatelessWidget {
   const BackButtonBg({

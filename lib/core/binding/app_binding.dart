@@ -1,42 +1,56 @@
-
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:Obecno/core/api/api_client.dart';
-import 'package:Obecno/core/api/session_manager.dart';
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/core/services/network_checker.dart';
-import 'package:Obecno/core/services/token_service.dart';
-import 'package:Obecno/features/auth/providers/auth_provider.dart';
-import 'package:Obecno/features/auth/providers/permission_provider.dart';
-import 'package:Obecno/features/auth/repositories/auth_repository.dart';
-import 'package:Obecno/features/auth/services/auth_service.dart';
-import 'package:Obecno/features/auth/services/company_policy_service.dart';
-import 'package:Obecno/features/employee_module/more/repositories/privacy_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/terms_provider.dart';
-import 'package:Obecno/features/employee_module/more/services/terms_service.dart';
-import 'package:Obecno/features/launch/book_demo/providers/book_demo_provider.dart';
-import 'package:Obecno/features/launch/book_demo/repositories/book_demo_repository.dart';
-import 'package:Obecno/features/launch/book_demo/services/book_demo_service.dart';
-import 'package:Obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/device_repository.dart';
-import 'package:Obecno/features/employee_module/more/services/device_cache_service.dart';
-import 'package:Obecno/features/employee_module/more/services/device_info_service.dart';
-import 'package:Obecno/features/employee_module/more/services/device_service.dart';
-import 'package:Obecno/features/employee_module/attendance/data/local/attendance_cache_tracker.dart';
-import 'package:Obecno/features/employee_module/attendance/data/local/attendance_db.dart';
-import 'package:Obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
-import 'package:Obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/core/api/api_client.dart';
+import 'package:obecno/core/api/session_manager.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/core/services/network_checker.dart';
+import 'package:obecno/core/services/token_service.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/auth/providers/permission_provider.dart';
+import 'package:obecno/features/auth/repositories/auth_repository.dart';
+import 'package:obecno/features/auth/services/auth_service.dart';
+import 'package:obecno/features/auth/services/company_policy_service.dart';
+import 'package:obecno/features/employee_module/more/repositories/privacy_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
+import 'package:obecno/features/employee_module/more/services/terms_service.dart';
+import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
+import 'package:obecno/features/launch/book_demo/repositories/book_demo_repository.dart';
+import 'package:obecno/features/launch/book_demo/services/book_demo_service.dart';
+import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/device_repository.dart';
+import 'package:obecno/features/employee_module/more/services/device_cache_service.dart';
+import 'package:obecno/features/employee_module/more/services/device_info_service.dart';
+import 'package:obecno/features/employee_module/more/services/device_service.dart';
+import 'package:obecno/features/employee_module/attendance/data/local/attendance_cache_tracker.dart';
+import 'package:obecno/features/employee_module/attendance/data/local/attendance_db.dart';
+import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
-import 'package:Obecno/features/clock/repositories/clock_attendance_repository.dart';
-import 'package:Obecno/features/clock/services/sync_service.dart';
-import 'package:Obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:Obecno/features/employee_module/more/repositories/profile_repository.dart';
-import 'package:Obecno/features/employee_module/more/services/profile_service.dart';
-import 'package:Obecno/features/employee_module/more/services/privacy_service.dart';
-import 'package:Obecno/shared/location/service/attendance_connectivity_service.dart';
-import 'package:Obecno/shared/location/service/local_queue_service.dart';
-import 'package:Obecno/shared/location/service/location_provider.dart';
+import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
+import 'package:obecno/features/clock/services/sync_service.dart';
+import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
+import 'package:obecno/features/employee_module/more/repositories/profile_repository.dart';
+import 'package:obecno/features/employee_module/more/services/profile_service.dart';
+import 'package:obecno/features/employee_module/more/services/privacy_service.dart';
+import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/repositories/manager_overview_repository.dart';
+import 'package:obecno/features/manager_module/Manager_overview/services/manager_overview_service.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
+import 'package:obecno/features/manager_module/Manager_employees/services/manager_employees_service.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/repositories/manager_locations_repository.dart';
+import 'package:obecno/features/manager_module/Manager_locations/services/manager_locations_service.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_status_filters_repository.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_attendance_repository.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/services/manager_status_filters_service.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/services/manager_attendance_service.dart';
+import 'package:obecno/shared/location/service/attendance_connectivity_service.dart';
+import 'package:obecno/shared/location/service/local_queue_service.dart';
+import 'package:obecno/shared/location/service/location_provider.dart';
 
 class AppBindings {
   late final NetworkChecker networkChecker;
@@ -75,6 +89,21 @@ class AppBindings {
   late final HistoryAttendanceRepository attendanceRepository;
   late final SyncService clockSyncService;
   late final LocationProvider locationProvider;
+  late final ManagerOverviewRepository managerOverviewRepository;
+  late final ManagerOverviewService managerOverviewService;
+  late final ManagerOverviewProvider managerOverviewProvider;
+  late final ManagerLocationsRepository managerLocationsRepository;
+  late final ManagerLocationsService managerLocationsService;
+  late final ManagerLocationsProvider managerLocationsProvider;
+  late final ManagerEmployeesRepository managerEmployeesRepository;
+  late final ManagerEmployeesService managerEmployeesService;
+  late final ManagerEmployeesProvider managerEmployeesProvider;
+  late final ManagerStatusFiltersRepository managerStatusFiltersRepository;
+  late final ManagerStatusFiltersService managerStatusFiltersService;
+  late final ManagerStatusFiltersProvider managerStatusFiltersProvider;
+  late final ManagerAttendanceRepository managerAttendanceRepository;
+  late final ManagerAttendanceService managerAttendanceService;
+  late final ManagerAttendanceProvider managerAttendanceProvider;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -142,6 +171,47 @@ class AppBindings {
     privacyService = PrivacyService(ApihttpClient);
     privacyProvider = PrivacyProvider(privacyService);
 
+    managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
+    managerOverviewService = ManagerOverviewService(managerOverviewRepository);
+    managerOverviewProvider = ManagerOverviewProvider(managerOverviewService);
+
+    managerLocationsRepository = ManagerLocationsRepository(ApihttpClient);
+    managerLocationsService = ManagerLocationsService(
+      managerLocationsRepository,
+      authLocationsProvider: () => authProvider.locations,
+    );
+    managerLocationsProvider = ManagerLocationsProvider(
+      managerLocationsService,
+    );
+
+    managerEmployeesRepository = ManagerEmployeesRepository(ApihttpClient);
+    managerEmployeesService = ManagerEmployeesService(
+      managerEmployeesRepository,
+      currentUserIdProvider: () => authProvider.user?.id,
+    );
+    managerEmployeesProvider = ManagerEmployeesProvider(
+      managerEmployeesService,
+    );
+
+    managerStatusFiltersRepository = ManagerStatusFiltersRepository(
+      ApihttpClient,
+    );
+    managerStatusFiltersService = ManagerStatusFiltersService(
+      managerStatusFiltersRepository,
+    );
+    managerStatusFiltersProvider = ManagerStatusFiltersProvider(
+      managerStatusFiltersService,
+    );
+
+    managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
+    managerAttendanceService = ManagerAttendanceService(
+      managerAttendanceRepository,
+      employeesRepository: managerEmployeesRepository,
+    );
+    managerAttendanceProvider = ManagerAttendanceProvider(
+      managerAttendanceService,
+    );
+
     _wasAuthenticated = authProvider.isAuthenticated;
     if (_wasAuthenticated) {
       unawaited(termsProvider.preloadOnLogin());
@@ -163,6 +233,11 @@ class AppBindings {
         // Logged out: drop cached device state so a different user logging
         // in on this device doesn't inherit stale approval/blocked flags.
         unawaited(deviceProvider.clearLocalState());
+        managerOverviewProvider.reset();
+        managerLocationsProvider.reset();
+        managerEmployeesProvider.reset();
+        managerStatusFiltersProvider.reset();
+        managerAttendanceProvider.reset();
       }
       _wasAuthenticated = isAuthenticatedNow;
     };
@@ -265,10 +340,7 @@ class AppBindings {
 
       await _guardedCleanupStep('clearTermsCache', termsService.clearCache);
 
-      await _guardedCleanupStep(
-        'clearPrivacyCache',
-        privacyService.clearCache,
-      );
+      await _guardedCleanupStep('clearPrivacyCache', privacyService.clearCache);
     });
   }
 

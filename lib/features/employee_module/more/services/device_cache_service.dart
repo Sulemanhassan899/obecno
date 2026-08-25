@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'package:Obecno/core/services/logger.dart';
-import 'package:Obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 
 /// Local persistence for the linked-devices list, so the Linked Devices
 /// screen has something to show when offline or when the API call fails.
