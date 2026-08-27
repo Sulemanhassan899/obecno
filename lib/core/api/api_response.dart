@@ -42,8 +42,18 @@ class ApiResponse<T> {
     final errors = fieldErrors;
     if (errors == null || errors.isEmpty) return null;
     for (final key in keys) {
-      final text = fieldErrorText(errors[key]);
-      if (text != null) return text;
+      final direct = fieldErrorText(errors[key]);
+      if (direct != null) return direct;
+      final needle = key.toLowerCase();
+      for (final entry in errors.entries) {
+        final name = entry.key.toLowerCase();
+        if (name == needle ||
+            name.endsWith('.$needle') ||
+            name.endsWith('[$needle]')) {
+          final text = fieldErrorText(entry.value);
+          if (text != null) return text;
+        }
+      }
     }
     return null;
   }

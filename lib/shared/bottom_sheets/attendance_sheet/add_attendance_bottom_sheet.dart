@@ -16,8 +16,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
+class AddAttendanceSaveResult {
+  const AddAttendanceSaveResult({
+    required this.checkIn,
+    required this.checkOut,
+  });
+
+  final TimeOfDay checkIn;
+  final TimeOfDay checkOut;
+}
+
 class AddAttendanceBottomSheet {
-  static void show(
+  /// Returns save result when attendance was saved successfully.
+  static Future<AddAttendanceSaveResult?> show(
     BuildContext context, {
     required DateTime day,
     required ApiClient apiClient,
@@ -39,7 +50,7 @@ class AddAttendanceBottomSheet {
   }) {
     final contentKey = GlobalKey<_AttendanceContentState>();
 
-    CommonBottomSheet.show(
+    return CommonBottomSheet.show<AddAttendanceSaveResult>(
       context: context,
       height: MediaQuery.of(context).size.height * 0.8,
       buttonText: "Save",
@@ -432,6 +443,9 @@ class _AttendanceContentState extends State<_AttendanceContent>
       String? clockIf(TimeOfDay t, {required bool include}) =>
           include ? clock(t) : null;
 
+      final isNewAttendance =
+          widget.applyImmediately && widget.attendanceId == null;
+
       final result = widget.applyImmediately
           ? await bindings.managerAttendanceService.saveEmployeeAttendance(
               attendanceId: widget.attendanceId,
@@ -441,9 +455,11 @@ class _AttendanceContentState extends State<_AttendanceContent>
               lat: gps.lat,
               lon: gps.lon,
               checkIn: clock(checkIn),
+              // New attendance (e.g. On Leave day) must send both times.
               checkOut: clockIf(
                 checkOut,
                 include:
+                    isNewAttendance ||
                     widget.hadInitialCheckOut ||
                     _timeChanged(widget.initialCheckOut, checkOut),
               ),
@@ -495,7 +511,9 @@ class _AttendanceContentState extends State<_AttendanceContent>
             message: result.data,
           );
         }
-        Navigator.of(context).pop();
+        Navigator.of(context, rootNavigator: true).pop(
+          AddAttendanceSaveResult(checkIn: checkIn, checkOut: checkOut),
+        );
       } else {
         if (widget.applyImmediately) {
           ToastHelper.error(

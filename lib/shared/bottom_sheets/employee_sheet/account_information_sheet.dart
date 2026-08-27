@@ -3,9 +3,8 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
-import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/main.dart';
-import 'package:obecno/shared/bottom_sheets/employee_sheet/edit_account_field_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/edit_account_field_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -24,6 +23,7 @@ class AccountInformationSheet {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AccountInformationSheetBody(
         employeeName: employeeName,
@@ -91,84 +91,55 @@ class _AccountInformationSheetBodyState
     setState(() {
       _email = profile.email ?? _email;
       _phone = profile.phone ?? _phone;
-      _companyId = profile.employeeCode ?? _companyId;
-      _address = profile.address ?? _address;
+      final companyId = profile.employeeCode?.trim();
+      final address = profile.address?.trim();
+      if (companyId != null && companyId.isNotEmpty) _companyId = companyId;
+      if (address != null && address.isNotEmpty) _address = address;
       _loading = false;
     });
   }
 
-  Map<String, dynamic> _payloadFor(AccountEditField field, String value) {
-    switch (field) {
-      case AccountEditField.email:
-        return {'email': value};
-      case AccountEditField.phone:
-        return {'phone': value, 'phone_number': value};
-      case AccountEditField.companyId:
-        return {'company_id': value, 'employee_code': value};
-      case AccountEditField.address:
-        return {'address': value};
-    }
-  }
-
-  bool _matches(
-    AccountEditField field,
-    String value,
-    ManagerEmployeeModel profile,
-  ) {
-    final expected = value.trim();
-    switch (field) {
-      case AccountEditField.email:
-        return (profile.email ?? '').trim() == expected;
-      case AccountEditField.phone:
-        return (profile.phone ?? '').trim() == expected;
-      case AccountEditField.companyId:
-        return (profile.employeeCode ?? '').trim() == expected;
-      case AccountEditField.address:
-        return (profile.address ?? '').trim() == expected;
-    }
-  }
-
   Future<void> _edit(AccountEditField field, String current) async {
+    final userId = widget.userId;
+    if (userId == null) {
+      ToastHelper.error(context, message: 'Missing employee.');
+      return;
+    }
+
     final updated = await EditAccountFieldSheet.show(
       context: context,
       employeeName: widget.employeeName,
       field: field,
       initialValue: current,
-      persist: widget.userId == null
-          ? null
-          : (value) async {
-              final result = await bindings.managerEmployeesService
-                  .updateEmployee(
-                    userId: widget.userId!,
-                    payload: _payloadFor(field, value),
-                  );
-              if (!result.success) {
-                return result.message ?? 'Failed to update ${field.label}.';
-              }
-              if (result.data != null &&
-                  !_matches(field, value, result.data!)) {
-                return '${field.label} update did not persist. Please try again.';
-              }
-              return null;
-            },
+      userId: userId,
+      persist: (value) async {
+        final result = await bindings.managerEmployeesService.updateEmployee(
+          userId: userId,
+          payload: field.payload(value),
+        );
+        if (result.success) return null;
+        return field.saveFailureMessage(result);
+      },
     );
     if (updated == null || !mounted) return;
 
-    setState(() {
-      switch (field) {
-        case AccountEditField.email:
-          _email = updated;
-        case AccountEditField.phone:
-          _phone = updated;
-        case AccountEditField.companyId:
-          _companyId = updated;
-        case AccountEditField.address:
-          _address = updated;
-      }
-    });
+    setState(() => _applyField(field, updated));
     await _load(showSpinner: false);
     if (!mounted) return;
     ToastHelper.changesSaved(context);
+  }
+
+  void _applyField(AccountEditField field, String value) {
+    switch (field) {
+      case AccountEditField.email:
+        _email = value;
+      case AccountEditField.phone:
+        _phone = value;
+      case AccountEditField.companyId:
+        _companyId = value;
+      case AccountEditField.address:
+        _address = value;
+    }
   }
 
   Widget _editPen(VoidCallback onTap) {

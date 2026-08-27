@@ -83,6 +83,10 @@ class ManagerAttendanceRepository extends BaseRepository {
   }
 
   /// Applies check-in / check-out / break times immediately (manager save).
+  ///
+  /// Spec §4.1: `PUT /manager/employees/{employee_id}/attendance` is the
+  /// primary create/edit path. Team-attendance edit endpoints are fallbacks
+  /// for older backends.
   Future<ApiResponse<String>> saveEmployeeAttendance({
     required int? attendanceId,
     required int? userId,
@@ -104,7 +108,40 @@ class ManagerAttendanceRepository extends BaseRepository {
       cancelToken: cancelToken,
     );
 
-    final body = editSaveBody(
+    final employeeBody = employeeAttendanceSaveBody(
+      attendanceId: resolvedId,
+      date: date,
+      deviceDetails: deviceDetails,
+      lat: lat,
+      lon: lon,
+      checkIn: checkIn,
+      checkOut: checkOut,
+      breakStart: breakStart,
+      breakEnd: breakEnd,
+      changes: changes,
+    );
+
+    // Primary: documented manager create/edit endpoint.
+    if (userId != null) {
+      final path = ManagerEmployeeApiEndpoints.employeeAttendance(userId);
+      var primary = await putRequest<String>(
+        path,
+        cancelToken: cancelToken,
+        data: employeeBody,
+        parser: _parseSaveMessage,
+      );
+      if (primary.success) return primary;
+
+      primary = await postRequest<String>(
+        path,
+        cancelToken: cancelToken,
+        data: employeeBody,
+        parser: _parseSaveMessage,
+      );
+      if (primary.success) return primary;
+    }
+
+    final legacyBody = editSaveBody(
       attendanceId: resolvedId,
       userId: userId,
       date: date,
@@ -121,38 +158,66 @@ class ManagerAttendanceRepository extends BaseRepository {
     var result = await postRequest<String>(
       ManagerEmployeeApiEndpoints.teamAttendanceEditSave,
       cancelToken: cancelToken,
-      data: body,
+      data: legacyBody,
       parser: _parseSaveMessage,
     );
 
-    if (_isRecordNotFound(result)) {
+    if (_isRecordNotFound(result) || !result.success) {
       result = await postRequest<String>(
         ManagerEmployeeApiEndpoints.teamAttendanceEdit,
         cancelToken: cancelToken,
-        data: body,
-        parser: _parseSaveMessage,
-      );
-    }
-
-    if (_isRecordNotFound(result) && userId != null) {
-      result = await putRequest<String>(
-        '/manager/employees/$userId/attendance',
-        cancelToken: cancelToken,
-        data: {
-          'date': date,
-          if (resolvedId != null) 'attendance_id': resolvedId,
-          if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
-          if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
-          if (breakStart != null && breakStart.isNotEmpty)
-            'breakout': breakStart,
-          if (breakEnd != null && breakEnd.isNotEmpty) 'breakin': breakEnd,
-          'changes': changes.map((e) => e.toJson()).toList(),
-        },
+        data: legacyBody,
         parser: _parseSaveMessage,
       );
     }
 
     return result;
+  }
+
+  /// Body for `PUT/POST /manager/employees/{id}/attendance` (API §4.1).
+  static Map<String, dynamic> employeeAttendanceSaveBody({
+    required int? attendanceId,
+    required String date,
+    required String deviceDetails,
+    required double lat,
+    required double lon,
+    String? checkIn,
+    String? checkOut,
+    String? breakStart,
+    String? breakEnd,
+    required List<AttendanceChangeRequestPayload> changes,
+  }) {
+    final events = <Map<String, dynamic>>[
+      if (checkIn != null && checkIn.isNotEmpty)
+        {'type': 'checkin', 'time': checkIn},
+      if (breakStart != null && breakStart.isNotEmpty)
+        {'type': 'breakout', 'time': breakStart},
+      if (breakEnd != null && breakEnd.isNotEmpty)
+        {'type': 'breakin', 'time': breakEnd},
+      if (checkOut != null && checkOut.isNotEmpty)
+        {'type': 'checkout', 'time': checkOut},
+    ];
+
+    return {
+      'date': date,
+      if (attendanceId != null) 'attendance_id': attendanceId,
+      'device_details': deviceDetails,
+      'lat': lat,
+      'lon': lon,
+      if (checkIn != null && checkIn.isNotEmpty) ...{
+        'check_in': checkIn,
+        'checkin': checkIn,
+      },
+      if (checkOut != null && checkOut.isNotEmpty) ...{
+        'check_out': checkOut,
+        'checkout': checkOut,
+      },
+      if (breakStart != null && breakStart.isNotEmpty) 'breakout': breakStart,
+      if (breakEnd != null && breakEnd.isNotEmpty) 'breakin': breakEnd,
+      if (events.isNotEmpty) 'events': events,
+      if (changes.isNotEmpty)
+        'changes': changes.map((e) => e.toJson()).toList(),
+    };
   }
 
   static Map<String, dynamic> editSaveBody({

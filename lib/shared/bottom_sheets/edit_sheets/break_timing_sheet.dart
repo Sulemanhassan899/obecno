@@ -75,8 +75,9 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
   Future<void> _load() async {
     final userId = widget.userId;
     if (userId == null) return;
-    final result = await bindings.managerEmployeesService
-        .loadEmployeePolicy(userId: userId);
+    final result = await bindings.managerEmployeesService.loadEmployeePolicy(
+      userId: userId,
+    );
     if (!mounted || !result.success || result.data == null) return;
     final policy = result.data!;
     setState(() {
@@ -101,20 +102,14 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
       final wantedBreak = _maxBreak;
       final wantedTracking = _trackLocation;
       final result = await bindings.managerEmployeesService
-          .updateEmployeeSchedule(
+          .updateEmployeePermissions(
             userId: widget.userId!,
             payload: {
+              ...ManagerEmployeePolicy.breakPermissionPayload(
+                breakLabel: wantedBreak,
+                trackLocation: wantedTracking,
+              ),
               'max_break_minutes': minutes,
-              'break_location_tracking': wantedTracking,
-              'break_time': wantedBreak,
-              'attendance': {
-                'break_time': wantedBreak,
-                'break_location_tracking': wantedTracking ? '1' : '0',
-              },
-              'break_timing': {
-                'break_time': wantedBreak,
-                'break_location_tracking': wantedTracking ? '1' : '0',
-              },
             },
           );
       if (!mounted) return;
@@ -300,8 +295,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                       ),
                       child: Column(
                         children: [
-                        GestureDetector(
-      behavior: HitTestBehavior.opaque,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: _pickDuration,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -398,16 +393,16 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                    Expanded(
-                      flex: 3,
-                      child: MyButton(
-                        buttonText: 'Save',
-                        backgroundColor: kPrimaryButtonColor,
-                        isLoadingExternally: _saving,
-                        isactive: !_saving,
-                        onTap: _save,
-                      ),
+                  Expanded(
+                    flex: 3,
+                    child: MyButton(
+                      buttonText: 'Save',
+                      backgroundColor: kPrimaryButtonColor,
+                      isLoadingExternally: _saving,
+                      isactive: !_saving,
+                      onTap: _save,
                     ),
+                  ),
                 ],
               ),
             ),

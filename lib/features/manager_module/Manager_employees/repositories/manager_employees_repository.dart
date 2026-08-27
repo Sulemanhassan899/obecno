@@ -6,13 +6,17 @@ import 'package:obecno/core/api/base_repository.dart';
 import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/manager_api_endpoints.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';
 
 class ManagerEmployeesRepository extends BaseRepository {
   ManagerEmployeesRepository(super.apiClient);
+
+  final _savedAccountFields = <int, Map<String, String>>{};
 
   Future<ApiResponse<ManagerTeamMembersData>> getTeamMembers({
     String? search,
@@ -118,10 +122,12 @@ class ManagerEmployeesRepository extends BaseRepository {
         if (payload['job_title'] != null) 'job_title': payload['job_title'],
         if (payload['department_id'] != null)
           'department_id': payload['department_id'],
-        if (payload['location_id'] != null) 'location_id': payload['location_id'],
+        if (payload['location_id'] != null)
+          'location_id': payload['location_id'],
         if (payload['default_location_id'] != null)
           'default_location_id': payload['default_location_id'],
-        if (payload['location_ids'] != null) 'location_ids': payload['location_ids'],
+        if (payload['location_ids'] != null)
+          'location_ids': payload['location_ids'],
         'invites': [
           {
             'email': payload['email'],
@@ -296,14 +302,144 @@ class ManagerEmployeesRepository extends BaseRepository {
       parser: _parseEmployee,
     );
     if (result.success && result.data != null && result.statusCode != 404) {
-      return result;
+      return _finishEmployeeProfile(
+        userId: userId,
+        loaded: await _withEditFormAccountFields(
+          userId: userId,
+          employee: result.data!,
+          message: result.message,
+          statusCode: result.statusCode,
+          cancelToken: cancelToken,
+        ),
+      );
     }
 
-    return getRequest<ManagerEmployeeModel>(
+    final legacy = await getRequest<ManagerEmployeeModel>(
       ManagerEmployeeApiEndpoints.legacyEmployeeProfile,
       queryParameters: {'user_id': userId},
       cancelToken: cancelToken,
       parser: _parseEmployee,
+    );
+    if (!legacy.success || legacy.data == null) return legacy;
+    return _finishEmployeeProfile(
+      userId: userId,
+      loaded: await _withEditFormAccountFields(
+        userId: userId,
+        employee: legacy.data!,
+        message: legacy.message,
+        statusCode: legacy.statusCode,
+        cancelToken: cancelToken,
+      ),
+    );
+  }
+
+  ApiResponse<ManagerEmployeeModel> _finishEmployeeProfile({
+    required int userId,
+    required ApiResponse<ManagerEmployeeModel> loaded,
+  }) {
+    if (!loaded.success || loaded.data == null) return loaded;
+    return ApiResponse.success(
+      _withSavedAccountFields(userId, loaded.data!),
+      message: loaded.message,
+      statusCode: loaded.statusCode,
+    );
+  }
+
+  void _rememberAccountFields(int userId, Map<String, dynamic> payload) {
+    final overlay = Map<String, String>.from(
+      _savedAccountFields[userId] ?? const {},
+    );
+
+    void take(String field, dynamic raw) {
+      if (raw is Map || raw is List) return;
+      final value = raw?.toString().trim();
+      if (value == null || value.isEmpty) return;
+      overlay[field] = value;
+    }
+
+    take('email', payload['email']);
+    take('phone', payload['phone'] ?? payload['phone_number']);
+    take(
+      'employee_code',
+      payload['employee_code'] ?? payload['staff_id'] ?? payload['company_id'],
+    );
+    take(
+      'address',
+      payload['address'] ??
+          payload['home_address'] ??
+          payload['present_address'] ??
+          payload['permanent_address'],
+    );
+    final nested = payload['employee'] ?? payload['profile'];
+    if (nested is Map) {
+      take('address', nested['address'] ?? nested['home_address']);
+      take('email', nested['email']);
+      take('phone', nested['phone']);
+      take('employee_code', nested['employee_code']);
+    }
+    if (overlay.isNotEmpty) _savedAccountFields[userId] = overlay;
+  }
+
+  ManagerEmployeeModel _withSavedAccountFields(
+    int userId,
+    ManagerEmployeeModel employee,
+  ) {
+    final overlay = _savedAccountFields[userId];
+    if (overlay == null) return employee;
+
+    String? prefer(String? fromApi, String? saved) {
+      if (fromApi != null && fromApi.trim().isNotEmpty) return fromApi;
+      return saved;
+    }
+
+    return employee.copyWith(
+      email: prefer(employee.email, overlay['email']),
+      phone: prefer(employee.phone, overlay['phone']),
+      employeeCode: prefer(employee.employeeCode, overlay['employee_code']),
+      address: prefer(employee.address, overlay['address']),
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeModel>> _withEditFormAccountFields({
+    required int userId,
+    required ManagerEmployeeModel employee,
+    String? message,
+    int? statusCode,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final missingAddress =
+        employee.address == null || employee.address!.trim().isEmpty;
+    if (!missingAddress) {
+      return ApiResponse.success(
+        employee,
+        message: message,
+        statusCode: statusCode,
+      );
+    }
+
+    final form = await getRequest<ManagerEmployeeFormData>(
+      ManagerEmployeeApiEndpoints.employeeEdit(userId),
+      queryParameters: {'user_id': userId},
+      cancelToken: cancelToken,
+      parser: _parseEmployeeForm,
+    );
+    final fromForm = form.data?.employee;
+    if (!_isHttpOk(form) || fromForm == null) {
+      return ApiResponse.success(
+        employee,
+        message: message,
+        statusCode: statusCode,
+      );
+    }
+    return ApiResponse.success(
+      employee.copyWith(
+        address: fromForm.address ?? employee.address,
+        employeeCode: employee.employeeCode ?? fromForm.employeeCode,
+        email: employee.email ?? fromForm.email,
+        phone: employee.phone ?? fromForm.phone,
+      ),
+      message: message,
+      statusCode: statusCode,
     );
   }
 
@@ -312,30 +448,120 @@ class ManagerEmployeesRepository extends BaseRepository {
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
   }) async {
-    final body = {'user_id': userId, ...payload};
-    final write = await _mutate(
-      path: ManagerEmployeeApiEndpoints.employee(userId),
-      payload: body,
+    var write = await _writeEmployeeAccount(
+      userId: userId,
+      payload: payload,
       cancelToken: cancelToken,
-      methods: const ['PATCH', 'PUT', 'POST'],
-      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeProfile,
-      fallbackQuery: {'user_id': userId},
     );
     if (!_isHttpOk(write)) {
+      debugPrint(
+        '[UpdateEmployee] failed code=${write.statusCode} '
+        'message=${write.message} fields=${write.fieldErrors} payload=$payload',
+      );
       return ApiResponse.failure(
         write.message ?? 'Failed to update employee.',
         statusCode: write.statusCode,
+        fieldErrors: write.fieldErrors,
       );
     }
+    _rememberAccountFields(userId, payload);
     final profile = await getEmployeeProfile(
       userId: userId,
       cancelToken: cancelToken,
     );
-    if (profile.success && profile.data != null) return profile;
+    final merged = _withSavedAccountFields(
+      userId,
+      _applyAccountPayload(
+        profile.data ??
+            ManagerEmployeeModel(id: '$userId', name: '', role: 'Employee'),
+        payload,
+      ),
+    );
     return ApiResponse.success(
-      ManagerEmployeeModel(id: '$userId', name: '', role: 'Employee'),
+      merged,
       message: write.data,
       statusCode: write.statusCode,
+    );
+  }
+
+  Future<ApiResponse<String>> _writeEmployeeAccount({
+    required int userId,
+    required Map<String, dynamic> payload,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final body = {'user_id': userId, ...payload};
+    final query = {'user_id': userId};
+    final resource = ManagerEmployeeApiEndpoints.employee(userId);
+
+    Future<ApiResponse<String>> send(
+      String method,
+      String path, {
+      Map<String, dynamic>? queryParameters,
+    }) {
+      return _send(
+        method: method,
+        path: path,
+        payload: body,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        parser: _parseAccountWrite,
+      );
+    }
+
+    var write = await send('PUT', resource);
+    if (_isTerminalAccountWrite(write)) return write;
+
+    write = await send('POST', resource);
+    if (_isTerminalAccountWrite(write)) return write;
+
+    write = await send('PATCH', resource);
+    if (_isTerminalAccountWrite(write)) return write;
+
+    write = await send(
+      'POST',
+      ManagerEmployeeApiEndpoints.employeeEdit(userId),
+      queryParameters: query,
+    );
+    if (_isTerminalAccountWrite(write)) return write;
+
+    return send(
+      'POST',
+      ManagerEmployeeApiEndpoints.legacyEmployeeUpdate,
+      queryParameters: query,
+    );
+  }
+
+  bool _isTerminalAccountWrite(ApiResponse<String> write) {
+    return _isHttpOk(write) ||
+        write.statusCode == 401 ||
+        write.statusCode == 403;
+  }
+
+  ManagerEmployeeModel _applyAccountPayload(
+    ManagerEmployeeModel employee,
+    Map<String, dynamic> payload,
+  ) {
+    return employee.copyWith(
+      email: payload.containsKey('email')
+          ? payload['email']?.toString()
+          : employee.email,
+      phone: payload.containsKey('phone')
+          ? payload['phone']?.toString()
+          : (payload.containsKey('phone_number')
+                ? payload['phone_number']?.toString()
+                : employee.phone),
+      employeeCode: payload.containsKey('employee_code')
+          ? payload['employee_code']?.toString()
+          : (payload.containsKey('staff_id')
+                ? payload['staff_id']?.toString()
+                : (payload.containsKey('company_id')
+                      ? payload['company_id']?.toString()
+                      : employee.employeeCode)),
+      address: payload.containsKey('address')
+          ? payload['address']?.toString()
+          : (payload.containsKey('home_address')
+                ? payload['home_address']?.toString()
+                : employee.address),
     );
   }
 
@@ -364,7 +590,7 @@ class ManagerEmployeesRepository extends BaseRepository {
         payload: body,
         cancelToken: cancelToken,
         methods: const ['PATCH', 'PUT', 'POST'],
-        fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeProfile,
+        fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeUpdate,
         fallbackQuery: {'user_id': userId},
       );
     }
@@ -504,12 +730,155 @@ class ManagerEmployeesRepository extends BaseRepository {
     required int userId,
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
-  }) {
-    return updateEmployeeSchedule(
+  }) async {
+    final body = {'user_id': userId, ...payload};
+    var write = await _mutate(
+      path: ManagerEmployeeApiEndpoints.employeePermissions(userId),
+      payload: body,
+      cancelToken: cancelToken,
+      methods: const ['PUT', 'PATCH', 'POST'],
+      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeePermissions,
+      fallbackQuery: {'user_id': userId},
+    );
+    if (_isHttpOk(write) || _isClientError(write)) return write;
+
+    return _mutate(
+      path: ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+      payload: body,
+      cancelToken: cancelToken,
+      methods: const ['PUT', 'PATCH', 'POST'],
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeModel>> updateEmployeePhoto({
+    required int userId,
+    required List<int> photoBytes,
+    String? fileName,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final fields = {'user_id': '$userId'};
+    final name = (fileName == null || fileName.trim().isEmpty)
+        ? 'photo.jpg'
+        : fileName.trim();
+
+    Future<ApiResponse<ManagerEmployeeModel>> send(String path) {
+      return multipartPostRequest<ManagerEmployeeModel>(
+        path,
+        fields: fields,
+        fileFieldName: 'photo',
+        fileBytes: photoBytes,
+        fileName: name,
+        cancelToken: cancelToken,
+        parser: (json) => _parsePhotoResponse(json, userId),
+      );
+    }
+
+    var result = await send(ManagerEmployeeApiEndpoints.employeePhoto(userId));
+    if (_isHttpOk(result)) {
+      return _photoOrReload(
+        userId: userId,
+        result: result,
+        cancelToken: cancelToken,
+      );
+    }
+    if (_isClientError(result)) return result;
+
+    result = await send(ManagerEmployeeApiEndpoints.legacyEmployeePhoto);
+    if (_isHttpOk(result)) {
+      return _photoOrReload(
+        userId: userId,
+        result: result,
+        cancelToken: cancelToken,
+      );
+    }
+    if (_isClientError(result)) return result;
+
+    result = await send(ManagerEmployeeApiEndpoints.employee(userId));
+    if (_isHttpOk(result)) {
+      return _photoOrReload(
+        userId: userId,
+        result: result,
+        cancelToken: cancelToken,
+      );
+    }
+    if (_isClientError(result)) return result;
+
+    result = await send(ManagerEmployeeApiEndpoints.legacyEmployeeUpdate);
+    if (_isHttpOk(result)) {
+      return _photoOrReload(
+        userId: userId,
+        result: result,
+        cancelToken: cancelToken,
+      );
+    }
+    return result;
+  }
+
+  Future<ApiResponse<ManagerEmployeeModel>> _photoOrReload({
+    required int userId,
+    required ApiResponse<ManagerEmployeeModel> result,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final photo = result.data?.photo?.trim() ?? '';
+    if (photo.isNotEmpty) return result;
+    final profile = await getEmployeeProfile(
       userId: userId,
-      payload: payload,
       cancelToken: cancelToken,
     );
+    if (profile.success && profile.data != null) return profile;
+    return result;
+  }
+
+  ManagerEmployeeModel _parsePhotoResponse(dynamic json, int userId) {
+    if (json is Map) {
+      final map = Map<String, dynamic>.from(json);
+      if (map['success'] == false) {
+        throw ApiError(
+          type: ApiErrorType.server,
+          message: (map['message'] as String?) ?? 'Failed to update photo.',
+        );
+      }
+      try {
+        final employee = _parseEmployee(map);
+        if ((employee.photo ?? '').trim().isNotEmpty) return employee;
+      } catch (error) {
+        if (error is ApiError) rethrow;
+      }
+      final photo = _photoUrlFrom(map);
+      if (photo != null) {
+        return ManagerEmployeeModel(
+          id: '$userId',
+          name: '',
+          role: 'Employee',
+          photo: photo,
+        );
+      }
+    }
+    return ManagerEmployeeModel(id: '$userId', name: '', role: 'Employee');
+  }
+
+  String? _photoUrlFrom(Map<String, dynamic> map) {
+    String? take(Map<String, dynamic> source) {
+      final raw =
+          source['photo_url'] ??
+          source['profile_picture'] ??
+          source['avatar_url'] ??
+          source['image_url'] ??
+          source['photo'] ??
+          source['avatar'] ??
+          source['image'] ??
+          source['url'];
+      if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+      return null;
+    }
+
+    final direct = take(map);
+    if (direct != null) return direct;
+    final data = map['data'];
+    if (data is Map) {
+      return take(Map<String, dynamic>.from(data));
+    }
+    return null;
   }
 
   Future<ApiResponse<List<HolidayInfo>>> getEmployeeHolidays({
@@ -517,49 +886,172 @@ class ManagerEmployeesRepository extends BaseRepository {
     String? dateFrom,
     String? dateTo,
     ApiCancelToken? cancelToken,
-  }) async {
-    final query = <String, dynamic>{
-      if (dateFrom != null) 'date_from': dateFrom,
-      if (dateTo != null) 'date_to': dateTo,
-      'user_id': userId,
-    };
-    final result = await getRequest<List<HolidayInfo>>(
-      ManagerEmployeeApiEndpoints.employeeHolidays(userId),
-      queryParameters: query,
-      cancelToken: cancelToken,
-      parser: _parseHolidays,
-    );
-    if (result.success && result.data != null) return result;
-
-    return getRequest<List<HolidayInfo>>(
-      ManagerEmployeeApiEndpoints.legacyEmployeeHolidays,
-      queryParameters: query,
+  }) {
+    return _getEmployeeResource<List<HolidayInfo>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeHolidays(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeHolidays,
+      extraQuery: {
+        if (dateFrom != null) 'date_from': dateFrom,
+        if (dateTo != null) 'date_to': dateTo,
+      },
       cancelToken: cancelToken,
       parser: _parseHolidays,
     );
   }
 
-  ManagerEmployeeModel _parseEmployee(dynamic json) {
-    final data = _extractData(
-      json,
-      fallbackKeys: const [
-        'id',
-        'name',
-        'photo',
-        'photo_url',
-        'profile_picture',
-        'employee',
-        'email',
-      ],
+  Future<ApiResponse<ManagerEmployeeFormData>> getCreateEmployeeForm({
+    ApiCancelToken? cancelToken,
+  }) {
+    return getRequest<ManagerEmployeeFormData>(
+      ManagerEmployeeApiEndpoints.employeesCreate,
+      cancelToken: cancelToken,
+      parser: _parseEmployeeForm,
     );
-    final employeeRaw = data['employee'] ?? data['profile'] ?? data['user'];
-    if (employeeRaw is Map) {
-      return ManagerEmployeeModel.fromJson({
-        ...data,
-        ...Map<String, dynamic>.from(employeeRaw),
-      });
+  }
+
+  Future<ApiResponse<ManagerEmployeeFormData>> getEditEmployeeForm({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final result = await getRequest<ManagerEmployeeFormData>(
+      ManagerEmployeeApiEndpoints.employeeEdit(userId),
+      queryParameters: {'user_id': userId},
+      cancelToken: cancelToken,
+      parser: _parseEmployeeForm,
+    );
+    if (_isHttpOk(result) && result.statusCode != 404) return result;
+
+    final profile = await getEmployeeProfile(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    if (!profile.success || profile.data == null) {
+      return ApiResponse.failure(
+        profile.message ?? 'Failed to load employee form.',
+        statusCode: profile.statusCode,
+      );
     }
-    return ManagerEmployeeModel.fromJson(data);
+    return ApiResponse.success(
+      ManagerEmployeeFormData(employee: profile.data),
+      message: profile.message,
+      statusCode: profile.statusCode,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeSalaryRecord>>> getEmployeeSalary({
+    required int userId,
+    String? month,
+    String? dateFrom,
+    String? dateTo,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<List<ManagerEmployeeSalaryRecord>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeSalary(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeSalary,
+      extraQuery: {
+        if (month != null && month.isNotEmpty) 'month': month,
+        if (dateFrom != null) 'date_from': dateFrom,
+        if (dateTo != null) 'date_to': dateTo,
+      },
+      cancelToken: cancelToken,
+      parser: ManagerEmployeeSalaryRecord.listFrom,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeAppraisal>>> getEmployeeAppraisals({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<List<ManagerEmployeeAppraisal>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeAppraisals(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeAppraisals,
+      cancelToken: cancelToken,
+      parser: ManagerEmployeeAppraisal.listFrom,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveRequest>>> getEmployeeLeaves({
+    required int userId,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<List<ManagerEmployeeLeaveRequest>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeLeaves(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeLeaves,
+      extraQuery: {
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (dateFrom != null) 'date_from': dateFrom,
+        if (dateTo != null) 'date_to': dateTo,
+      },
+      cancelToken: cancelToken,
+      parser: ManagerEmployeeLeaveRequest.listFrom,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveBalance>>>
+  getEmployeeLeaveBalances({
+    required int userId,
+    String? year,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<List<ManagerEmployeeLeaveBalance>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeLeaveBalances(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeLeaveBalances,
+      extraQuery: {if (year != null && year.isNotEmpty) 'year': year},
+      cancelToken: cancelToken,
+      parser: ManagerEmployeeLeaveBalance.listFrom,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveQuota>>> getEmployeeLeaveQuota({
+    required int userId,
+    String? year,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<List<ManagerEmployeeLeaveQuota>>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeLeaveQuota(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeLeaveQuota,
+      extraQuery: {if (year != null && year.isNotEmpty) 'year': year},
+      cancelToken: cancelToken,
+      parser: ManagerEmployeeLeaveQuota.listFrom,
+    );
+  }
+
+  Future<ApiResponse<AttendanceCalendarData>> getEmployeeCalendar({
+    required int userId,
+    required String month,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _getEmployeeResource<AttendanceCalendarData>(
+      userId: userId,
+      path: ManagerEmployeeApiEndpoints.employeeCalendar(userId),
+      legacyPath: ManagerEmployeeApiEndpoints.legacyEmployeeCalendar,
+      extraQuery: {'month': month},
+      cancelToken: cancelToken,
+      parser: _parseCalendar,
+    );
+  }
+
+  ManagerEmployeeModel _parseEmployee(dynamic json) {
+    if (json is! Map) {
+      throw const FormatException('Unexpected employee response shape.');
+    }
+    final map = Map<String, dynamic>.from(json);
+    if (map['success'] == false) {
+      throw ApiError(
+        type: ApiErrorType.server,
+        message: (map['message'] as String?) ?? 'Failed to load employee.',
+      );
+    }
+    return ManagerEmployeeModel.fromApiJson(map);
   }
 
   List<DeviceModel> _parseDevices(dynamic json) {
@@ -610,6 +1102,77 @@ class ManagerEmployeesRepository extends BaseRepository {
     return holidays;
   }
 
+  ManagerEmployeeFormData _parseEmployeeForm(dynamic json) {
+    if (_looksLikeHtml(json)) {
+      return const ManagerEmployeeFormData();
+    }
+    if (json is Map) {
+      final map = Map<String, dynamic>.from(json);
+      if (map['success'] == false) {
+        throw ApiError(
+          type: ApiErrorType.server,
+          message: (map['message'] as String?) ?? 'Failed to load form.',
+        );
+      }
+      final inner = map['data'];
+      if (inner is Map) {
+        return ManagerEmployeeFormData.fromJson(
+          Map<String, dynamic>.from(inner),
+        );
+      }
+      return ManagerEmployeeFormData.fromJson(map);
+    }
+    return const ManagerEmployeeFormData();
+  }
+
+  AttendanceCalendarData _parseCalendar(dynamic json) {
+    if (json is Map) {
+      final map = Map<String, dynamic>.from(json);
+      if (map['success'] == false) {
+        throw ApiError(
+          type: ApiErrorType.server,
+          message: (map['message'] as String?) ?? 'Failed to load calendar.',
+        );
+      }
+      final inner = map['data'];
+      if (inner is Map) {
+        return AttendanceCalendarData.fromJson(
+          Map<String, dynamic>.from(inner),
+        );
+      }
+      return AttendanceCalendarData.fromJson(map);
+    }
+    return const AttendanceCalendarData();
+  }
+
+  Future<ApiResponse<T>> _getEmployeeResource<T>({
+    required int userId,
+    required String path,
+    required String legacyPath,
+    required T Function(dynamic json) parser,
+    Map<String, dynamic>? extraQuery,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final query = <String, dynamic>{
+      'user_id': userId,
+      if (extraQuery != null) ...extraQuery,
+    };
+    final result = await getRequest<T>(
+      path,
+      queryParameters: query,
+      cancelToken: cancelToken,
+      parser: parser,
+    );
+    if (_isHttpOk(result) && result.statusCode != 404) return result;
+
+    return getRequest<T>(
+      legacyPath,
+      queryParameters: query,
+      cancelToken: cancelToken,
+      parser: parser,
+    );
+  }
+
   String _parseWriteAck(dynamic json) {
     if (json == null) return 'Changes saved.';
     if (json is String) {
@@ -635,6 +1198,8 @@ class ManagerEmployeesRepository extends BaseRepository {
       throw ApiError(
         type: ApiErrorType.validation,
         message: (map['message'] as String?) ?? 'Failed to save changes.',
+        statusCode: 422,
+        fieldErrors: mapApiFieldErrors(map),
       );
     }
 
@@ -668,11 +1233,37 @@ class ManagerEmployeesRepository extends BaseRepository {
     return 'Changes saved.';
   }
 
+  String _parseAccountWrite(dynamic json) {
+    if (json is Map) {
+      final map = Map<String, dynamic>.from(json);
+      if (map['success'] == false) {
+        throw ApiError(
+          type: ApiErrorType.validation,
+          message: (map['message'] as String?) ?? 'Failed to save changes.',
+          statusCode: 422,
+          fieldErrors: mapApiFieldErrors(map),
+        );
+      }
+      final message = (map['message'] as String?)?.trim() ?? '';
+      return message.isEmpty ? 'Changes saved.' : message;
+    }
+    return _parseWriteAck(json);
+  }
+
   bool _isHttpOk(ApiResponse<dynamic> result) {
     if (!result.success) return false;
     final code = result.statusCode;
     if (code == null) return true;
     return code >= 200 && code < 300;
+  }
+
+  bool _isClientError(ApiResponse<dynamic> result) {
+    final code = result.statusCode;
+    return code == 400 ||
+        code == 401 ||
+        code == 403 ||
+        code == 409 ||
+        code == 422;
   }
 
   Future<ApiResponse<String>> _mutate({
@@ -699,6 +1290,7 @@ class ManagerEmployeesRepository extends BaseRepository {
           cancelToken: cancelToken,
         );
         if (_isHttpOk(last)) return last;
+        if (_isClientError(last)) return last;
       }
     }
     return last ?? ApiResponse.failure('Failed to save changes.');
@@ -710,7 +1302,9 @@ class ManagerEmployeesRepository extends BaseRepository {
     required Map<String, dynamic> payload,
     Map<String, dynamic>? queryParameters,
     ApiCancelToken? cancelToken,
+    String Function(dynamic json)? parser,
   }) {
+    final parse = parser ?? _parseWriteAck;
     switch (method.toUpperCase()) {
       case 'PATCH':
         return patchRequest<String>(
@@ -718,7 +1312,7 @@ class ManagerEmployeesRepository extends BaseRepository {
           data: payload,
           queryParameters: queryParameters,
           cancelToken: cancelToken,
-          parser: _parseWriteAck,
+          parser: parse,
         );
       case 'POST':
         return postRequest<String>(
@@ -726,7 +1320,7 @@ class ManagerEmployeesRepository extends BaseRepository {
           data: payload,
           queryParameters: queryParameters,
           cancelToken: cancelToken,
-          parser: _parseWriteAck,
+          parser: parse,
         );
       default:
         return putRequest<String>(
@@ -734,7 +1328,7 @@ class ManagerEmployeesRepository extends BaseRepository {
           data: payload,
           queryParameters: queryParameters,
           cancelToken: cancelToken,
-          parser: _parseWriteAck,
+          parser: parse,
         );
     }
   }

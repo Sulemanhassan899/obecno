@@ -1,4 +1,3 @@
-
 class BreakSession {
   const BreakSession({
     required this.breakIn,
@@ -62,10 +61,7 @@ class AttendanceDay {
     if (checkIns.isEmpty || checkInLocations.isEmpty) return null;
     final pairs = [
       for (var i = 0; i < checkIns.length; i++)
-        (
-          checkIns[i],
-          i < checkInLocations.length ? checkInLocations[i] : null,
-        ),
+        (checkIns[i], i < checkInLocations.length ? checkInLocations[i] : null),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
     return pairs.first.$2;
   }
@@ -292,13 +288,17 @@ class AttendanceCalendarData {
   final List<DateTime> attendanceDates;
 
   factory AttendanceCalendarData.fromJson(Map<String, dynamic> json) {
-    final label = (json['month_label'] ?? '').toString();
+    final label = (json['month_label'] ?? json['month'] ?? '').toString();
 
     final dates = <DateTime>[];
-    final rawDates = json['attendance_dates'];
+    final rawDates = json['attendance_dates'] ?? json['dates'] ?? json['days'];
     if (rawDates is List) {
       for (final d in rawDates) {
-        final parsed = AttendanceDay._parseDate(d);
+        final parsed = d is Map
+            ? AttendanceDay._parseDate(
+                d['date'] ?? d['day'] ?? d['attendance_date'],
+              )
+            : AttendanceDay._parseDate(d);
         if (parsed != null) {
           dates.add(DateTime(parsed.year, parsed.month, parsed.day));
         }

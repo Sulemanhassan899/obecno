@@ -65,6 +65,7 @@ class StatusFilterOption {
     {'break', 'onbreak'},
     {'late', 'latecheckin'},
     {'earlycheckout', 'early'},
+    {'leave', 'onleave', 'onleaves', 'leaves'},
     {'absent'},
   ];
 
@@ -93,6 +94,9 @@ class StatusFilterOption {
     if (label == null || label.trim().isEmpty) return allId;
     final normalized = label.toLowerCase().trim();
     final list = options ?? StatusFilterOption.options;
+
+    // Location overview uses "On Leaves"; not always present in API options.
+    if (sameFamily(normalized, 'leave')) return 'leave';
 
     String? matchIn(List<StatusFilterOption> source, {required bool exact}) {
       for (final option in source) {

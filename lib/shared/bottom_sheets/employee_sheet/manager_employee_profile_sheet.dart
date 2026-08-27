@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
@@ -13,6 +17,7 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_atte
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ManagerEmployeeProfileSheet {
   ManagerEmployeeProfileSheet._();
@@ -28,43 +33,17 @@ class ManagerEmployeeProfileSheet {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _ManagerEmployeeProfileSheetBody(
+      builder: (_) => _ManagerEmployeeProfileSheetBody(
         data: data,
-        onAttendanceTap:
-            onAttendanceTap ??
-            () {
-              ManagerEmployeeAttendanceSheet.show(
-                context: sheetContext,
-                employeeName: data.name,
-                userId: data.userId,
-                role: data.role,
-                photo: data.photo,
-              );
-            },
-        onLocationsTap:
-            onLocationsTap ??
-            () {
-              EmployeeDefaultLocationsSheet.show(
-                context: sheetContext,
-                employeeName: data.name,
-                userId: data.userId,
-              );
-            },
-        onSettingsTap:
-            onSettingsTap ??
-            () {
-              AccountInformationSheet.show(
-                context: sheetContext,
-                employeeName: data.name,
-                userId: data.userId,
-              );
-            },
+        onAttendanceTap: onAttendanceTap,
+        onLocationsTap: onLocationsTap,
+        onSettingsTap: onSettingsTap,
       ),
     );
   }
 }
 
-class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
+class _ManagerEmployeeProfileSheetBody extends StatefulWidget {
   const _ManagerEmployeeProfileSheetBody({
     required this.data,
     this.onAttendanceTap,
@@ -76,6 +55,147 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
   final VoidCallback? onAttendanceTap;
   final VoidCallback? onLocationsTap;
   final VoidCallback? onSettingsTap;
+
+  @override
+  State<_ManagerEmployeeProfileSheetBody> createState() =>
+      _ManagerEmployeeProfileSheetBodyState();
+}
+
+class _ManagerEmployeeProfileSheetBodyState
+    extends State<_ManagerEmployeeProfileSheetBody> {
+  late ManagerAttendanceDetailsData _data;
+  bool _uploadingPhoto = false;
+  File? _localPhoto;
+
+  bool get _canEditPhoto =>
+      bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+
+  @override
+  void initState() {
+    super.initState();
+    _data = widget.data;
+  }
+
+  Future<ImageSource?> _pickPhotoSource() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppText.h5(
+                          'Update photo',
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close, size: 22),
+                      ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: AppText.p1(
+                    'Choose from gallery',
+                    align: TextAlign.left,
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: AppText.p1('Take a photo', align: TextAlign.left),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _onEditPhoto() async {
+    if (!_canEditPhoto || _uploadingPhoto) return;
+    final userId = _data.userId;
+    if (userId == null) {
+      ToastHelper.error(context, message: 'Unable to update this photo.');
+      return;
+    }
+
+    final source = await _pickPhotoSource();
+    if (source == null || !mounted) return;
+
+    XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 70,
+        maxWidth: 1280,
+        maxHeight: 1280,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ToastHelper.error(context, message: 'Unable to open camera or gallery.');
+      return;
+    }
+    if (picked == null || !mounted) return;
+    final selected = picked;
+
+    setState(() {
+      _localPhoto = File(selected.path);
+      _uploadingPhoto = true;
+    });
+
+    final bytes = await selected.readAsBytes();
+    final result = await bindings.managerEmployeesService.updateEmployeePhoto(
+      userId: userId,
+      photoBytes: bytes,
+      fileName: selected.name.isNotEmpty ? selected.name : 'photo.jpg',
+    );
+    if (!mounted) return;
+
+    if (!result.success) {
+      setState(() => _uploadingPhoto = false);
+      ToastHelper.error(
+        context,
+        message: result.message ?? 'Failed to update photo.',
+      );
+      return;
+    }
+
+    final photo = result.data?.photo?.trim();
+    setState(() {
+      _uploadingPhoto = false;
+      if (photo != null && photo.isNotEmpty) {
+        _data = _data.copyWith(photo: photo);
+        _localPhoto = null;
+      }
+    });
+    if (photo != null && photo.isNotEmpty) {
+      bindings.managerEmployeesProvider.applyEmployeePhoto(
+        userId: userId,
+        photoUrl: photo,
+      );
+    }
+    ToastHelper.changesSaved(context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +223,17 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                     const Spacer(),
                     _roundIconButton(
                       asset: Assets.imagesSetting,
-                      onTap: () => onSettingsTap?.call(),
+                      onTap: () {
+                        if (widget.onSettingsTap != null) {
+                          widget.onSettingsTap!();
+                          return;
+                        }
+                        AccountInformationSheet.show(
+                          context: context,
+                          employeeName: _data.name,
+                          userId: _data.userId,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -118,39 +248,61 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                         children: [
                           ClipOval(
                             child: CommonImageView(
-                              url: data.hasNetworkPhoto ? data.photo : null,
-                              imagePath: data.hasNetworkPhoto
-                                  ? null
-                                  : data.photoPath,
+                              file: _localPhoto,
+                              url: _localPhoto == null && _data.hasNetworkPhoto
+                                  ? _data.photo
+                                  : null,
+                              imagePath:
+                                  _localPhoto == null && !_data.hasNetworkPhoto
+                                  ? _data.photoPath
+                                  : null,
                               height: 96,
                               width: 96,
                               fit: BoxFit.cover,
                             ),
                           ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: ButtonAnimations.press(
-                              onTap: () {},
-                              child: CommonImageView(
-                                imagePath: Assets.imagesProfileEditPen,
-                                height: 30,
+                          if (_uploadingPhoto)
+                            const Positioned.fill(
+                              child: ColoredBox(
+                                color: Colors.black26,
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: kWhite,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          if (_canEditPhoto)
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: ButtonAnimations.press(
+                                onTap: _onEditPhoto,
+                                child: CommonImageView(
+                                  imagePath: Assets.imagesProfileEditPen,
+                                  height: 30,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 14),
                     AppText.h5(
-                      data.name,
+                      _data.name,
                       weight: FontWeight.w700,
                       color: kBlack,
                     ),
-                    if (data.role != null && data.role!.trim().isNotEmpty) ...[
+                    if (_data.role != null &&
+                        _data.role!.trim().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       AppText.p2(
-                        data.role!,
+                        _data.role!,
                         color: kGreyColor,
                         weight: FontWeight.w400,
                       ),
@@ -175,7 +327,19 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           child: _actionCard(
                             iconAsset: Assets.imagesCalender,
                             label: "Attendance",
-                            onTap: onAttendanceTap,
+                            onTap: () {
+                              if (widget.onAttendanceTap != null) {
+                                widget.onAttendanceTap!();
+                                return;
+                              }
+                              ManagerEmployeeAttendanceSheet.show(
+                                context: context,
+                                employeeName: _data.name,
+                                userId: _data.userId,
+                                role: _data.role,
+                                photo: _data.photo,
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -183,7 +347,17 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           child: _actionCard(
                             iconAsset: Assets.imagesAddLocationIcon,
                             label: "Locations",
-                            onTap: onLocationsTap,
+                            onTap: () {
+                              if (widget.onLocationsTap != null) {
+                                widget.onLocationsTap!();
+                                return;
+                              }
+                              EmployeeDefaultLocationsSheet.show(
+                                context: context,
+                                employeeName: _data.name,
+                                userId: _data.userId,
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -199,8 +373,8 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           onTap: () {
                             ManagerLinkedDevicesSheet.show(
                               context: context,
-                              employeeName: data.name,
-                              userId: data.userId,
+                              employeeName: _data.name,
+                              userId: _data.userId,
                             );
                           },
                         ),
@@ -220,8 +394,8 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           onTap: () {
                             EmployeeDefaultLocationsSheet.show(
                               context: context,
-                              employeeName: data.name,
-                              userId: data.userId,
+                              employeeName: _data.name,
+                              userId: _data.userId,
                             );
                           },
                         ),
@@ -237,7 +411,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                               color: kbackground2,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                              child: _AttendanceRulesBanner(userId: data.userId),
+                            child: _AttendanceRulesBanner(userId: _data.userId),
                           ),
                         ),
                         const Divider(height: 1, color: kDividerColor),
@@ -246,8 +420,8 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           title: "Check In / Out Timing",
                           onTap: () => CheckInOutTimingSheet.show(
                             context,
-                            userId: data.userId,
-                            employeeName: data.name,
+                            userId: _data.userId,
+                            employeeName: _data.name,
                           ),
                         ),
                         const Divider(height: 1, color: kDividerColor),
@@ -256,8 +430,8 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                           title: "Break Timing",
                           onTap: () => BreakTimingSheet.show(
                             context,
-                            userId: data.userId,
-                            employeeName: data.name,
+                            userId: _data.userId,
+                            employeeName: _data.name,
                           ),
                         ),
                       ],
@@ -274,7 +448,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _ProfileCreatedFooter(userId: data.userId),
+                    _ProfileCreatedFooter(userId: _data.userId),
                   ],
                 ),
               ),
@@ -307,11 +481,7 @@ class _ManagerEmployeeProfileSheetBody extends StatelessWidget {
   Widget _contactButton(String asset) {
     return ButtonAnimations.press(
       onTap: () {},
-      child: CommonImageView(
-        imagePath: asset,
-        height: 50,
-        fit: BoxFit.contain,
-      ),
+      child: CommonImageView(imagePath: asset, height: 50, fit: BoxFit.contain),
     );
   }
 

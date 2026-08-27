@@ -22,7 +22,9 @@ class OverviewSummary {
     required int teamMemberCount,
   }) {
     final present = attendance.where((e) => e.hasCheckIn).length;
-    final total = teamMemberCount < present ? present : teamMemberCount;
+    var total = teamMemberCount;
+    if (attendance.length > total) total = attendance.length;
+    if (present > total) total = present;
 
     return OverviewSummary(
       presentToday: present,

@@ -37,7 +37,7 @@ void main() {
         ManagerAttendanceFilters.statusDisplayLabel('late'),
         'Late Check-in',
       );
-      expect(ManagerAttendanceFilters.statusDisplayLabel('leave'), 'Absent');
+      expect(ManagerAttendanceFilters.statusDisplayLabel('leave'), 'On Leaves');
     });
 
     test('filters by status', () {
@@ -107,6 +107,83 @@ void main() {
       expect(north.length, 1);
       expect(north.first.employeeName, 'Jonas');
     });
+
+    test('filters by assigned location members then status', () {
+      const items = [
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          locationId: 'other',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 2,
+          employeeName: 'Manager 1',
+          locationId: 'other',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee1',
+          checkin: '09:00:00',
+          isOpen: true,
+          locationId: 'other',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 4,
+          employeeName: 'Employee2',
+          locationId: 'bhara',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '1',
+          name: 'Owner',
+          role: 'Owner',
+          locationIds: ['bhara'],
+        ),
+        ManagerEmployeeModel(
+          id: '2',
+          name: 'Manager 1',
+          role: 'Manager',
+          locationIds: ['bhara'],
+        ),
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee1',
+          role: 'Employee',
+          locationIds: ['bhara'],
+        ),
+        ManagerEmployeeModel(
+          id: '4',
+          name: 'Employee2',
+          role: 'Employee',
+          locationId: 'elsewhere',
+        ),
+      ];
+
+      final locationOnly = ManagerAttendanceFilters.applyItems(
+        source: items,
+        selectedLocation: 'bhara',
+        locationName: 'bhara khou house',
+        members: members,
+      );
+      expect(locationOnly.map((e) => e.employeeName), [
+        'Owner',
+        'Manager 1',
+        'Employee1',
+      ]);
+
+      final absentAtLocation = ManagerAttendanceFilters.applyItems(
+        source: items,
+        selectedLocation: 'bhara',
+        locationName: 'bhara khou house',
+        selectedStatus: 'Absent',
+        members: members,
+      );
+      expect(absentAtLocation.map((e) => e.employeeName), [
+        'Owner',
+        'Manager 1',
+      ]);
+    });
   });
 
   group('TeamAttendanceMapper', () {
@@ -161,6 +238,39 @@ void main() {
       expect(merged.first.checkin, '11:33:44');
       expect(TeamAttendanceMapper.uiStatus(merged.first), 'working');
       expect(TeamAttendanceMapper.uiStatus(merged[1]), isEmpty);
+    });
+
+    test('location merge keeps only assigned members', () {
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 31,
+          employeeName: 'Employee3',
+          checkin: '11:33:44',
+          isOpen: true,
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 99,
+          employeeName: 'Other Site',
+          checkin: '09:00:00',
+          isOpen: true,
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(id: '10', name: 'Javier Escher', role: 'Sales'),
+        ManagerEmployeeModel(id: '31', name: 'Employee3', role: 'Sales'),
+      ];
+
+      final merged = TeamAttendanceMapper.mergeWithMembers(
+        attendance: attendance,
+        members: members,
+        includeUnmatchedAttendance: false,
+      );
+      expect(merged.length, 2);
+      expect(merged.map((e) => e.employeeName), ['Employee3', 'Javier Escher']);
+      expect(
+        merged.any((e) => e.employeeName == 'Other Site'),
+        isFalse,
+      );
     });
 
     test('puts people with a status above empty-state rows', () {
@@ -320,6 +430,30 @@ void main() {
       expect(body.containsKey('checkout'), isFalse);
       expect(body['breakout'], '11:35:00');
       expect(body['breakin'], '11:36:00');
+    });
+  });
+
+  group('ManagerAttendanceRepository.employeeAttendanceSaveBody', () {
+    test('includes check times and events for create/edit', () {
+      final body = ManagerAttendanceRepository.employeeAttendanceSaveBody(
+        attendanceId: null,
+        date: '2026-08-26',
+        deviceDetails: 'iPhone',
+        lat: 33.73,
+        lon: 73.17,
+        checkIn: '09:00:00',
+        checkOut: '18:00:00',
+        breakStart: '10:00:00',
+        breakEnd: '10:30:00',
+        changes: const [],
+      );
+
+      expect(body['date'], '2026-08-26');
+      expect(body.containsKey('attendance_id'), isFalse);
+      expect(body['check_in'], '09:00:00');
+      expect(body['check_out'], '18:00:00');
+      expect(body['events'], isA<List>());
+      expect((body['events'] as List).length, 4);
     });
   });
 

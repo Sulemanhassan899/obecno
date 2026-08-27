@@ -1,4 +1,5 @@
 import 'package:obecno/core/api/constants.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 
 class ManagerCompanyModel {
   const ManagerCompanyModel({
@@ -330,6 +331,7 @@ class ManagerTeamAttendanceData {
     this.search,
     this.total = 0,
     this.attendance = const [],
+    this.members = const [],
   });
 
   final DateTime? date;
@@ -338,6 +340,7 @@ class ManagerTeamAttendanceData {
   final String? search;
   final int total;
   final List<ManagerTeamAttendanceItem> attendance;
+  final List<ManagerEmployeeModel> members;
 
   factory ManagerTeamAttendanceData.fromJson(Map<String, dynamic> json) {
     return ManagerTeamAttendanceData(

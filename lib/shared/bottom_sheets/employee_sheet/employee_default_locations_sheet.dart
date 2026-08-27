@@ -96,22 +96,22 @@ class _EmployeeDefaultLocationsSheetBodyState
         }
       }
 
-      final company = locationsProvider.filterOptions;
-      var assigned = company
-          .where((option) => selected.contains(option.id))
-          .toList();
-      if (assigned.isEmpty) assigned = company;
-      if (defaultId.isEmpty && assigned.isNotEmpty) {
-        defaultId = assigned.first.id;
-      }
-      if (selected.isEmpty) {
-        selected = assigned.map((e) => e.id).toSet();
-      }
+      final company = List<LocationFilterOption>.from(
+        locationsProvider.filterOptions,
+      );
+      // Assigned locations first, then the rest (manager can select those).
+      company.sort((a, b) {
+        final aSelected = selected.contains(a.id);
+        final bSelected = selected.contains(b.id);
+        if (aSelected == bSelected) return 0;
+        return aSelected ? -1 : 1;
+      });
 
       if (!mounted) return;
       setState(() {
-        _locations = assigned;
+        _locations = company;
         _selectedIds = selected;
+        // Default badge is driven only by backend — never by local selection.
         _defaultId = defaultId;
         _loading = false;
       });
@@ -124,10 +124,13 @@ class _EmployeeDefaultLocationsSheetBodyState
     }
   }
 
-  void _setDefault(String id) {
+  void _toggleSelection(String id) {
     setState(() {
-      _selectedIds.add(id);
-      _defaultId = id;
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
     });
   }
 
@@ -216,21 +219,23 @@ class _EmployeeDefaultLocationsSheetBodyState
                       ],
                     ),
                   ),
-                  ButtonAnimations.press(
-                    onTap: () {},
-                    child: Padding(
-                      padding: EdgeInsets.all(6),
-                      child: Container(
-                        height: 42,
-                        width: 42,
-                        decoration: const BoxDecoration(
-                          color: kGreyContainerColor,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.more_horiz, size: 22),
-                      ),
-                    ),
-                  ),
+                  SizedBox(width: 50),
+
+                  // ButtonAnimations.press(
+                  //   onTap: () {},
+                  //   child: Padding(
+                  //     padding: EdgeInsets.all(6),
+                  //     child: Container(
+                  //       height: 42,
+                  //       width: 42,
+                  //       decoration: const BoxDecoration(
+                  //         color: kGreyContainerColor,
+                  //         shape: BoxShape.circle,
+                  //       ),
+                  //       child: Icon(Icons.more_horiz, size: 22),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),
@@ -239,13 +244,11 @@ class _EmployeeDefaultLocationsSheetBodyState
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                  ? Center(
-                      child: AppText.p2(_error!, color: kGreyColor),
-                    )
+                  ? Center(child: AppText.p2(_error!, color: kGreyColor))
                   : _locations.isEmpty
                   ? Center(
                       child: AppText.p2(
-                        'No locations assigned',
+                        'No locations available',
                         color: kGreyColor,
                       ),
                     )
@@ -256,13 +259,13 @@ class _EmployeeDefaultLocationsSheetBodyState
                       itemBuilder: (context, index) {
                         final option = _locations[index];
                         final selected = _selectedIds.contains(option.id);
-                        final isDefault = option.id == _defaultId;
+                        final isDefault =
+                            _defaultId.isNotEmpty && option.id == _defaultId;
                         return _LocationCard(
                           option: option,
                           selected: selected,
                           isDefault: isDefault,
-                          onTap: () => _setDefault(option.id),
-                          onLongPress: () => _setDefault(option.id),
+                          onTap: () => _toggleSelection(option.id),
                         );
                       },
                     ),
@@ -291,27 +294,24 @@ class _LocationCard extends StatelessWidget {
     required this.selected,
     required this.isDefault,
     required this.onTap,
-    required this.onLongPress,
   });
 
   final LocationFilterOption option;
   final bool selected;
   final bool isDefault;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return  GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return ButtonAnimations.press(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: kWhite,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDefault ? kPrimaryColor : kBorderColor,
-            width: isDefault ? 1.5 : 1,
+            color: selected ? kPrimaryColor : kBorderColor,
+            width: selected ? 1.5 : 1,
           ),
         ),
         clipBehavior: Clip.antiAlias,

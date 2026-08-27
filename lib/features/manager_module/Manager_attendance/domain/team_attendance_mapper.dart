@@ -29,11 +29,17 @@ class TeamAttendanceMapper {
 
   /// Attendance APIs often return only people who punched in. Overlay the
   /// full team so the screen can list everyone by default.
+  ///
+  /// When [includeUnmatchedAttendance] is false (location-scoped views), only
+  /// [members] are returned — other attendance rows are dropped.
   static List<ManagerTeamAttendanceItem> mergeWithMembers({
     required List<ManagerTeamAttendanceItem> attendance,
     required List<ManagerEmployeeModel> members,
+    bool includeUnmatchedAttendance = true,
   }) {
-    if (members.isEmpty) return attendance;
+    if (members.isEmpty) {
+      return includeUnmatchedAttendance ? attendance : const [];
+    }
 
     final unused = List<ManagerTeamAttendanceItem>.from(attendance);
     final merged = <ManagerTeamAttendanceItem>[];
@@ -71,7 +77,9 @@ class TeamAttendanceMapper {
       }
     }
 
-    merged.addAll(unused);
+    if (includeUnmatchedAttendance) {
+      merged.addAll(unused);
+    }
     return statusFirst(merged);
   }
 

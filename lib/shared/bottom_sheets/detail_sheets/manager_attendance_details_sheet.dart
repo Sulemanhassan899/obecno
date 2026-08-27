@@ -246,7 +246,6 @@ class ManagerAttendanceDetailsSheet {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _ManagerAttendanceDetailsSheetBody(
-        pageContext: context,
         data: data,
         loadDetails: loadDetails,
         onProfileTap: onProfileTap,
@@ -260,7 +259,6 @@ class ManagerAttendanceDetailsSheet {
 
 class _ManagerAttendanceDetailsSheetBody extends StatefulWidget {
   const _ManagerAttendanceDetailsSheetBody({
-    required this.pageContext,
     required this.data,
     this.loadDetails,
     this.onProfileTap,
@@ -269,7 +267,6 @@ class _ManagerAttendanceDetailsSheetBody extends StatefulWidget {
     this.onEditAttendance,
   });
 
-  final BuildContext pageContext;
   final ManagerAttendanceDetailsData data;
   final Future<ManagerAttendanceDetailsData> Function()? loadDetails;
   final VoidCallback? onProfileTap;
@@ -333,56 +330,54 @@ class _ManagerAttendanceDetailsSheetBodyState
     );
   }
 
-  void _openEditor({required bool isAdd}) {
-    final pageContext = widget.pageContext;
-    Navigator.pop(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!pageContext.mounted) return;
-      if (widget.onEditAttendance != null && !isAdd) {
-        widget.onEditAttendance!();
-        return;
-      }
-      if (widget.onAddAttendance != null && isAdd) {
-        widget.onAddAttendance!();
-        return;
-      }
+  void _openEditor({required bool isAdd}) async {
+    if (widget.onEditAttendance != null && !isAdd) {
+      widget.onEditAttendance!();
+      return;
+    }
+    if (widget.onAddAttendance != null && isAdd) {
+      widget.onAddAttendance!();
+      return;
+    }
 
-      final checkIn = _eventOf(
-        ManagerAttendanceEventType.checkIn,
-        latest: false,
-      );
-      final checkOut = _eventOf(
-        ManagerAttendanceEventType.checkOut,
-        latest: true,
-      );
-      final breakStart = _eventOf(
-        ManagerAttendanceEventType.breakStart,
-        latest: false,
-      );
-      final breakEnd = _eventOf(
-        ManagerAttendanceEventType.breakEnd,
-        latest: true,
-      );
+    final checkIn = _eventOf(
+      ManagerAttendanceEventType.checkIn,
+      latest: false,
+    );
+    final checkOut = _eventOf(
+      ManagerAttendanceEventType.checkOut,
+      latest: true,
+    );
+    final breakStart = _eventOf(
+      ManagerAttendanceEventType.breakStart,
+      latest: false,
+    );
+    final breakEnd = _eventOf(
+      ManagerAttendanceEventType.breakEnd,
+      latest: true,
+    );
 
-      AddAttendanceBottomSheet.show(
-        pageContext,
-        day: _data.day,
-        apiClient: bindings.apiClient,
-        userEmail: bindings.userEmail,
-        attendanceId: _data.attendanceId,
-        employeeUserId: _data.userId,
-        applyImmediately:
-            bindings.authProvider.homeTarget == AuthHomeTarget.manager,
-        initialCheckIn: _timeOfDay(checkIn),
-        initialCheckOut: _timeOfDay(checkOut),
-        initialBreakStart: _timeOfDay(breakStart),
-        initialBreakEnd: _timeOfDay(breakEnd),
-        checkInDetailId: checkIn?.id,
-        checkOutDetailId: checkOut?.id,
-        breakStartDetailId: breakStart?.id,
-        breakEndDetailId: breakEnd?.id,
-      );
-    });
+    final saved = await AddAttendanceBottomSheet.show(
+      context,
+      day: _data.day,
+      apiClient: bindings.apiClient,
+      userEmail: bindings.userEmail,
+      attendanceId: _data.attendanceId,
+      employeeUserId: _data.userId,
+      applyImmediately:
+          bindings.authProvider.homeTarget == AuthHomeTarget.manager,
+      initialCheckIn: _timeOfDay(checkIn),
+      initialCheckOut: _timeOfDay(checkOut),
+      initialBreakStart: _timeOfDay(breakStart),
+      initialBreakEnd: _timeOfDay(breakEnd),
+      checkInDetailId: checkIn?.id,
+      checkOutDetailId: checkOut?.id,
+      breakStartDetailId: breakStart?.id,
+      breakEndDetailId: breakEnd?.id,
+    );
+    if (saved != null && mounted) {
+      await _load();
+    }
   }
 
   ManagerAttendanceTimelineEvent? _eventOf(

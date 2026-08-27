@@ -44,6 +44,12 @@ class ManagerEmployeeApiEndpoints {
 
   static String employee(Object employeeId) => '$employees/$employeeId';
 
+  static String employeeEdit(Object employeeId) =>
+      '${employee(employeeId)}/edit';
+
+  static String employeeUpdate(Object employeeId) =>
+      '${employee(employeeId)}/update';
+
   static String employeeAttendance(Object employeeId) =>
       '${employee(employeeId)}/attendance';
 
@@ -92,10 +98,14 @@ class ManagerEmployeeApiEndpoints {
     String action,
   ) => '${employeeDevice(employeeId, deviceId)}/$action';
 
+  static String employeePhoto(Object employeeId) =>
+      '${employee(employeeId)}/photo';
+
   // ---------------------------------------------------------------------
   // Legacy query-param employee APIs
   // ---------------------------------------------------------------------
   static const String legacyEmployeeProfile = '/manager/employee/profile';
+  static const String legacyEmployeeUpdate = '/manager/employee/update';
   static const String legacyEmployeeAttendance = '/manager/employee/attendance';
   static const String legacyEmployeeSalary = '/manager/employee/salary';
   static const String legacyEmployeeAppraisals = '/manager/employee/appraisals';
@@ -109,6 +119,7 @@ class ManagerEmployeeApiEndpoints {
   static const String legacyEmployeePermissions =
       '/manager/employee/permissions';
   static const String legacyEmployeeDevices = '/manager/employee/devices';
+  static const String legacyEmployeePhoto = '/manager/employee/photo';
 
   // ---------------------------------------------------------------------
   // Billing
