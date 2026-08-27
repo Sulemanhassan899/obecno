@@ -96,6 +96,28 @@ abstract class BaseRepository {
     );
   }
 
+  Future<ApiResponse<T>> multipartPostRequest<T>(
+    String path, {
+    required T Function(dynamic json) parser,
+    Map<String, String>? fields,
+    String? fileFieldName,
+    List<int>? fileBytes,
+    String? fileName,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _execute(
+      () => apiClient.postMultipart(
+        path,
+        fields: fields,
+        fileFieldName: fileFieldName,
+        fileBytes: fileBytes,
+        fileName: fileName,
+        cancelToken: cancelToken,
+      ),
+      parser,
+    );
+  }
+
   Future<ApiResponse<T>> _execute<T>(
     Future<RawApiResponse> Function() call,
     T Function(dynamic json) parser,

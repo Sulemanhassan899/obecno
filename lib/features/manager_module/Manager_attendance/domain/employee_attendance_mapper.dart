@@ -85,7 +85,7 @@ class EmployeeAttendanceMapper {
         return item;
       }
     }
-    return history.isEmpty ? null : history.first;
+    return null;
   }
 
   static String formatDuration({

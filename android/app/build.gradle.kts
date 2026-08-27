@@ -16,10 +16,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.example.obecno"
     compileSdk = flutter.compileSdkVersion
-    // Highest NDK required by plugins (jni); backward-compatible with others.
-    // sdk/ndk/28.2.13676358 is a broken symlink to 28.1; use the real r28c install.
-    ndkVersion = "28.2.13676358"
-    ndkPath = "${System.getProperty("user.home")}/Library/Android/sdk/ndk/28.2.13676358-2"
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

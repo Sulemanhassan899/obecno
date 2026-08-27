@@ -63,7 +63,7 @@ class CommonBottomSheet extends StatelessWidget {
   });
 
   // STATIC HELPER TO SHOW BOTTOM SHEET
-  static void show({
+  static Future<T?> show<T>({
     required BuildContext context,
     double height = 550,
     Color mainColor = kWhite,
@@ -87,120 +87,118 @@ class CommonBottomSheet extends StatelessWidget {
     Color buttonFontColor = kWhite,
     List<Widget>? children,
   }) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      showModalBottomSheet(
-        context: context,
-        elevation: 12,
-        backgroundColor: Theme.of(context).cardColor,
-        isScrollControlled: true,
-        enableDrag: true,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-                  top: 24,
-                  left: 16,
-                  right: 16,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (imagePath != null)
-                        Center(
-                          child: CommonImageView(
-                            imagePath: imagePath,
-                            height: 150,
-                          ),
+    return showModalBottomSheet<T>(
+      context: context,
+      elevation: 12,
+      backgroundColor: Theme.of(context).cardColor,
+      isScrollControlled: true,
+      enableDrag: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                top: 24,
+                left: 16,
+                right: 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (imagePath != null)
+                      Center(
+                        child: CommonImageView(
+                          imagePath: imagePath,
+                          height: 150,
                         ),
-                      if (imagePath != null) const SizedBox(height: 24),
-                      if (title != null)
-                        TextWidget(
-                          text: title,
-                          size: 26,
-                          weight: FontWeight.w700,
-                          color: Colors.black,
-                          textAlign: TextAlign.center,
-                        ),
-                      if (title != null) const SizedBox(height: 16),
-                      if (subtitle != null)
-                        TextWidget(
-                          text: subtitle,
-                          size: 16,
-                          weight: FontWeight.w400,
-                          color: kSubText2,
-                          textAlign: TextAlign.center,
-                        ),
-                      if (subtitle != null) const SizedBox(height: 24),
+                      ),
+                    if (imagePath != null) const SizedBox(height: 24),
+                    if (title != null)
+                      TextWidget(
+                        text: title,
+                        size: 26,
+                        weight: FontWeight.w700,
+                        color: Colors.black,
+                        textAlign: TextAlign.center,
+                      ),
+                    if (title != null) const SizedBox(height: 16),
+                    if (subtitle != null)
+                      TextWidget(
+                        text: subtitle,
+                        size: 16,
+                        weight: FontWeight.w400,
+                        color: kSubText2,
+                        textAlign: TextAlign.center,
+                      ),
+                    if (subtitle != null) const SizedBox(height: 24),
 
-                      // Dynamic Text Fields
-                      if (textControllers != null && textFieldHints != null)
-                        ...List.generate(
-                          textControllers.length,
-                          (index) => Column(
-                            children: [
-                              CustomTextField(
-                                backgroundColor: kWhite,
-                                hintTextFontColor: kSubText2,
-                                hintTextFontSize: 16,
-                                hintText: textFieldHints[index],
-                                controller: textControllers[index],
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                          ),
+                    // Dynamic Text Fields
+                    if (textControllers != null && textFieldHints != null)
+                      ...List.generate(
+                        textControllers.length,
+                        (index) => Column(
+                          children: [
+                            CustomTextField(
+                              backgroundColor: kWhite,
+                              hintTextFontColor: kSubText2,
+                              hintTextFontSize: 16,
+                              hintText: textFieldHints[index],
+                              controller: textControllers[index],
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                         ),
+                      ),
 
-                      // Dropdown
-                      if (dropdownItems != null &&
-                          selectedDropdownValue != null)
-                        CustomDropDown(
-                          hint: "Select Option",
-                          selectedValue: selectedDropdownValue,
-                          items: dropdownItems,
-                          onChanged: (value) {
-                            if (onDropdownChanged != null) {
-                              onDropdownChanged(value.toString());
-                              setState(() {});
-                            }
-                          },
-                          bgColor: kWhite,
-                        ),
-                      if (dropdownItems != null) const SizedBox(height: 20),
+                    // Dropdown
+                    if (dropdownItems != null &&
+                        selectedDropdownValue != null)
+                      CustomDropDown(
+                        hint: "Select Option",
+                        selectedValue: selectedDropdownValue,
+                        items: dropdownItems,
+                        onChanged: (value) {
+                          if (onDropdownChanged != null) {
+                            onDropdownChanged(value.toString());
+                            setState(() {});
+                          }
+                        },
+                        bgColor: kWhite,
+                      ),
+                    if (dropdownItems != null) const SizedBox(height: 20),
 
-                      // Additional Custom Widgets
-                      if (children != null) ...children,
+                    // Additional Custom Widgets
+                    if (children != null) ...children,
 
-                      // Button
-                      if (buttonText != null &&
-                          buttonText.trim().isNotEmpty) ...[
-                        MyButton(
-                          onTap: onButtonTap != null
-                              ? () async {
-                                  await onButtonTap();
-                                }
-                              : null,
-                          buttonText: buttonText,
-                          choiceIconRight: buttonRightIcon,
-                          radius: buttonRadius,
-                          hasiconRight: hasRightIcon,
-                          backgroundColor: buttonColor,
-                          fontColor: buttonFontColor,
-                        ),
-                        const SizedBox(height: 20),
-                      ],
+                    // Button
+                    if (buttonText != null &&
+                        buttonText.trim().isNotEmpty) ...[
+                      MyButton(
+                        onTap: onButtonTap != null
+                            ? () async {
+                                await onButtonTap();
+                              }
+                            : null,
+                        buttonText: buttonText,
+                        choiceIconRight: buttonRightIcon,
+                        radius: buttonRadius,
+                        hasiconRight: hasRightIcon,
+                        backgroundColor: buttonColor,
+                        fontColor: buttonFontColor,
+                      ),
                       const SizedBox(height: 20),
                     ],
-                  ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-              );
-            },
-          );
-        },
-      );
-    });
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override

@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
@@ -236,22 +238,20 @@ class ManagerEmployeesService {
 
     if (fromSchedule == null && fromPerms == null) {
       return ApiResponse.failure(
-        permissions.message ??
-            profile.message ??
-            'Failed to load timing.',
+        permissions.message ?? profile.message ?? 'Failed to load timing.',
         statusCode: permissions.statusCode ?? profile.statusCode,
       );
     }
 
     return ApiResponse.success(
       ManagerEmployeePolicy(
-        checkInTime: fromSchedule?.checkInTime ?? fromPerms?.checkInTime,
-        checkOutTime: fromSchedule?.checkOutTime ?? fromPerms?.checkOutTime,
-        gracePeriod: fromSchedule?.gracePeriod ?? fromPerms?.gracePeriod,
-        breakTime: fromSchedule?.breakTime ?? fromPerms?.breakTime,
+        checkInTime: fromPerms?.checkInTime ?? fromSchedule?.checkInTime,
+        checkOutTime: fromPerms?.checkOutTime ?? fromSchedule?.checkOutTime,
+        gracePeriod: fromPerms?.gracePeriod ?? fromSchedule?.gracePeriod,
+        breakTime: fromPerms?.breakTime ?? fromSchedule?.breakTime,
         breakLocationTracking:
-            fromSchedule?.breakLocationTracking ??
             fromPerms?.breakLocationTracking ??
+            fromSchedule?.breakLocationTracking ??
             true,
         workingDays: fromPerms?.workingDays ?? fromSchedule?.workingDays,
         locationName:
@@ -280,9 +280,23 @@ class ManagerEmployeesService {
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
   }) {
-    return updateEmployeeSchedule(
+    return _repository.updateEmployeePermissions(
       userId: userId,
       payload: payload,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeModel>> updateEmployeePhoto({
+    required int userId,
+    required List<int> photoBytes,
+    String? fileName,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.updateEmployeePhoto(
+      userId: userId,
+      photoBytes: photoBytes,
+      fileName: fileName,
       cancelToken: cancelToken,
     );
   }
@@ -297,6 +311,101 @@ class ManagerEmployeesService {
       userId: userId,
       dateFrom: dateFrom,
       dateTo: dateTo,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeFormData>> loadCreateEmployeeForm({
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getCreateEmployeeForm(cancelToken: cancelToken);
+  }
+
+  Future<ApiResponse<ManagerEmployeeFormData>> loadEditEmployeeForm({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEditEmployeeForm(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeSalaryRecord>>> loadEmployeeSalary({
+    required int userId,
+    String? month,
+    String? dateFrom,
+    String? dateTo,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeSalary(
+      userId: userId,
+      month: month,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeAppraisal>>> loadEmployeeAppraisals({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeAppraisals(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveRequest>>> loadEmployeeLeaves({
+    required int userId,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeLeaves(
+      userId: userId,
+      status: status,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveBalance>>>
+  loadEmployeeLeaveBalances({
+    required int userId,
+    String? year,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeLeaveBalances(
+      userId: userId,
+      year: year,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<List<ManagerEmployeeLeaveQuota>>> loadEmployeeLeaveQuota({
+    required int userId,
+    String? year,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeLeaveQuota(
+      userId: userId,
+      year: year,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<ApiResponse<AttendanceCalendarData>> loadEmployeeCalendar({
+    required int userId,
+    required String month,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.getEmployeeCalendar(
+      userId: userId,
+      month: month,
       cancelToken: cancelToken,
     );
   }

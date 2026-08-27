@@ -2,19 +2,28 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
-import 'package:obecno/demo/demo_list.dart';
 import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:flutter/material.dart';
 
 class ManagerEmployeeAttendanceSheet {
@@ -26,8 +35,10 @@ class ManagerEmployeeAttendanceSheet {
     int? userId,
     String? role,
     String? photo,
+    String? locationId,
     String? locationName,
     String? locationAddress,
+    String? statusFilter,
   }) {
     final isLocation = locationName != null && locationName.trim().isNotEmpty;
 
@@ -47,8 +58,10 @@ class ManagerEmployeeAttendanceSheet {
             top: false,
             child: isLocation
                 ? _LocationAttendanceSheetBody(
+                    locationId: locationId,
                     locationName: locationName,
                     locationAddress: locationAddress ?? '',
+                    statusFilter: statusFilter,
                   )
                 : _EmployeeHistorySheetBody(
                     employeeName: employeeName ?? 'Employee',
@@ -100,7 +113,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
     final userId = widget.userId;
     if (userId == null) {
       setState(() {
@@ -110,10 +123,12 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final from = DateTime(_month.year, _month.month, 1);
@@ -162,6 +177,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         _summary = month.summary;
         _records = month.records;
         _loading = false;
+        _error = null;
       });
     } catch (_) {
       if (!mounted) return;
@@ -183,8 +199,39 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     _load();
   }
 
-  void _openDetails(AttendanceDayRecord record) {
-    if (record.status == AttendanceDayStatus.onLeave) return;
+  bool get _isManagerViewer =>
+      bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+
+  Future<void> _openDetails(AttendanceDayRecord record) async {
+    final isOnLeave = record.status == AttendanceDayStatus.onLeave;
+
+    // Managers can add attendance on On Leave days via the edit sheet.
+    if (isOnLeave) {
+      if (!_isManagerViewer) return;
+      final day = record.date;
+      final saved = await AddAttendanceBottomSheet.show(
+        context,
+        day: day,
+        apiClient: bindings.apiClient,
+        userEmail: bindings.userEmail,
+        employeeUserId: widget.userId,
+        applyImmediately: true,
+      );
+      if (!mounted || saved == null) return;
+
+      _applyOptimisticAttendance(day, saved);
+      await _load(silent: true);
+      if (!mounted) return;
+
+      if (_dayStillOnLeave(day)) {
+        ToastHelper.error(
+          context,
+          message: 'Attendance was not saved. Please try again.',
+        );
+      }
+      return;
+    }
+
     final userId = widget.userId;
     final employee = ManagerAttendanceModel(
       name: widget.employeeName,
@@ -193,10 +240,10 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       userId: userId,
       checkIn: record.checkIn,
       checkOut: record.checkOut,
-      status: record.status == AttendanceDayStatus.onLeave ? 'leave' : '',
+      status: '',
     );
     final provider = context.read<ManagerAttendanceProvider>();
-    ManagerAttendanceDetailsSheet.show(
+    await ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(
         employee: employee,
@@ -206,6 +253,53 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           ? null
           : () => provider.loadEmployeeDay(employee: employee, day: record.date),
     );
+    if (mounted) await _load(silent: true);
+  }
+
+  void _applyOptimisticAttendance(DateTime day, AddAttendanceSaveResult saved) {
+    final checkIn = _formatTimeOfDay(saved.checkIn);
+    final checkOut = _formatTimeOfDay(saved.checkOut);
+    setState(() {
+      _records = [
+        for (final record in _records)
+          if (_isSameDay(record.date, day))
+            AttendanceDayRecord(
+              day: record.day,
+              weekday: record.weekday,
+              date: record.date,
+              checkIn: checkIn,
+              checkOut: checkOut,
+              status: AttendanceDayStatus.normal,
+            )
+          else
+            record,
+      ];
+      final summary = _summary;
+      if (summary != null && summary.absentOrLeaves > 0) {
+        _summary = MonthSummary(
+          workingDays: summary.workingDays + 1,
+          totalDays: summary.totalDays,
+          absentOrLeaves: summary.absentOrLeaves - 1,
+          lateCheckIns: summary.lateCheckIns,
+          lateCheckOuts: summary.lateCheckOuts,
+        );
+      }
+    });
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _dayStillOnLeave(DateTime day) {
+    return _records.any(
+      (r) => _isSameDay(r.date, day) && r.status == AttendanceDayStatus.onLeave,
+    );
+  }
+
+  String _formatTimeOfDay(TimeOfDay t) {
+    final period = t.hour >= 12 ? 'PM' : 'AM';
+    final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    return '${hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} $period';
   }
 
   String _yyyyMMdd(DateTime date) =>
@@ -361,10 +455,14 @@ class _LocationAttendanceSheetBody extends StatefulWidget {
   const _LocationAttendanceSheetBody({
     required this.locationName,
     required this.locationAddress,
+    this.locationId,
+    this.statusFilter,
   });
 
+  final String? locationId;
   final String locationName;
   final String locationAddress;
+  final String? statusFilter;
 
   @override
   State<_LocationAttendanceSheetBody> createState() =>
@@ -373,16 +471,21 @@ class _LocationAttendanceSheetBody extends StatefulWidget {
 
 class _LocationAttendanceSheetBodyState
     extends State<_LocationAttendanceSheetBody> {
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
-  DateTime _selectedDay = DateTime.now();
+  late DateTime _month;
+  late DateTime _selectedDay;
 
-  static const _summary = MonthSummary(
-    workingDays: 18,
-    totalDays: 22,
-    absentOrLeaves: 4,
-    lateCheckIns: 6,
-    lateCheckOuts: 2,
-  );
+  String get _locationId => (widget.locationId ?? '').trim();
+
+  String get _statusFilter =>
+      StatusFilterOption.idFromLabel(widget.statusFilter);
+
+  bool get _hasStatusFilter =>
+      !ManagerAttendanceFilters.isAllStatus(_statusFilter);
+
+  String get _statusTitle {
+    if (!_hasStatusFilter) return widget.locationName;
+    return ManagerAttendanceFilters.statusDisplayLabel(_statusFilter);
+  }
 
   bool get _canGoNext {
     final now = DateTime.now();
@@ -390,32 +493,153 @@ class _LocationAttendanceSheetBodyState
         (_month.year == now.year && _month.month < now.month);
   }
 
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedDay = DateTime(now.year, now.month, now.day);
+    _month = DateTime(now.year, now.month);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  Future<void> _load() async {
+    final attendance = context.read<ManagerAttendanceProvider>();
+    final employees = context.read<ManagerEmployeesProvider>();
+    final day = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day,
+    );
+
+    await Future.wait([
+      attendance.selectedDate == day
+          ? attendance.ensureLoaded()
+          : attendance.setDate(day),
+      if (_locationId.isNotEmpty)
+        employees.load(locationId: _locationId)
+      else
+        employees.load(),
+    ]);
+  }
+
+  List<ManagerTeamAttendanceItem> _locationItems({
+    required ManagerAttendanceProvider attendance,
+    required ManagerEmployeesProvider employees,
+  }) {
+    final members = _locationId.isEmpty
+        ? employees.members
+        : ManagerEmployeeFilters.byLocation(
+            source: employees.members,
+            selectedLocationId: _locationId,
+            selectedLocationName: widget.locationName,
+          );
+
+    if (employees.isLoading && members.isEmpty) return const [];
+
+    if (members.isEmpty) {
+      if (_locationId.isNotEmpty) return const [];
+      return ManagerAttendanceFilters.applyItems(
+        source: attendance.items,
+        selectedLocation: LocationFilterOption.allId,
+        locationName: widget.locationName,
+      );
+    }
+
+    return TeamAttendanceMapper.mergeWithMembers(
+      attendance: attendance.items,
+      members: members,
+      includeUnmatchedAttendance: false,
+    );
+  }
+
+  List<ManagerTeamAttendanceItem> _filteredItems(
+    List<ManagerTeamAttendanceItem> source,
+  ) {
+    // Match location overview stats: Absent excludes On Leaves.
+    if (StatusFilterOption.sameFamily(_statusFilter, 'absent')) {
+      return source
+          .where((item) => !item.hasCheckIn && !item.isOnLeave)
+          .toList(growable: false);
+    }
+    if (StatusFilterOption.sameFamily(_statusFilter, 'leave')) {
+      return source.where((item) => item.isOnLeave).toList(growable: false);
+    }
+
+    return ManagerAttendanceFilters.applyItems(
+      source: source,
+      selectedStatus: _statusFilter,
+      selectedLocation: LocationFilterOption.allId,
+    );
+  }
+
+  MonthSummary _summaryFor(List<ManagerTeamAttendanceItem> items) {
+    final present = items.where((e) => e.hasCheckIn).length;
+    final total = items.isEmpty ? 0 : items.length;
+    final absentOrLeaves = items
+        .where((e) => !e.hasCheckIn || e.isOnLeave)
+        .length;
+    final lateIns = items.where((e) => e.isLate).length;
+    final lateOuts = items.where((e) => e.isEarlyCheckout).length;
+
+    return MonthSummary(
+      workingDays: present,
+      totalDays: total,
+      absentOrLeaves: absentOrLeaves,
+      lateCheckIns: lateIns,
+      lateCheckOuts: lateOuts,
+    );
+  }
+
   void _previousMonth() {
     setState(() {
       _month = DateTime(_month.year, _month.month - 1);
+      _selectedDay = DateTime(_month.year, _month.month, 1);
     });
+    _load();
   }
 
   void _nextMonth() {
     if (!_canGoNext) return;
     setState(() {
       _month = DateTime(_month.year, _month.month + 1);
+      _selectedDay = DateTime(_month.year, _month.month, 1);
     });
+    _load();
   }
 
   void _openDetails(ManagerAttendanceModel employee) {
+    final provider = context.read<ManagerAttendanceProvider>();
+    final day = _selectedDay;
     ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(
         employee: employee,
-        day: _selectedDay,
+        day: day,
       ),
+      loadDetails: employee.userId == null
+          ? null
+          : () => provider.loadEmployeeDay(employee: employee, day: day),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final people = dummyManagerAttendance;
+    final attendance = context.watch<ManagerAttendanceProvider>();
+    final employees = context.watch<ManagerEmployeesProvider>();
+    final locationItems = _locationItems(
+      attendance: attendance,
+      employees: employees,
+    );
+    final filtered = _filteredItems(locationItems);
+    final tiles = TeamAttendanceMapper.toTiles(filtered);
+    final summary = _summaryFor(locationItems);
+    final isLoading =
+        (attendance.isLoading || employees.isLoading) && locationItems.isEmpty;
+    final hasError =
+        (attendance.hasError || employees.hasError) && locationItems.isEmpty;
 
     return ColoredBox(
       color: kbackground2,
@@ -442,10 +666,19 @@ class _LocationAttendanceSheetBodyState
                   child: Column(
                     children: [
                       AppText.h5(
-                        widget.locationName,
+                        _hasStatusFilter ? _statusTitle : widget.locationName,
                         weight: FontWeight.w600,
                       ),
-                      if (widget.locationAddress.trim().isNotEmpty) ...[
+                      if (_hasStatusFilter) ...[
+                        const SizedBox(height: 2),
+                        AppText.caption(
+                          widget.locationName,
+                          color: kGreyColor,
+                          weight: FontWeight.w400,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ] else if (widget.locationAddress.trim().isNotEmpty) ...[
                         const SizedBox(height: 2),
                         AppText.caption(
                           widget.locationAddress,
@@ -473,12 +706,13 @@ class _LocationAttendanceSheetBodyState
               onTapDropdown: () {
                 MonthYearPickerSheet.show(
                   context,
-                  initialDate: _month,
+                  initialDate: _selectedDay,
                   onSelected: (date) {
                     setState(() {
                       _month = DateTime(date.year, date.month);
-                      _selectedDay = date;
+                      _selectedDay = DateTime(date.year, date.month, date.day);
                     });
+                    _load();
                   },
                 );
               },
@@ -486,24 +720,61 @@ class _LocationAttendanceSheetBodyState
           ),
           const SizedBox(height: 20),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              itemCount: people.length + 1,
-              separatorBuilder: (context, index) {
-                if (index == 0) return const SizedBox(height: 20);
-                return const Divider(height: 24, color: kDividerColor);
-              },
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return AttendanceSummaryCard(summary: _summary);
-                }
-                final item = people[index - 1];
-                return ManagerAttendanceTile(
-                  data: item,
-                  onTap: () => _openDetails(item),
-                );
-              },
-            ),
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : hasError
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppText.p1(
+                            attendance.errorMessage ??
+                                employees.errorMessage ??
+                                'Failed to load attendance.',
+                            color: kSubText,
+                            align: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _load,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    itemCount: tiles.isEmpty ? 2 : tiles.length + 1,
+                    separatorBuilder: (context, index) {
+                      if (index == 0) return const SizedBox(height: 20);
+                      return const Divider(height: 24, color: kDividerColor);
+                    },
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return AttendanceSummaryCard(summary: summary);
+                      }
+                      if (tiles.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: AppText.p1(
+                            _hasStatusFilter
+                                ? 'No ${_statusTitle.toLowerCase()} records.'
+                                : 'No employees assigned to this location.',
+                            color: kSubText,
+                            align: TextAlign.center,
+                          ),
+                        );
+                      }
+                      final item = tiles[index - 1];
+                      return ManagerAttendanceTile(
+                        data: item,
+                        onTap: () => _openDetails(item),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

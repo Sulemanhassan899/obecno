@@ -1,4 +1,6 @@
 import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
@@ -42,6 +44,8 @@ class ManagerAttendanceFilters {
         return 'Early Check-Out';
       case 'leave':
       case 'on leave':
+      case 'on leaves':
+        return 'On Leaves';
       case 'absent':
       case '':
         return 'Absent';
@@ -63,6 +67,7 @@ class ManagerAttendanceFilters {
     if (StatusFilterOption.sameFamily(id, 'working')) return item.isActive;
     if (StatusFilterOption.sameFamily(id, 'break')) return item.isOnBreak;
     if (StatusFilterOption.sameFamily(id, 'late')) return item.isLate;
+    if (StatusFilterOption.sameFamily(id, 'leave')) return item.isOnLeave;
     if (StatusFilterOption.sameFamily(id, 'absent')) return item.isAbsent;
     if (StatusFilterOption.sameFamily(id, 'early_checkout')) {
       return item.isEarlyCheckout;
@@ -93,21 +98,26 @@ class ManagerAttendanceFilters {
     ].any((name) => name.trim().toLowerCase() == targetName);
   }
 
-  static List<ManagerTeamAttendanceItem> applyItems({
+  /// Prefer assigned employees for a location over punch `location_id`.
+  static List<ManagerTeamAttendanceItem> byAssignedLocation({
     required List<ManagerTeamAttendanceItem> source,
-    String selectedStatus = 'all',
-    String selectedLocation = 'all',
+    required List<ManagerEmployeeModel> members,
+    required String selectedLocation,
     String? locationName,
-    String searchQuery = '',
   }) {
-    var list = List<ManagerTeamAttendanceItem>.from(source);
-
-    if (!isAllStatus(selectedStatus)) {
-      list = list.where((item) => matchesStatus(item, selectedStatus)).toList();
+    if (isAllLocations(selectedLocation)) {
+      return List<ManagerTeamAttendanceItem>.from(source);
     }
 
-    if (!isAllLocations(selectedLocation)) {
-      list = list
+    final assigned = ManagerEmployeeFilters.byLocation(
+      source: members,
+      selectedLocationId: selectedLocation,
+      selectedLocationName: locationName,
+    );
+
+    if (assigned.isEmpty) {
+      // Fall back to punch/current location tags when directory has no match.
+      return source
           .where(
             (item) => matchesLocation(
               item,
@@ -115,7 +125,43 @@ class ManagerAttendanceFilters {
               locationName: locationName,
             ),
           )
-          .toList();
+          .toList(growable: false);
+    }
+
+    final ids = <String>{
+      for (final member in assigned)
+        if (member.id.trim().isNotEmpty) member.id.trim(),
+    };
+
+    return source
+        .where((item) {
+          final userId = item.userId?.toString();
+          return userId != null && ids.contains(userId);
+        })
+        .toList(growable: false);
+  }
+
+  static List<ManagerTeamAttendanceItem> applyItems({
+    required List<ManagerTeamAttendanceItem> source,
+    String selectedStatus = 'all',
+    String selectedLocation = 'all',
+    String? locationName,
+    String searchQuery = '',
+    List<ManagerEmployeeModel> members = const [],
+  }) {
+    var list = List<ManagerTeamAttendanceItem>.from(source);
+
+    if (!isAllLocations(selectedLocation)) {
+      list = byAssignedLocation(
+        source: list,
+        members: members,
+        selectedLocation: selectedLocation,
+        locationName: locationName,
+      );
+    }
+
+    if (!isAllStatus(selectedStatus)) {
+      list = list.where((item) => matchesStatus(item, selectedStatus)).toList();
     }
 
     final q = searchQuery.trim().toLowerCase();

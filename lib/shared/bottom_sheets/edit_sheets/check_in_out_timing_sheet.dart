@@ -3,6 +3,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -85,8 +86,9 @@ class _CheckInOutTimingSheetBodyState
     final userId = widget.userId;
     if (userId == null) return;
     setState(() => _loading = true);
-    final result = await bindings.managerEmployeesService
-        .loadEmployeePolicy(userId: userId);
+    final result = await bindings.managerEmployeesService.loadEmployeePolicy(
+      userId: userId,
+    );
     if (!mounted) return;
     if (result.success && result.data != null) {
       final policy = result.data!;
@@ -155,20 +157,17 @@ class _CheckInOutTimingSheetBodyState
       final wantedOut = _checkOut;
       final wantedGrace = _graceMinutes;
       final result = await bindings.managerEmployeesService
-          .updateEmployeeSchedule(
+          .updateEmployeePermissions(
             userId: widget.userId!,
             payload: {
+              ...ManagerEmployeePolicy.timingPermissionPayload(
+                checkInLabel: _formatTime(wantedIn),
+                checkOutLabel: _formatTime(wantedOut),
+                graceMinutes: wantedGrace,
+              ),
               'check_in': _formatHms(wantedIn),
               'check_out': _formatHms(wantedOut),
               'grace_minutes': wantedGrace,
-              'check_in_time': _formatTime(wantedIn),
-              'check_out_time': _formatTime(wantedOut),
-              'grace_period': wantedGrace,
-              'attendance': {
-                'check_in_time': _formatTime(wantedIn),
-                'check_out_time': _formatTime(wantedOut),
-                'grace_period': '$wantedGrace',
-              },
             },
           );
       if (!mounted) return;
@@ -397,16 +396,16 @@ class _CheckInOutTimingSheetBodyState
                     ),
                   ),
                   const SizedBox(width: 10),
-                    Expanded(
-                      flex: 4,
-                      child: MyButton(
-                        buttonText: 'Save',
-                        backgroundColor: kPrimaryButtonColor,
-                        isactive: !_loading && !_saving,
-                        isLoadingExternally: _saving,
-                        onTap: _save,
-                      ),
+                  Expanded(
+                    flex: 4,
+                    child: MyButton(
+                      buttonText: 'Save',
+                      backgroundColor: kPrimaryButtonColor,
+                      isactive: !_loading && !_saving,
+                      isLoadingExternally: _saving,
+                      onTap: _save,
                     ),
+                  ),
                 ],
               ),
             ),

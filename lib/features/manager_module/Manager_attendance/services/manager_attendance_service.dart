@@ -49,6 +49,7 @@ class ManagerAttendanceService {
         search: attendanceResponse.data!.search,
         total: merged.length,
         attendance: merged,
+        members: members,
       ),
       message: attendanceResponse.message,
       statusCode: attendanceResponse.statusCode,

@@ -88,9 +88,7 @@ class ManagerEmployeesProvider extends BaseProvider {
     if (id.isEmpty) return;
     _citiesCountryId = id;
     final result = await _service.getCities(countryId: id);
-    cities = result.success && result.data != null
-        ? result.data!
-        : const [];
+    cities = result.success && result.data != null ? result.data! : const [];
     notifyListeners();
   }
 
@@ -102,15 +100,42 @@ class ManagerEmployeesProvider extends BaseProvider {
   }
 
   Future<void> loadAddEmployeeLookups() async {
+    final form = await _service.loadCreateEmployeeForm();
+    if (form.success && form.data != null) {
+      final data = form.data!;
+      if (data.departments.isNotEmpty) departments = data.departments;
+      if (data.countries.isNotEmpty) countries = data.countries;
+      if (data.cities.isNotEmpty) cities = data.cities;
+      notifyListeners();
+    }
+
     await Future.wait([
-      loadDepartments(),
-      loadCountries(),
+      if (departments.isEmpty) loadDepartments(),
+      if (countries.isEmpty) loadCountries(),
       if (members.isEmpty) load(),
     ]);
   }
 
   Future<ApiResponse<int>> addEmployees(List<AddEmployeePayload> payloads) {
     return _service.addEmployees(payloads);
+  }
+
+  void applyEmployeePhoto({required int userId, required String photoUrl}) {
+    final url = photoUrl.trim();
+    if (url.isEmpty) return;
+    final next = <ManagerEmployeeModel>[];
+    var changed = false;
+    for (final member in members) {
+      if (member.userId == userId) {
+        next.add(member.copyWith(photo: url));
+        changed = true;
+      } else {
+        next.add(member);
+      }
+    }
+    if (!changed) return;
+    members = next;
+    notifyListeners();
   }
 
   void reset() {

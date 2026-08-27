@@ -4,6 +4,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/employe
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/services/manager_attendance_service.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
@@ -19,6 +20,7 @@ class ManagerAttendanceProvider extends BaseProvider {
   String locationId = LocationFilterOption.allId;
   String? locationName;
   List<ManagerTeamAttendanceItem> items = const [];
+  List<ManagerEmployeeModel> members = const [];
   int total = 0;
 
   bool get isAllStatus => ManagerAttendanceFilters.isAllStatus(statusFilterId);
@@ -29,6 +31,7 @@ class ManagerAttendanceProvider extends BaseProvider {
       selectedStatus: statusFilterId,
       selectedLocation: locationId,
       locationName: locationName,
+      members: members,
     );
   }
 
@@ -42,6 +45,7 @@ class ManagerAttendanceProvider extends BaseProvider {
         selectedStatus: StatusFilterOption.allId,
         selectedLocation: LocationFilterOption.allId,
         searchQuery: query,
+        members: members,
       ),
     );
   }
@@ -56,6 +60,7 @@ class ManagerAttendanceProvider extends BaseProvider {
       ),
       onSuccess: (data) {
         items = data.attendance;
+        members = data.members;
         total = data.total;
         if (data.date != null) {
           selectedDate = _dateOnly(data.date!);
@@ -90,7 +95,7 @@ class ManagerAttendanceProvider extends BaseProvider {
         return fallback.copyWith(photo: photo);
       }
 
-      return EmployeeAttendanceMapper.toDetails(
+      final details = EmployeeAttendanceMapper.toDetails(
         data: response.data!,
         day: day,
         fallbackName: employee.name,
@@ -99,6 +104,14 @@ class ManagerAttendanceProvider extends BaseProvider {
         fallbackAttendanceId: employee.attendanceId,
         fallbackUserId: employee.userId,
       );
+      // Keep list/fallback punches when the day payload is still empty.
+      if (!details.hasAttendance && fallback.hasAttendance) {
+        return fallback.copyWith(
+          photo: details.photo ?? photo,
+          attendanceId: details.attendanceId,
+        );
+      }
+      return details;
     } catch (_) {
       return fallback;
     }
@@ -125,6 +138,7 @@ class ManagerAttendanceProvider extends BaseProvider {
 
     if (dateChanged) {
       items = const [];
+      members = const [];
       total = 0;
     }
 
@@ -138,6 +152,7 @@ class ManagerAttendanceProvider extends BaseProvider {
   Future<bool> setDate(DateTime date) {
     selectedDate = _dateOnly(date);
     items = const [];
+    members = const [];
     total = 0;
     notifyListeners();
     return load();
@@ -162,6 +177,7 @@ class ManagerAttendanceProvider extends BaseProvider {
     locationId = LocationFilterOption.allId;
     locationName = null;
     items = const [];
+    members = const [];
     total = 0;
     notifyListeners();
   }

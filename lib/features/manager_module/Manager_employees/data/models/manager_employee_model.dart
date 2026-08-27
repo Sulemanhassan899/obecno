@@ -113,14 +113,20 @@ class ManagerEmployeeModel {
     );
 
     final locationIds = _locationIdsFrom(json);
-    final defaultLocationId = _asNullableString(
-      json['default_location_id'] ?? json['location_id'] ?? json['office_id'],
-    ) ?? _defaultIdFromLocations(json['locations']);
+    final defaultLocationId =
+        _asNullableString(
+          json['default_location_id'] ??
+              json['location_id'] ??
+              json['office_id'],
+        ) ??
+        _defaultIdFromLocations(json['locations']);
     final locationName = _asNullableString(
       json['location_name'] ??
           json['office_name'] ??
           json['default_location_name'] ??
-          _nestedName(json['location'] ?? json['office'] ?? json['default_location']),
+          _nestedName(
+            json['location'] ?? json['office'] ?? json['default_location'],
+          ),
     );
     final createdByRaw = json['created_by'] ?? json['createdBy'];
     final scheduleRaw = json['schedule'];
@@ -129,8 +135,8 @@ class ManagerEmployeeModel {
       id: _asString(json['id'] ?? json['user_id']),
       name: _asString(json['name'] ?? json['employee_name'] ?? json['title']),
       role: role.isEmpty ? 'Employee' : role,
-      email: _asNullableString(json['email']),
-      phone: _asNullableString(json['phone'] ?? json['phone_number']),
+      email: _firstText(json, const ['email', 'user_email', 'login_email']),
+      phone: _firstText(json, const ['phone', 'phone_number', 'mobile']),
       photo: _absoluteUrl(
         _asNullableString(
           json['photo_url'] ??
@@ -139,21 +145,39 @@ class ManagerEmployeeModel {
               json['avatar'],
         ),
       ),
-      locationId: defaultLocationId ??
-          (locationIds.isEmpty ? null : locationIds.first),
+      locationId:
+          defaultLocationId ?? (locationIds.isEmpty ? null : locationIds.first),
       locationIds: locationIds,
       locationName: locationName,
       departmentId: _asNullableString(json['department_id']),
       departmentTitle: _asNullableString(
         json['department_title'] ?? json['department'],
       ),
-      employeeCode: _asNullableString(
-        json['employee_code'] ??
-            json['company_id'] ??
-            json['staff_id'] ??
-            json['employee_id_number'],
-      ),
-      address: _asNullableString(json['address'] ?? json['home_address']),
+      employeeCode: _firstText(json, const [
+        'employee_code',
+        'emp_code',
+        'staff_id',
+        'employee_id_number',
+        'employee_number',
+        'employee_id',
+        'company_id',
+      ]),
+      address:
+          _firstText(json, const [
+            'home_address',
+            'present_address',
+            'permanent_address',
+            'residential_address',
+            'street_address',
+            'full_address',
+            'current_address',
+          ]) ??
+          _addressText(json['address']) ??
+          _labeledField(json, const [
+            'address',
+            'home address',
+            'home_address',
+          ]),
       createdBy: createdByRaw is Map
           ? _asNullableString(createdByRaw['name'] ?? createdByRaw['title'])
           : _asNullableString(createdByRaw),
@@ -218,6 +242,57 @@ class ManagerEmployeeModel {
       status: status ?? this.status,
       badge: badge ?? this.badge,
     );
+  }
+
+  factory ManagerEmployeeModel.fromApiJson(Map<String, dynamic> json) {
+    return ManagerEmployeeModel.fromJson(mergeApiJson(json));
+  }
+
+  static Map<String, dynamic> mergeApiJson(Map<String, dynamic> json) {
+    final merged = <String, dynamic>{};
+
+    void absorb(dynamic raw) {
+      if (raw is! Map) return;
+      Map<String, dynamic>.from(raw).forEach((key, value) {
+        if (value == null) return;
+        if (value is String && value.trim().isEmpty) return;
+        final existing = merged[key];
+        if (existing is String &&
+            existing.trim().isNotEmpty &&
+            value is! String) {
+          return;
+        }
+        merged[key] = value;
+      });
+    }
+
+    absorb(json);
+    final inner = json['data'];
+    absorb(inner);
+    if (inner is Map) {
+      absorb(inner['data']);
+      absorb(inner['attributes']);
+    }
+    absorb(json['attributes']);
+    for (final key in const [
+      'user',
+      'account',
+      'details',
+      'profile',
+      'employee',
+      'attributes',
+    ]) {
+      absorb(json[key]);
+      if (inner is Map) {
+        absorb(inner[key]);
+        final nested = inner[key];
+        if (nested is Map) {
+          absorb(nested['data']);
+          absorb(nested['attributes']);
+        }
+      }
+    }
+    return merged;
   }
 }
 
@@ -295,9 +370,64 @@ int _asInt(dynamic raw, {int fallback = 0}) {
 String _asString(dynamic raw) => raw?.toString().trim() ?? '';
 
 String? _asNullableString(dynamic raw) {
-  if (raw == null) return null;
+  if (raw == null || raw is Map || raw is List) return null;
   final value = raw.toString().trim();
   return value.isEmpty ? null : value;
+}
+
+String? _firstText(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = _asNullableString(json[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+String? _addressText(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is Map) {
+    return _firstText(Map<String, dynamic>.from(raw), const [
+      'home_address',
+      'full_address',
+      'formatted_address',
+      'formatted',
+      'address',
+      'line_1',
+      'line1',
+      'street',
+      'street_address',
+      'value',
+      'text',
+      'label',
+    ]);
+  }
+  return _asNullableString(raw);
+}
+
+String? _labeledField(Map<String, dynamic> json, List<String> names) {
+  final needles = names
+      .map((name) => name.toLowerCase())
+      .toList(growable: false);
+  for (final key in const ['profile_fields', 'fields', 'custom_fields']) {
+    final list = json[key];
+    if (list is! List) continue;
+    for (final item in list) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final name = (map['key'] ?? map['name'] ?? map['label'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (!needles.any((needle) => name == needle || name.contains(needle))) {
+        continue;
+      }
+      final value = _asNullableString(
+        map['value'] ?? map['display'] ?? map['text'],
+      );
+      if (value != null) return value;
+    }
+  }
+  return null;
 }
 
 String? _nestedName(dynamic raw) {
@@ -349,7 +479,8 @@ String? _defaultIdFromLocations(dynamic raw) {
     );
     if (id == null) continue;
     firstId ??= id;
-    final isDefault = item['is_default'] == true ||
+    final isDefault =
+        item['is_default'] == true ||
         item['is_default'] == 1 ||
         item['is_default']?.toString() == '1';
     if (isDefault) return id;

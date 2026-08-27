@@ -65,7 +65,8 @@ class ManagerEmployeePolicy {
       }
     }
 
-    final tracking = value('attendance', 'break_location_tracking') ??
+    final tracking =
+        value('attendance', 'break_location_tracking') ??
         value('break_timing', 'break_location_tracking');
 
     return ManagerEmployeePolicy(
@@ -96,20 +97,13 @@ class ManagerEmployeePolicy {
       return null;
     }
 
-    final tracking = read(const [
-      'break_location_tracking',
-      'track_location',
-    ]);
+    final tracking = read(const ['break_location_tracking', 'track_location']);
 
     return ManagerEmployeePolicy(
       checkInTime: read(const ['check_in', 'check_in_time']),
       checkOutTime: read(const ['check_out', 'check_out_time']),
       gracePeriod: read(const ['grace_minutes', 'grace_period']),
-      breakTime: read(const [
-        'max_break_minutes',
-        'break_time',
-        'max_break',
-      ]),
+      breakTime: read(const ['max_break_minutes', 'break_time', 'max_break']),
       breakLocationTracking: tracking == null
           ? true
           : tracking.toLowerCase() != '0' &&
@@ -153,5 +147,61 @@ class ManagerEmployeePolicy {
     final leading = RegExp(r'^(\d+)').firstMatch(value);
     if (leading != null) return int.tryParse(leading.group(1)!);
     return null;
+  }
+
+  static Map<String, dynamic> _permissionItem(
+    String section,
+    String key,
+    String value,
+  ) {
+    return {
+      'section': section,
+      'key': key,
+      'value': value,
+      'employee_value': value,
+    };
+  }
+
+  static Map<String, dynamic> timingPermissionPayload({
+    required String checkInLabel,
+    required String checkOutLabel,
+    required int graceMinutes,
+  }) {
+    final attendance = {
+      'check_in_time': checkInLabel,
+      'check_out_time': checkOutLabel,
+      'grace_period': '$graceMinutes',
+    };
+    return {
+      'permission_items': [
+        _permissionItem('attendance', 'check_in_time', checkInLabel),
+        _permissionItem('attendance', 'check_out_time', checkOutLabel),
+        _permissionItem('attendance', 'grace_period', '$graceMinutes'),
+      ],
+      'permissions': {'attendance': attendance},
+      'attendance': attendance,
+    };
+  }
+
+  static Map<String, dynamic> breakPermissionPayload({
+    required String breakLabel,
+    required bool trackLocation,
+  }) {
+    final tracking = trackLocation ? '1' : '0';
+    final attendance = {
+      'break_time': breakLabel,
+      'break_location_tracking': tracking,
+    };
+    return {
+      'permission_items': [
+        _permissionItem('attendance', 'break_time', breakLabel),
+        _permissionItem('attendance', 'break_location_tracking', tracking),
+        _permissionItem('break_timing', 'break_time', breakLabel),
+        _permissionItem('break_timing', 'break_location_tracking', tracking),
+      ],
+      'permissions': {'attendance': attendance, 'break_timing': attendance},
+      'attendance': attendance,
+      'break_timing': attendance,
+    };
   }
 }

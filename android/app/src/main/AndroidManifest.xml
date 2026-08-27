@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Camera for manager employee photo updates and employee self-photo. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Photo picker on modern Android uses the system picker; legacy storage
          kept for older devices only (maxSdkVersion). -->
     <uses-permission

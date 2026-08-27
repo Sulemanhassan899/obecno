@@ -171,8 +171,20 @@ class AppBindings {
     privacyService = PrivacyService(ApihttpClient);
     privacyProvider = PrivacyProvider(privacyService);
 
+    managerEmployeesRepository = ManagerEmployeesRepository(ApihttpClient);
+    managerEmployeesService = ManagerEmployeesService(
+      managerEmployeesRepository,
+      currentUserIdProvider: () => authProvider.user?.id,
+    );
+    managerEmployeesProvider = ManagerEmployeesProvider(
+      managerEmployeesService,
+    );
+
     managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
-    managerOverviewService = ManagerOverviewService(managerOverviewRepository);
+    managerOverviewService = ManagerOverviewService(
+      managerOverviewRepository,
+      employeesRepository: managerEmployeesRepository,
+    );
     managerOverviewProvider = ManagerOverviewProvider(managerOverviewService);
 
     managerLocationsRepository = ManagerLocationsRepository(ApihttpClient);
@@ -182,15 +194,6 @@ class AppBindings {
     );
     managerLocationsProvider = ManagerLocationsProvider(
       managerLocationsService,
-    );
-
-    managerEmployeesRepository = ManagerEmployeesRepository(ApihttpClient);
-    managerEmployeesService = ManagerEmployeesService(
-      managerEmployeesRepository,
-      currentUserIdProvider: () => authProvider.user?.id,
-    );
-    managerEmployeesProvider = ManagerEmployeesProvider(
-      managerEmployeesService,
     );
 
     managerStatusFiltersRepository = ManagerStatusFiltersRepository(

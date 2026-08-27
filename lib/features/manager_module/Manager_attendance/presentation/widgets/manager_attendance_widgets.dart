@@ -582,7 +582,7 @@ class ManagerAttendanceTile extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
