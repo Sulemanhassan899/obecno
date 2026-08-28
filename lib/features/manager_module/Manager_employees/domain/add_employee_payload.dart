@@ -62,9 +62,9 @@ class AddEmployeePayload {
 
   factory AddEmployeePayload.fromInvite({
     required String email,
-    required String locationId,
-    required String jobTitle,
-    required String departmentId,
+    String locationId = '',
+    String jobTitle = '',
+    String departmentId = '',
     String? name,
     String? phone,
     String? gender,

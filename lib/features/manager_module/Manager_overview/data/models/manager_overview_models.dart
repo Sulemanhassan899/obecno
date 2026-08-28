@@ -186,8 +186,16 @@ class ManagerTeamAttendanceItem {
   factory ManagerTeamAttendanceItem.fromJson(Map<String, dynamic> json) {
     return ManagerTeamAttendanceItem(
       attendanceId: _asIntOrNull(json['attendance_id'] ?? json['id']),
-      userId: _asIntOrNull(json['user_id']),
-      employeeName: _asNullableString(json['employee_name']),
+      userId: _asIntOrNull(
+        json['user_id'] ??
+            json['employee_id'] ??
+            (json['employee'] is Map ? json['employee']['id'] : null),
+      ),
+      employeeName: _asNullableString(
+        json['employee_name'] ??
+            json['name'] ??
+            (json['employee'] is Map ? json['employee']['name'] : null),
+      ),
       departmentId: _asIntOrNull(json['department_id']),
       departmentTitle: _asNullableString(json['department_title']),
       locationId: _asNullableString(
@@ -205,8 +213,12 @@ class ManagerTeamAttendanceItem {
         ),
       ),
       date: _asDate(json['date']),
-      checkin: _asNullableString(json['checkin']),
-      checkout: _asNullableString(json['checkout']),
+      checkin: _asNullableString(
+        json['checkin'] ?? json['check_in'] ?? json['first_check_in'],
+      ),
+      checkout: _asNullableString(
+        json['checkout'] ?? json['check_out'] ?? json['last_check_out'],
+      ),
       breakout: _asNullableString(json['breakout']),
       breakin: _asNullableString(json['breakin']),
       isOpen: _asBool(json['is_open']),

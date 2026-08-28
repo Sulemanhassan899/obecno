@@ -1,8 +1,10 @@
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/services/manager_attendance_service.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
+import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/features/manager_module/Manager_overview/repositories/manager_overview_repository.dart';
 
@@ -10,10 +12,13 @@ class ManagerOverviewService {
   ManagerOverviewService(
     this._repository, {
     ManagerEmployeesRepository? employeesRepository,
-  }) : _employeesRepository = employeesRepository;
+    ManagerAttendanceService? attendanceService,
+  }) : _employeesRepository = employeesRepository,
+       _attendanceService = attendanceService;
 
   final ManagerOverviewRepository _repository;
   final ManagerEmployeesRepository? _employeesRepository;
+  final ManagerAttendanceService? _attendanceService;
 
   Future<ApiResponse<OverviewSnapshot>> loadOverview({
     required DateTime date,
@@ -38,9 +43,13 @@ class ManagerOverviewService {
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     if (selected == todayOnly) {
-      final attendance = TeamAttendanceMapper.mergeWithMembers(
-        attendance: dashboard.teamAttendanceToday,
+      final attendance = await _withOwner(
+        TeamAttendanceMapper.mergeWithMembers(
+          attendance: dashboard.teamAttendanceToday,
+          members: members,
+        ),
         members: members,
+        date: selected,
       );
       return ApiResponse.success(
         OverviewSnapshot(
@@ -73,9 +82,13 @@ class ManagerOverviewService {
       );
     }
 
-    final attendance = TeamAttendanceMapper.mergeWithMembers(
-      attendance: attendanceResponse.data!.attendance,
+    final attendance = await _withOwner(
+      TeamAttendanceMapper.mergeWithMembers(
+        attendance: attendanceResponse.data!.attendance,
+        members: members,
+      ),
       members: members,
+      date: selected,
     );
     return ApiResponse.success(
       OverviewSnapshot(
@@ -93,6 +106,20 @@ class ManagerOverviewService {
       ),
       message: attendanceResponse.message,
       statusCode: attendanceResponse.statusCode,
+    );
+  }
+
+  Future<List<ManagerTeamAttendanceItem>> _withOwner(
+    List<ManagerTeamAttendanceItem> items, {
+    required List<ManagerEmployeeModel> members,
+    required DateTime date,
+  }) async {
+    final service = _attendanceService;
+    if (service == null) return items;
+    return service.withOwnerAttendance(
+      items: items,
+      members: members,
+      date: date,
     );
   }
 

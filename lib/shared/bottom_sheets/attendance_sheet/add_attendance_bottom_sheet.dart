@@ -18,12 +18,17 @@ import 'package:geolocator/geolocator.dart';
 
 class AddAttendanceSaveResult {
   const AddAttendanceSaveResult({
-    required this.checkIn,
-    required this.checkOut,
+    this.checkIn,
+    this.checkOut,
+    this.breakStart,
+    this.breakEnd,
   });
 
-  final TimeOfDay checkIn;
-  final TimeOfDay checkOut;
+  /// Only fields the user actually changed. Null means leave the existing value.
+  final TimeOfDay? checkIn;
+  final TimeOfDay? checkOut;
+  final TimeOfDay? breakStart;
+  final TimeOfDay? breakEnd;
 }
 
 class AddAttendanceBottomSheet {
@@ -43,7 +48,9 @@ class AddAttendanceBottomSheet {
     String? breakEndDetailId,
     int? attendanceId,
     int? employeeUserId,
+    String? employeeName,
     bool applyImmediately = false,
+    bool hadInitialCheckIn = false,
     bool hadInitialCheckOut = false,
     bool hadInitialBreakStart = false,
     bool hadInitialBreakEnd = false,
@@ -79,7 +86,9 @@ class AddAttendanceBottomSheet {
           breakEndDetailId: breakEndDetailId,
           attendanceId: attendanceId,
           employeeUserId: employeeUserId,
+          employeeName: employeeName,
           applyImmediately: applyImmediately,
+          hadInitialCheckIn: hadInitialCheckIn || initialCheckIn != null,
           hadInitialCheckOut: hadInitialCheckOut || initialCheckOut != null,
           hadInitialBreakStart:
               hadInitialBreakStart || initialBreakStart != null,
@@ -104,7 +113,9 @@ class _AttendanceContent extends StatefulWidget {
   final String? breakEndDetailId;
   final int? attendanceId;
   final int? employeeUserId;
+  final String? employeeName;
   final bool applyImmediately;
+  final bool hadInitialCheckIn;
   final bool hadInitialCheckOut;
   final bool hadInitialBreakStart;
   final bool hadInitialBreakEnd;
@@ -124,7 +135,9 @@ class _AttendanceContent extends StatefulWidget {
     this.breakEndDetailId,
     this.attendanceId,
     this.employeeUserId,
+    this.employeeName,
     this.applyImmediately = false,
+    this.hadInitialCheckIn = false,
     this.hadInitialCheckOut = false,
     this.hadInitialBreakStart = false,
     this.hadInitialBreakEnd = false,
@@ -440,11 +453,32 @@ class _AttendanceContentState extends State<_AttendanceContent>
       String clock(TimeOfDay t) =>
           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
 
-      String? clockIf(TimeOfDay t, {required bool include}) =>
-          include ? clock(t) : null;
+      String? clockIf(TimeOfDay time, {required bool include}) =>
+          include ? clock(time) : null;
 
-      final isNewAttendance =
-          widget.applyImmediately && widget.attendanceId == null;
+      final checkInDirty = _timeChanged(widget.initialCheckIn, checkIn);
+      final checkOutDirty = _timeChanged(widget.initialCheckOut, checkOut);
+      final breakStartDirty = _timeChanged(
+        widget.initialBreakStart,
+        breakStart,
+      );
+      final breakEndDirty = _timeChanged(widget.initialBreakEnd, breakEnd);
+
+      // Preserve times that already existed; never invent defaults the user
+      // did not edit (employee change-request behavior).
+      final sendCheckIn = widget.hadInitialCheckIn || checkInDirty;
+      final sendCheckOut = widget.hadInitialCheckOut || checkOutDirty;
+      final sendBreakStart = widget.hadInitialBreakStart || breakStartDirty;
+      final sendBreakEnd = widget.hadInitialBreakEnd || breakEndDirty;
+
+      debugPrint(
+        '[ManagerAttendance] handleSave userId=${widget.employeeUserId} '
+        'attendanceId=${widget.attendanceId} day=${widget.day} '
+        'dirty in=$checkInDirty out=$checkOutDirty '
+        'break=$breakStartDirty/$breakEndDirty '
+        'send in=$sendCheckIn(${checkIn.hour}:${checkIn.minute}) '
+        'out=$sendCheckOut(${checkOut.hour}:${checkOut.minute})',
+      );
 
       final result = widget.applyImmediately
           ? await bindings.managerAttendanceService.saveEmployeeAttendance(
@@ -454,27 +488,14 @@ class _AttendanceContentState extends State<_AttendanceContent>
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
-              checkIn: clock(checkIn),
-              // New attendance (e.g. On Leave day) must send both times.
-              checkOut: clockIf(
-                checkOut,
-                include:
-                    isNewAttendance ||
-                    widget.hadInitialCheckOut ||
-                    _timeChanged(widget.initialCheckOut, checkOut),
-              ),
-              breakStart: clockIf(
-                breakStart,
-                include:
-                    widget.hadInitialBreakStart ||
-                    _timeChanged(widget.initialBreakStart, breakStart),
-              ),
-              breakEnd: clockIf(
-                breakEnd,
-                include:
-                    widget.hadInitialBreakEnd ||
-                    _timeChanged(widget.initialBreakEnd, breakEnd),
-              ),
+              checkIn: clockIf(checkIn, include: sendCheckIn),
+              checkOut: clockIf(checkOut, include: sendCheckOut),
+              breakStart: clockIf(breakStart, include: sendBreakStart),
+              breakEnd: clockIf(breakEnd, include: sendBreakEnd),
+              checkInDetailId: widget.checkInDetailId,
+              checkOutDetailId: widget.checkOutDetailId,
+              breakStartDetailId: widget.breakStartDetailId,
+              breakEndDetailId: widget.breakEndDetailId,
               changes: payloads,
             )
           : await AttendanceService(
@@ -501,9 +522,21 @@ class _AttendanceContentState extends State<_AttendanceContent>
       if (!mounted) return;
 
       if (success) {
+        final saved = AddAttendanceSaveResult(
+          checkIn: checkInDirty ? checkIn : null,
+          checkOut: checkOutDirty ? checkOut : null,
+          breakStart: breakStartDirty ? breakStart : null,
+          breakEnd: breakEndDirty ? breakEnd : null,
+        );
         if (widget.applyImmediately) {
           ToastHelper.changesSaved(context);
-          bindings.managerAttendanceProvider.refresh();
+          bindings.managerAttendanceProvider.applySavedTimes(
+            userId: widget.employeeUserId,
+            employeeName: widget.employeeName,
+            day: widget.day,
+            checkIn: saved.checkIn,
+            checkOut: saved.checkOut,
+          );
         } else {
           ToastHelper.attendanceRequestSent(
             context,
@@ -511,9 +544,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             message: result.data,
           );
         }
-        Navigator.of(context, rootNavigator: true).pop(
-          AddAttendanceSaveResult(checkIn: checkIn, checkOut: checkOut),
-        );
+        Navigator.of(context, rootNavigator: true).pop(saved);
       } else {
         if (widget.applyImmediately) {
           ToastHelper.error(

@@ -109,70 +109,70 @@ class _ManagerAttendanceHeaderState extends State<ManagerAttendanceHeader> {
     final date = widget.selectedDate ?? DateTime.now();
     final searchWidth = MediaQuery.sizeOf(context).width - 32;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SizedBox(
-        height: 52,
-        width: double.infinity,
-        child: _isSearching
-            ? AnimSearchBar(
-                key: const ValueKey('attendance-search-open'),
-                width: searchWidth,
-                rtl: true,
-                autoOpen: true,
-                autoFocus: true,
-                closeOnSubmit: false,
-                closeSearchOnSuffixTap: true,
-                boxShadow: true,
-                animationDurationInMilli: 500,
-
-                textFieldColor: kWhite,
-                searchIconColor: kBlack,
-                textFieldIconColor: kBlack,
-                textController: _searchController,
-                textInputAction: TextInputAction.search,
-                style: const TextStyle(
-                  color: kBlack,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: const Icon(Icons.close, size: 18),
-                onSuffixTap: () {},
-                onSubmitted: (_) {},
-                onChanged: (value) => widget.onSearchQueryChanged?.call(value),
-                searchBarOpen: (value) {
-                  if (value == 0) _closeSearch();
-                },
-              )
-            : Row(
-                children: [
-                  ButtonAnimations.press(
-                    onTap: () => _onDateTap(context),
-                    child: Row(
-                      children: [
-                        CommonImageView(
-                          imagePath: Assets.imagesCalender,
-                          width: 20,
-                          height: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        AppText.h6(_formatDateLabel(date), color: kBlack),
-                        const Icon(Icons.keyboard_arrow_down),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  ButtonAnimations.press(
-                    onTap: _openSearch,
-                    child: CommonImageView(
-                      imagePath: Assets.imagesSearchButton,
-                      height: 45,
-                    ),
-                  ),
-                ],
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: _isSearching
+          ? AnimSearchBar(
+              key: const ValueKey('attendance-search-open'),
+              width: searchWidth,
+              rtl: true,
+              autoOpen: true,
+              autoFocus: true,
+              closeOnSubmit: false,
+              closeSearchOnSuffixTap: true,
+              boxShadow: true,
+              animationDurationInMilli: 500,
+              textFieldColor: kWhite,
+              searchIconColor: kBlack,
+              textFieldIconColor: kBlack,
+              textController: _searchController,
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(
+                color: kBlack,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
               ),
-      ),
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: const Icon(Icons.close, size: 18),
+              onSuffixTap: () {},
+              onSubmitted: (_) {},
+              onChanged: (value) => widget.onSearchQueryChanged?.call(value),
+              searchBarOpen: (value) {
+                if (value == 0) _closeSearch();
+              },
+            )
+          : Row(
+              children: [
+                ButtonAnimations.press(
+                  onTap: () => _onDateTap(context),
+                  child: Row(
+                    children: [
+                      CommonImageView(
+                        imagePath: Assets.imagesCalender,
+                        width: 20,
+                        height: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      AppText.h6(
+                        _formatDateLabel(date),
+                        color: kBlack,
+                        weight: FontWeight.w400,
+                      ),
+                      const Icon(Icons.keyboard_arrow_down),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                ButtonAnimations.press(
+                  onTap: _openSearch,
+                  child: CommonImageView(
+                    imagePath: Assets.imagesSearchButton,
+                    height: 45,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -467,7 +467,7 @@ class ManagerAttendanceTile extends StatelessWidget {
         return kPurple.withOpacity(0.15);
       case "owner":
       default:
-        return kgreenColorLight;
+        return kPrimaryColor2;
     }
   }
 
@@ -582,7 +582,7 @@ class ManagerAttendanceTile extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -599,7 +599,7 @@ class ManagerAttendanceTile extends StatelessWidget {
                     AppText.p2(
                       data.name,
                       color: kBlack,
-                      weight: FontWeight.w500,
+                      weight: FontWeight.w400,
                       align: TextAlign.left,
                     ),
                     if (_hasRole || _hasTeam) ...[
@@ -614,12 +614,13 @@ class ManagerAttendanceTile extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: _roleBgColor(),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(5),
                               ),
                               child: AppText.caption(
                                 data.role!,
-                                color: _roleTextColor(),
-                                weight: FontWeight.w500,
+                               // color: _roleTextColor(),
+                                color: kBlack,
+                                weight: FontWeight.w400,
                               ),
                             ),
                         ],
@@ -629,7 +630,7 @@ class ManagerAttendanceTile extends StatelessWidget {
                 ),
               ),
             ),
-
+        
             /// CENTER — alert / edit icons
             if (icon != null) ...[
               const SizedBox(width: 8),
@@ -637,7 +638,7 @@ class ManagerAttendanceTile extends StatelessWidget {
               const SizedBox(width: 8),
             ] else
               const SizedBox(width: 12),
-
+        
             /// RIGHT — times / status / empty dash
             _trailing(),
           ],

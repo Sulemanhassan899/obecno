@@ -1,5 +1,3 @@
-
-
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/shared/location/data/queue_model.dart';
 import 'package:obecno/shared/location/service/attendance_payload_model.dart';
@@ -41,9 +39,11 @@ class LocalQueueServiceImpl implements LocalQueueService {
 
   static const _dbName = 'obecno_attendance_queue.db';
   static const _table = 'attendance_queue';
-  // Bumped to add user_id scoping: a queued offline action recorded by
-  // User A must never be picked up and synced under User B's session.
-  static const _dbVersion = 4;
+  // v4: user_id scoping so User A's queued action is never synced as User B.
+  // v5: unique request_id so the same local punch cannot be inserted twice.
+  static const _dbVersion = 5;
+
+  static const _requestIdIndex = 'idx_attendance_queue_request_id';
 
   Database? _db;
 
@@ -124,6 +124,7 @@ class LocalQueueServiceImpl implements LocalQueueService {
             user_id TEXT
           )
         ''');
+        await _ensureRequestIdIndex(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -150,9 +151,33 @@ class LocalQueueServiceImpl implements LocalQueueService {
             'UPDATE $_table SET is_dead_letter = 1 WHERE user_id IS NULL AND is_synced = 0',
           );
         }
+        if (oldVersion < 5) {
+          // Deduplicate before adding the unique index so upgrades of
+          // databases that already contain the same request_id twice do not
+          // fail. Keep the earliest row; later copies are redundant.
+          await db.execute('''
+            DELETE FROM $_table
+            WHERE request_id IS NOT NULL
+              AND request_id != ''
+              AND id NOT IN (
+                SELECT MIN(id) FROM $_table
+                WHERE request_id IS NOT NULL AND request_id != ''
+                GROUP BY request_id
+              )
+          ''');
+          await _ensureRequestIdIndex(db);
+        }
       },
     );
     return _db!;
+  }
+
+  static Future<void> _ensureRequestIdIndex(Database db) async {
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS $_requestIdIndex '
+      'ON $_table(request_id) '
+      "WHERE request_id IS NOT NULL AND request_id != ''",
+    );
   }
 
   @override
@@ -160,15 +185,58 @@ class LocalQueueServiceImpl implements LocalQueueService {
     try {
       final db = await _database;
       final userId = _userIdProvider();
+      if (userId == null || userId.isEmpty) {
+        _logError('insert', 'no signed-in user — refusing unscoped punch');
+        return false;
+      }
+
+      final requestId = payload.requestId;
+      if (requestId.isNotEmpty) {
+        final existing = await db.query(
+          _table,
+          columns: ['id', 'is_synced'],
+          where: 'request_id = ?',
+          whereArgs: [requestId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final existingId = existing.first['id'] as int? ?? 0;
+          _logOfflineAction(payload, localId: existingId, alreadyQueued: true);
+          return true;
+        }
+      }
+
       final rowId = await db.insert(_table, {
         ...payload.toQueueMap(),
         'user_id': userId,
-      });
-      return rowId > 0;
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      if (rowId <= 0) {
+        // Unique request_id race: another insert won. Treat as queued.
+        _logOfflineAction(payload, localId: 0, alreadyQueued: true);
+        return true;
+      }
+      _logOfflineAction(payload, localId: rowId, alreadyQueued: false);
+      return true;
     } catch (e) {
       _logError('insert', e);
       return false;
     }
+  }
+
+  void _logOfflineAction(
+    AttendancePayloadModel payload, {
+    required int localId,
+    required bool alreadyQueued,
+  }) {
+    final suffix = alreadyQueued ? ' (already queued)' : '';
+    AppLogger.info(
+      'OFFLINE ACTION CREATED$suffix\n'
+      'Action: ${payload.action}\n'
+      'Date: ${payload.date}\n'
+      'Time: ${payload.time}\n'
+      'Local ID: $localId\n'
+      'Sync Status: pending',
+    );
   }
 
   @override
@@ -192,7 +260,7 @@ class LocalQueueServiceImpl implements LocalQueueService {
         // the user who is currently signed in.
         where: 'is_synced = ? AND is_dead_letter = ? AND user_id = ?',
         whereArgs: [0, 0, userId],
-        orderBy: 'created_at ASC',
+        orderBy: 'date ASC, time ASC, created_at ASC',
       );
       return rows.map(QueueModel.fromMap).toList();
     } catch (e) {

@@ -46,25 +46,19 @@ class ManagerEmployeeHistoryMapper {
     final monthStart = DateTime(month.year, month.month);
     final monthEnd = DateTime(month.year, month.month + 1, 0);
     final today = DateTime.now();
-    final lastDay = DateTime(today.year, today.month, today.day).isBefore(
-          monthEnd,
-        )
+    final lastDay =
+        DateTime(today.year, today.month, today.day).isBefore(monthEnd)
         ? (month.year == today.year && month.month == today.month
               ? DateTime(today.year, today.month, today.day)
               : monthEnd)
         : monthEnd;
 
     final byDate = <String, ManagerEmployeeAttendanceDay>{};
-    for (final day in history) {
-      final date = day.date;
-      if (date == null) continue;
-      byDate[_key(date)] = day;
-    }
-
     final attendanceDates = <DateTime>{};
     for (final day in history) {
       final date = day.date;
       if (date == null) continue;
+      byDate[_key(date)] = day;
       if ((day.checkin ?? '').trim().isNotEmpty ||
           (day.checkout ?? '').trim().isNotEmpty ||
           day.details.isNotEmpty) {
@@ -79,9 +73,11 @@ class ManagerEmployeeHistoryMapper {
     var lateIns = 0;
     var lateOuts = 0;
 
-    for (var day = monthStart;
-        !day.isAfter(lastDay);
-        day = day.add(const Duration(days: 1))) {
+    for (
+      var day = monthStart;
+      !day.isAfter(lastDay);
+      day = day.add(const Duration(days: 1))
+    ) {
       final classification = DayClassificationEngine.classifyDay(
         date: day,
         workingWeekdays: workingWeekdays,
@@ -90,41 +86,71 @@ class ManagerEmployeeHistoryMapper {
       );
 
       final punched = byDate[_key(day)];
+      final hasPunch =
+          punched != null &&
+          ((punched.checkin ?? '').trim().isNotEmpty ||
+              (punched.checkout ?? '').trim().isNotEmpty ||
+              punched.details.isNotEmpty);
+
       String? checkIn;
       String? checkOut;
       AttendanceDayStatus status;
       String? weekendLabel;
 
-      switch (classification.type) {
-        case DayCardType.holiday:
-          status = AttendanceDayStatus.holiday;
-          weekendLabel = classification.holidayName ?? 'Public Holiday';
-          break;
-        case DayCardType.weekend:
-          status = AttendanceDayStatus.weekend;
-          break;
-        case DayCardType.onLeave:
-          status = AttendanceDayStatus.onLeave;
-          checkIn = 'Leave';
-          checkOut = 'Leave';
-          totalWorking += 1;
-          absent += 1;
-          break;
-        case DayCardType.worked:
-          checkIn = TeamAttendanceMapper.formatTime(punched?.checkin);
-          checkOut = TeamAttendanceMapper.formatTime(punched?.checkout);
-          status = (checkOut == null || checkOut.isEmpty)
-              ? AttendanceDayStatus.missingCheckOut
-              : AttendanceDayStatus.normal;
-          totalWorking += 1;
-          workingDays += 1;
-          if (_isLateIn(punched?.checkin, scheduledCheckIn, graceMinutes)) {
-            lateIns += 1;
-          }
-          if (_isLateOut(punched?.checkout, scheduledCheckOut)) {
-            lateOuts += 1;
-          }
-          break;
+      if (hasPunch && classification.type != DayCardType.holiday) {
+        checkIn =
+            TeamAttendanceMapper.formatTime(punched.checkin) ??
+            _firstDetailTime(punched, const ['check in', 'checkin']);
+        checkOut =
+            TeamAttendanceMapper.formatTime(punched.checkout) ??
+            _firstDetailTime(punched, const ['check out', 'checkout']);
+        status = (checkOut == null || checkOut.isEmpty)
+            ? AttendanceDayStatus.missingCheckOut
+            : AttendanceDayStatus.normal;
+        totalWorking += 1;
+        workingDays += 1;
+        if (_isLateIn(
+          punched.checkin ?? checkIn,
+          scheduledCheckIn,
+          graceMinutes,
+        )) {
+          lateIns += 1;
+        }
+        if (_isLateOut(punched.checkout ?? checkOut, scheduledCheckOut)) {
+          lateOuts += 1;
+        }
+      } else {
+        switch (classification.type) {
+          case DayCardType.holiday:
+            status = AttendanceDayStatus.holiday;
+            weekendLabel = classification.holidayName ?? 'Public Holiday';
+            break;
+          case DayCardType.weekend:
+            status = AttendanceDayStatus.weekend;
+            break;
+          case DayCardType.onLeave:
+            status = AttendanceDayStatus.onLeave;
+            checkIn = 'Leave';
+            checkOut = 'Leave';
+            totalWorking += 1;
+            absent += 1;
+            break;
+          case DayCardType.worked:
+            checkIn = TeamAttendanceMapper.formatTime(punched?.checkin);
+            checkOut = TeamAttendanceMapper.formatTime(punched?.checkout);
+            status = (checkOut == null || checkOut.isEmpty)
+                ? AttendanceDayStatus.missingCheckOut
+                : AttendanceDayStatus.normal;
+            totalWorking += 1;
+            workingDays += 1;
+            if (_isLateIn(punched?.checkin, scheduledCheckIn, graceMinutes)) {
+              lateIns += 1;
+            }
+            if (_isLateOut(punched?.checkout, scheduledCheckOut)) {
+              lateOuts += 1;
+            }
+            break;
+        }
       }
 
       rawRecords.add(
@@ -174,8 +200,7 @@ class ManagerEmployeeHistoryMapper {
           status: hasHoliday
               ? AttendanceDayStatus.holiday
               : AttendanceDayStatus.weekend,
-          weekendLabel:
-              '$label, ${_formatDate(start)} - ${_formatDate(end)}',
+          weekendLabel: '$label, ${_formatDate(start)} - ${_formatDate(end)}',
         ),
       );
       run = [];
@@ -202,6 +227,19 @@ class ManagerEmployeeHistoryMapper {
   static String _key(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+  static String? _firstDetailTime(
+    ManagerEmployeeAttendanceDay day,
+    List<String> types,
+  ) {
+    for (final detail in day.details) {
+      final type = detail.type.trim().toLowerCase();
+      if (!types.contains(type)) continue;
+      final formatted = TeamAttendanceMapper.formatTime(detail.attendanceTime);
+      if (formatted != null && formatted.isNotEmpty) return formatted;
+    }
+    return null;
+  }
+
   static bool _isLateIn(String? raw, TimeOfDay? scheduled, int graceMinutes) {
     final punched = _parseMinutes(raw);
     final start = scheduled == null
@@ -213,7 +251,9 @@ class ManagerEmployeeHistoryMapper {
 
   static bool _isLateOut(String? raw, TimeOfDay? scheduled) {
     final punched = _parseMinutes(raw);
-    final end = scheduled == null ? null : scheduled.hour * 60 + scheduled.minute;
+    final end = scheduled == null
+        ? null
+        : scheduled.hour * 60 + scheduled.minute;
     if (punched == null || end == null) return false;
     return punched > end;
   }

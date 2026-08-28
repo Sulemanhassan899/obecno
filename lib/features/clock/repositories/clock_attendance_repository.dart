@@ -6,6 +6,7 @@ import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
@@ -83,9 +84,12 @@ class AttendanceRepository {
     final online = await _connectivityService.isOnline();
 
     if (!online) {
-      debugPrint(
-        '[AttendanceRepository] submitAttendance: offline -> queuing '
-        '"${payload.action}" locally',
+      AppLogger.info(
+        'OFFLINE ACTION CREATED\n'
+        'Action: ${payload.action}\n'
+        'Date: ${payload.date}\n'
+        'Time: ${payload.time}\n'
+        'Sync Status: pending',
       );
       final queued = await _queueService.insert(payload);
       if (!queued) {
@@ -108,7 +112,8 @@ class AttendanceRepository {
     } catch (e) {
       debugPrint(
         '[AttendanceRepository] submitAttendance: online send failed ($e) '
-        '-> falling back to local queue for "${payload.action}"',
+        '-> falling back to local queue for "${payload.action}" '
+        '(${payload.date} ${payload.time})',
       );
       final queued = await _queueService.insert(payload);
       if (!queued) {

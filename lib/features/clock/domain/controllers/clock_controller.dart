@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -62,8 +60,9 @@ class ClockScreenController extends ChangeNotifier {
   final String userId;
 
   final List<AttendanceEvent> _events = [];
-  List<AttendanceEvent> get events => List.unmodifiable(_events);
-  bool get hasAnyEventToday => _events.isNotEmpty;
+  List<AttendanceEvent> get events =>
+      List.unmodifiable(_eventsOn(DateTime.now()));
+  bool get hasAnyEventToday => _eventsOn(DateTime.now()).isNotEmpty;
 
   bool isInRange = true;
   bool isCompanyValid = true;
@@ -420,12 +419,28 @@ class ClockScreenController extends ChangeNotifier {
 
   Future<void> _persistEvents() async {
     try {
-      final encoded = jsonEncode(_events.map((e) => e.toJson()).toList());
+      final today = DateTime.now();
+      final todayEvents = _eventsOn(today);
+      final encoded = jsonEncode(todayEvents.map((e) => e.toJson()).toList());
       if (encoded == _lastPersistedEventsJson) return;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_todayPrefsKey, encoded);
       _lastPersistedEventsJson = encoded;
     } catch (_) {}
+  }
+
+  static bool _isSameCalendarDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static bool _eventOnDay(AttendanceEvent event, DateTime day) =>
+      _isSameCalendarDay(event.effectiveTime, day) ||
+      _isSameCalendarDay(event.time, day);
+
+  List<AttendanceEvent> _eventsOn(DateTime day) =>
+      _events.where((e) => _eventOnDay(e, day)).toList();
+
+  void _dropEventsNotOn(DateTime day) {
+    _events.removeWhere((e) => !_eventOnDay(e, day));
   }
 
   void selectLocation(String name, {required bool inRange}) {
@@ -459,11 +474,12 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   AttendanceDayStatus get _statusFromEvents {
-    if (_events.isEmpty) return AttendanceDayStatus.checkedOut;
-    final summary = AttendanceEngine.compute(_events);
+    final todayEvents = _eventsOn(DateTime.now());
+    if (todayEvents.isEmpty) return AttendanceDayStatus.checkedOut;
+    final summary = AttendanceEngine.compute(todayEvents);
     if (summary.isOnBreak) return AttendanceDayStatus.onBreak;
     if (summary.isCheckedIn) {
-      final sorted = [..._events]
+      final sorted = [...todayEvents]
         ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
       final everHadBreak = sorted.any(
         (e) => e.type == AttendanceEventType.breakEnd,
@@ -485,7 +501,8 @@ class ClockScreenController extends ChangeNotifier {
       workingWeekdays.contains(DateTime.now().weekday);
 
   bool get isBreakLimitReached =>
-      AttendanceEngine.compute(_events).liveBreakDuration() >= maxBreakDuration;
+      AttendanceEngine.compute(_eventsOn(DateTime.now())).liveBreakDuration() >=
+      maxBreakDuration;
 
   bool get isButtonEnabled => !isCoolingDown;
 
@@ -516,8 +533,10 @@ class ClockScreenController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get lastEventFlaggedInvalidLocation =>
-      _events.isNotEmpty && !_events.last.isValidLocation;
+  bool get lastEventFlaggedInvalidLocation {
+    final todayEvents = _eventsOn(DateTime.now());
+    return todayEvents.isNotEmpty && !todayEvents.last.isValidLocation;
+  }
 
   void _startActionCooldown() {
     _cooldownTimer?.cancel();
@@ -536,12 +555,17 @@ class ClockScreenController extends ChangeNotifier {
       "Event mutation is forbidden. System is append-only.",
     );
   }
+
   @protected
   void restoreEvents(List<AttendanceEvent> snapshot) {
     if (_disposed) return;
 
+    final today = DateTime.now();
+    _dropEventsNotOn(today);
+
     final merged = <AttendanceEvent>[..._events];
     for (final incoming in snapshot) {
+      if (!_eventOnDay(incoming, today)) continue;
       final index = merged.indexWhere(
         (existing) => existing.isSamePunchAs(incoming),
       );
@@ -571,6 +595,8 @@ class ClockScreenController extends ChangeNotifier {
 
   Future<AttendanceActionResult> handleMainTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
+
+    _dropEventsNotOn(DateTime.now());
 
     final status = _statusFromEvents;
 
@@ -625,6 +651,8 @@ class ClockScreenController extends ChangeNotifier {
 
   Future<AttendanceActionResult> handleBreakTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
+
+    _dropEventsNotOn(DateTime.now());
 
     final status = _statusFromEvents;
     if (status != AttendanceDayStatus.checkedIn &&

@@ -14,6 +14,12 @@ class InMemoryLocalQueue implements LocalQueueService {
   @override
   Future<bool> insert(AttendancePayloadModel payload) async {
     if (currentUserId == null || currentUserId!.isEmpty) return false;
+    if (payload.requestId.isNotEmpty) {
+      final duplicate = _rows.any(
+        (r) => r.payload.requestId == payload.requestId,
+      );
+      if (duplicate) return true;
+    }
     _rows.add(
       _Row(
         id: _nextId++,
@@ -31,8 +37,18 @@ class InMemoryLocalQueue implements LocalQueueService {
   Future<List<QueueModel>> getPending() async {
     final uid = currentUserId;
     if (uid == null) return const [];
-    return _rows
-        .where((r) => r.userId == uid && !r.isSynced && !r.isDeadLetter)
+    final pending =
+        _rows
+            .where((r) => r.userId == uid && !r.isSynced && !r.isDeadLetter)
+            .toList()
+          ..sort((a, b) {
+            final byDate = a.payload.date.compareTo(b.payload.date);
+            if (byDate != 0) return byDate;
+            final byTime = a.payload.time.compareTo(b.payload.time);
+            if (byTime != 0) return byTime;
+            return a.payload.capturedAt.compareTo(b.payload.capturedAt);
+          });
+    return pending
         .map(
           (r) => QueueModel(id: r.id, payload: r.payload, isSynced: r.isSynced),
         )

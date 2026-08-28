@@ -180,10 +180,21 @@ class AppBindings {
       managerEmployeesService,
     );
 
+    managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
+    managerAttendanceService = ManagerAttendanceService(
+      managerAttendanceRepository,
+      employeesRepository: managerEmployeesRepository,
+      currentUserIdProvider: () => authProvider.user?.id,
+    );
+    managerAttendanceProvider = ManagerAttendanceProvider(
+      managerAttendanceService,
+    );
+
     managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
     managerOverviewService = ManagerOverviewService(
       managerOverviewRepository,
       employeesRepository: managerEmployeesRepository,
+      attendanceService: managerAttendanceService,
     );
     managerOverviewProvider = ManagerOverviewProvider(managerOverviewService);
 
@@ -191,6 +202,7 @@ class AppBindings {
     managerLocationsService = ManagerLocationsService(
       managerLocationsRepository,
       authLocationsProvider: () => authProvider.locations,
+      attendanceService: managerAttendanceService,
     );
     managerLocationsProvider = ManagerLocationsProvider(
       managerLocationsService,
@@ -204,15 +216,6 @@ class AppBindings {
     );
     managerStatusFiltersProvider = ManagerStatusFiltersProvider(
       managerStatusFiltersService,
-    );
-
-    managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
-    managerAttendanceService = ManagerAttendanceService(
-      managerAttendanceRepository,
-      employeesRepository: managerEmployeesRepository,
-    );
-    managerAttendanceProvider = ManagerAttendanceProvider(
-      managerAttendanceService,
     );
 
     _wasAuthenticated = authProvider.isAuthenticated;

@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 
 import 'package:obecno/core/constants/app_strings.dart';
@@ -33,7 +31,8 @@ class SyncedClockScreenController extends ClockScreenController {
        _companyPolicyService = companyPolicyService,
        _permissionService = permissionService,
        _locationService = locationService ?? LocationServiceImpl(),
-       _sessionEpoch = bindings.authProvider.sessionEpoch, super(userId: userId) {
+       _sessionEpoch = bindings.authProvider.sessionEpoch,
+       super(userId: userId) {
     isProcessing = true;
     syncService?.onQueuedItemSynced = _onQueuedItemSynced;
     // Phase 6: when the background sync service completes a pass that
@@ -163,8 +162,7 @@ class SyncedClockScreenController extends ClockScreenController {
       (maxBreakDuration.inMinutes > 0 ? maxBreakDuration : Duration.zero);
 
   bool get hasPolicyBreakDuration =>
-      (_policyBreakDuration != null &&
-          _policyBreakDuration!.inMinutes > 0) ||
+      (_policyBreakDuration != null && _policyBreakDuration!.inMinutes > 0) ||
       maxBreakDuration.inMinutes > 0;
 
   DateTime? get breakEndsAt {
@@ -621,26 +619,24 @@ class SyncedClockScreenController extends ClockScreenController {
     AttendanceActionResult localResult,
   ) async {
     _lastSubmitWasConflict = false;
-    final capturedAt = events.isEmpty ? DateTime.now() : events.last.time;
+    final todayEvents = events;
+    final capturedAt = todayEvents.isEmpty
+        ? DateTime.now()
+        : todayEvents.last.time;
 
-    final LocationModel location;
-    try {
-      location = await _locationService.getCurrentLocation();
-    } on LocationTimeoutException {
-      lastServerMessage =
-          'Getting your location is taking too long. Check your GPS signal and try again.';
-      if (!_isStale) notifyListeners();
-      return false;
-    } catch (e, st) {
-      AppLogger.error(
-        'SyncedClockScreenController',
-        '_submit (location fetch for "$action")',
-        e,
-        stackTrace: st,
-      );
-      lastServerMessage = 'Unable to get your location. Please try again.';
-      if (!_isStale) notifyListeners();
-      return false;
+    LocationModel? location = _lastGpsReading?.location;
+    if (location == null) {
+      try {
+        location = await _locationService.getCurrentLocation();
+      } catch (e, st) {
+        AppLogger.error(
+          'SyncedClockScreenController',
+          '_submit (location fetch for "$action")',
+          e,
+          stackTrace: st,
+        );
+        // Continue without coordinates rather than dropping a recorded punch.
+      }
     }
 
     String? deviceDetails;
@@ -669,7 +665,7 @@ class SyncedClockScreenController extends ClockScreenController {
       blockNextAction = false;
 
       if (submitResult.synced) {
-        final recordedEvent = events.isEmpty ? null : events.last;
+        final recordedEvent = todayEvents.isEmpty ? null : todayEvents.last;
         if (recordedEvent != null && !recordedEvent.isValidLocation) {
           _raiseLocationAlert(
             payload.requestId,

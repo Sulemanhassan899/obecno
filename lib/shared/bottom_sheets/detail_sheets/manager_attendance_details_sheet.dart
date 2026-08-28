@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -6,6 +8,8 @@ import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/core/utils/maps_launcher.dart';
 import 'package:obecno/demo/manager_attendence_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
@@ -137,6 +141,10 @@ class ManagerAttendanceDetailsData {
     String? photo,
     int? userId,
     int? attendanceId,
+    String? checkIn,
+    String? checkOut,
+    String? durationLabel,
+    List<ManagerAttendanceTimelineEvent>? timeline,
   }) {
     return ManagerAttendanceDetailsData(
       day: day,
@@ -145,17 +153,110 @@ class ManagerAttendanceDetailsData {
       photo: photo ?? this.photo,
       userId: userId ?? this.userId,
       attendanceId: attendanceId ?? this.attendanceId,
-      checkIn: checkIn,
-      checkOut: checkOut,
+      checkIn: checkIn ?? this.checkIn,
+      checkOut: checkOut ?? this.checkOut,
       checkInLocation: checkInLocation,
       checkOutLocation: checkOutLocation,
       checkInLat: checkInLat,
       checkInLon: checkInLon,
       checkOutLat: checkOutLat,
       checkOutLon: checkOutLon,
-      durationLabel: durationLabel,
-      timeline: timeline,
+      durationLabel: durationLabel ?? this.durationLabel,
+      timeline: timeline ?? this.timeline,
     );
+  }
+
+  ManagerAttendanceDetailsData withSavedTimes(AddAttendanceSaveResult saved) {
+    final checkInLabel = saved.checkIn == null
+        ? checkIn
+        : _labelFromTime(saved.checkIn!);
+    final checkOutLabel = saved.checkOut == null
+        ? checkOut
+        : _labelFromTime(saved.checkOut!);
+    var nextTimeline = timeline;
+    if (saved.checkIn != null) {
+      nextTimeline = _upsertClock(
+        nextTimeline,
+        type: ManagerAttendanceEventType.checkIn,
+        time: saved.checkIn!,
+      );
+    }
+    if (saved.checkOut != null) {
+      nextTimeline = _upsertClock(
+        nextTimeline,
+        type: ManagerAttendanceEventType.checkOut,
+        time: saved.checkOut!,
+      );
+    }
+    if (saved.breakStart != null) {
+      nextTimeline = _upsertClock(
+        nextTimeline,
+        type: ManagerAttendanceEventType.breakStart,
+        time: saved.breakStart!,
+      );
+    }
+    if (saved.breakEnd != null) {
+      nextTimeline = _upsertClock(
+        nextTimeline,
+        type: ManagerAttendanceEventType.breakEnd,
+        time: saved.breakEnd!,
+      );
+    }
+    nextTimeline = [...nextTimeline]
+      ..sort((a, b) {
+        final left = a.sortTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final right = b.sortTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return right.compareTo(left);
+      });
+
+    return copyWith(
+      checkIn: checkInLabel,
+      checkOut: checkOutLabel,
+      durationLabel: AttendanceDuration.label(
+        day: day,
+        checkIn: checkInLabel,
+        checkOut: checkOutLabel,
+      ),
+      timeline: nextTimeline,
+    );
+  }
+
+  List<ManagerAttendanceTimelineEvent> _upsertClock(
+    List<ManagerAttendanceTimelineEvent> events, {
+    required ManagerAttendanceEventType type,
+    required TimeOfDay time,
+  }) {
+    final label = _labelFromTime(time);
+    final sortTime = DateTime(
+      day.year,
+      day.month,
+      day.day,
+      time.hour,
+      time.minute,
+    );
+    final index = events.indexWhere((event) => event.type == type);
+    final previous = index >= 0 ? events[index] : null;
+    final event = ManagerAttendanceTimelineEvent(
+      type: type,
+      timeLabel: label,
+      id: previous?.id,
+      location: previous?.location,
+      lat: previous?.lat,
+      lon: previous?.lon,
+      sortTime: sortTime,
+    );
+    if (index < 0) return [...events, event];
+    final next = [...events];
+    next[index] = event;
+    return next;
+  }
+
+  static String _labelFromTime(TimeOfDay time) {
+    return TeamAttendanceMapper.formatTime(
+          '${time.hour.toString().padLeft(2, '0')}:'
+          '${time.minute.toString().padLeft(2, '0')}:00',
+        ) ??
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   static String formatFullDate(DateTime d) {
@@ -183,11 +284,9 @@ class ManagerAttendanceDetailsData {
     required ManagerAttendanceModel employee,
     required DateTime day,
   }) {
-    final checkIn = employee.checkIn;
-    final checkOut = employee.checkOut;
-    final hasTimes =
-        (checkIn?.trim().isNotEmpty ?? false) ||
-        (checkOut?.trim().isNotEmpty ?? false);
+    final checkIn = _usableTime(employee.checkIn);
+    final checkOut = _usableTime(employee.checkOut);
+    final hasTimes = checkIn != null || checkOut != null;
     final status = employee.status.toLowerCase().trim();
     final isLeave = status == "leave" || status == "on leave";
 
@@ -212,7 +311,11 @@ class ManagerAttendanceDetailsData {
       attendanceId: employee.attendanceId,
       checkIn: checkIn,
       checkOut: checkOut,
-      durationLabel: "0h 00m",
+      durationLabel: AttendanceDuration.label(
+        day: day,
+        checkIn: checkIn,
+        checkOut: checkOut,
+      ),
       timeline: [
         if (checkOut != null && checkOut.trim().isNotEmpty)
           ManagerAttendanceTimelineEvent(
@@ -227,12 +330,25 @@ class ManagerAttendanceDetailsData {
       ],
     );
   }
+
+  static String? _usableTime(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return null;
+    final lower = value.toLowerCase();
+    if (lower == 'leave' ||
+        lower == 'holiday' ||
+        lower == '--' ||
+        lower.startsWith('--:--')) {
+      return null;
+    }
+    return value;
+  }
 }
 
 class ManagerAttendanceDetailsSheet {
   ManagerAttendanceDetailsSheet._();
 
-  static Future<void> show({
+  static Future<AddAttendanceSaveResult?> show({
     required BuildContext context,
     required ManagerAttendanceDetailsData data,
     Future<ManagerAttendanceDetailsData> Function()? loadDetails,
@@ -241,7 +357,7 @@ class ManagerAttendanceDetailsSheet {
     VoidCallback? onAddAttendance,
     VoidCallback? onEditAttendance,
   }) {
-    return showModalBottomSheet(
+    return showModalBottomSheet<AddAttendanceSaveResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -283,25 +399,61 @@ class _ManagerAttendanceDetailsSheetBodyState
     extends State<_ManagerAttendanceDetailsSheetBody> {
   late ManagerAttendanceDetailsData _data;
   bool _loading = false;
+  Timer? _hoursTimer;
+  AddAttendanceSaveResult? _savedResult;
 
   @override
   void initState() {
     super.initState();
     _data = widget.data;
+    _syncHoursTimer();
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _hoursTimer?.cancel();
+    super.dispose();
+  }
+
+  bool get _isOpenShift {
+    final checkIn = _data.checkIn?.trim() ?? '';
+    final checkOut = _data.checkOut?.trim() ?? '';
+    return checkIn.isNotEmpty && checkOut.isEmpty;
+  }
+
+  String get _durationLabel => AttendanceDuration.label(
+    day: _data.day,
+    checkIn: _data.checkIn,
+    checkOut: _data.checkOut,
+    hoursWorked: _data.durationLabel == '0h 00m' ? null : _data.durationLabel,
+  );
+
+  void _syncHoursTimer() {
+    _hoursTimer?.cancel();
+    if (!_isOpenShift) return;
+    _hoursTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  Future<void> _load({bool silent = false}) async {
     final loader = widget.loadDetails;
     if (loader == null) return;
-    setState(() => _loading = true);
+    if (!silent) {
+      setState(() => _loading = true);
+    }
     try {
       final next = await loader();
       if (!mounted) return;
       setState(() {
-        _data = next;
+        _data = _savedResult == null
+            ? next
+            : next.withSavedTimes(_savedResult!);
         _loading = false;
       });
+      _syncHoursTimer();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -340,10 +492,7 @@ class _ManagerAttendanceDetailsSheetBodyState
       return;
     }
 
-    final checkIn = _eventOf(
-      ManagerAttendanceEventType.checkIn,
-      latest: false,
-    );
+    final checkIn = _eventOf(ManagerAttendanceEventType.checkIn, latest: false);
     final checkOut = _eventOf(
       ManagerAttendanceEventType.checkOut,
       latest: true,
@@ -364,6 +513,7 @@ class _ManagerAttendanceDetailsSheetBodyState
       userEmail: bindings.userEmail,
       attendanceId: _data.attendanceId,
       employeeUserId: _data.userId,
+      employeeName: _data.name,
       applyImmediately:
           bindings.authProvider.homeTarget == AuthHomeTarget.manager,
       initialCheckIn: _timeOfDay(checkIn),
@@ -376,7 +526,24 @@ class _ManagerAttendanceDetailsSheetBodyState
       breakEndDetailId: breakEnd?.id,
     );
     if (saved != null && mounted) {
-      await _load();
+      debugPrint(
+        '[ManagerAttendance] details saved ${_data.name}/${_data.userId} '
+        'in=${saved.checkIn} out=${saved.checkOut}',
+      );
+      _savedResult = saved;
+      setState(() {
+        _data = _data.withSavedTimes(saved);
+        _loading = false;
+      });
+      _syncHoursTimer();
+      bindings.managerAttendanceProvider.applySavedTimes(
+        userId: _data.userId,
+        employeeName: _data.name,
+        day: _data.day,
+        checkIn: saved.checkIn,
+        checkOut: saved.checkOut,
+      );
+      await _load(silent: true);
     }
   }
 
@@ -428,185 +595,205 @@ class _ManagerAttendanceDetailsSheetBodyState
     final hasAttendance = _data.hasAttendance;
     final locations = context.watch<ManagerLocationsProvider>().locations;
 
-    return DraggableScrollableSheet(
-      initialChildSize: hasAttendance ? 0.88 : 0.62,
-      minChildSize: 0.45,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: AppText.h5(
-                        ManagerAttendanceDetailsData.formatFullDate(_data.day),
-                        weight: FontWeight.w600,
-                        align: TextAlign.left,
-                      ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(Icons.close, size: 22),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Row(
-                  children: [
-                    ClipOval(
-                      child: CommonImageView(
-                        url: _data.hasNetworkPhoto ? _data.photo : null,
-                        imagePath: _data.hasNetworkPhoto
-                            ? null
-                            : _data.photoPath,
-                        height: 48,
-                        width: 48,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AppText.p2(
-                            _data.name,
-                            color: kBlack,
-                            weight: FontWeight.w600,
-                            align: TextAlign.left,
-                          ),
-                          if (_data.role != null &&
-                              _data.role!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            AppText.caption(
-                              _data.role!,
-                              color: kGreyColor,
-                              weight: FontWeight.w400,
-                              align: TextAlign.left,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: _openProfile,
-                      child: CommonImageView(
-                        imagePath: Assets.PersonIconSheet,
-                        height: 45,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ButtonAnimations.press(
-                      onTap: _openAttendance,
-                      child: CommonImageView(
-                        imagePath: Assets.AttendanceIconSheet,
-                        height: 45,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Expanded(
-                child: Container(
-                  color: kbackground2,
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Navigator.pop(context, _savedResult);
+      },
+      child: DraggableScrollableSheet(
+        initialChildSize: hasAttendance ? 0.88 : 0.62,
+        minChildSize: 0.45,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: kWhite,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+                  child: Row(
                     children: [
-                      if (_loading)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 16),
-                          child: Center(
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
+                      Expanded(
+                        child: AppText.h5(
+                          ManagerAttendanceDetailsData.formatFullDate(
+                            _data.day,
                           ),
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
                         ),
-                      _SummaryCard(data: _data, locations: locations),
-                      if (hasAttendance && _data.timeline.isNotEmpty) ...[
-                        const SizedBox(height: 32),
-                        Row(
-                          children: [
-                            CommonImageView(
-                              imagePath: Assets.imagesClipboardClock,
-                              height: 22,
-                            ),
-                            const SizedBox(width: 8),
-                            AppText.h5("Timeline", weight: FontWeight.w600),
-                          ],
+                      ),
+                      ButtonAnimations.press(
+                        onTap: () => Navigator.pop(context, _savedResult),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.close, size: 22),
                         ),
-                        const SizedBox(height: 14),
-                        ..._data.timeline.map(
-                          (e) => _ManagerTimelineTile(
-                            event: e,
-                            locations: locations,
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
-              ),
-              Container(
-                width: double.infinity,
-                color: kWhite,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: SafeArea(
-                  top: false,
-                  child: hasAttendance
-                      ? Align(
-                          alignment: Alignment.centerRight,
-                          child: MyButton(
-                            size: MyButtonSize.normal,
-                            width: 200,
-                            buttonText: 'Edit Attendance',
-                            backgroundColor: kWhite,
-                            fontColor: kBlack,
-                            outlineColor: kBorderColor,
-                            hasicon: true,
-                            leftWidget: CommonImageView(
-                              imagePath: Assets.imagesPen,
-                              height: 16,
-                            ),
-                            onTap: () async => _openEditor(isAdd: false),
-                          ),
-                        )
-                      : MyButton(
-                          buttonText: "Add Attendance",
-                          backgroundColor: kPrimaryColor,
-                          onTap: () async => _openEditor(isAdd: true),
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: Row(
+                    children: [
+                      ClipOval(
+                        child: CommonImageView(
+                          url: _data.hasNetworkPhoto ? _data.photo : null,
+                          imagePath: _data.hasNetworkPhoto
+                              ? null
+                              : _data.photoPath,
+                          height: 48,
+                          width: 48,
+                          fit: BoxFit.cover,
                         ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AppText.p2(
+                              _data.name,
+                              color: kBlack,
+                              weight: FontWeight.w600,
+                              align: TextAlign.left,
+                            ),
+                            if (_data.role != null &&
+                                _data.role!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              AppText.caption(
+                                _data.role!,
+                                color: kGreyColor,
+                                weight: FontWeight.w400,
+                                align: TextAlign.left,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      ButtonAnimations.press(
+                        onTap: _openProfile,
+                        child: CommonImageView(
+                          imagePath: Assets.PersonIconSheet,
+                          height: 45,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ButtonAnimations.press(
+                        onTap: _openAttendance,
+                        child: CommonImageView(
+                          imagePath: Assets.AttendanceIconSheet,
+                          height: 45,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+                const Divider(height: 1, color: kDividerColor),
+                Expanded(
+                  child: Container(
+                    color: kbackground2,
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                      children: [
+                        if (_loading)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 16),
+                            child: Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        _SummaryCard(
+                          data: _data,
+                          durationLabel: _durationLabel,
+                          locations: locations,
+                        ),
+                        if (hasAttendance && _data.timeline.isNotEmpty) ...[
+                          const SizedBox(height: 32),
+                          Row(
+                            children: [
+                              CommonImageView(
+                                imagePath: Assets.imagesClipboardClock,
+                                height: 22,
+                              ),
+                              const SizedBox(width: 8),
+                              AppText.h5("Timeline", weight: FontWeight.w600),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          ..._data.timeline.map(
+                            (e) => _ManagerTimelineTile(
+                              event: e,
+                              locations: locations,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  color: kWhite,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: SafeArea(
+                    top: false,
+                    child: hasAttendance
+                        ? Align(
+                            alignment: Alignment.centerRight,
+                            child: MyButton(
+                              size: MyButtonSize.normal,
+                              width: 200,
+                              buttonText: 'Edit Attendance',
+                              backgroundColor: kWhite,
+                              fontColor: kBlack,
+                              outlineColor: kBorderColor,
+                              hasicon: true,
+                              leftWidget: CommonImageView(
+                                imagePath: Assets.imagesPen,
+                                height: 16,
+                              ),
+                              onTap: () async => _openEditor(isAdd: false),
+                            ),
+                          )
+                        : MyButton(
+                            buttonText: "Add Attendance",
+                            backgroundColor: kPrimaryColor,
+                            onTap: () async => _openEditor(isAdd: true),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.data, required this.locations});
+  const _SummaryCard({
+    required this.data,
+    required this.durationLabel,
+    required this.locations,
+  });
 
   final ManagerAttendanceDetailsData data;
+  final String durationLabel;
   final List<ManagerLocationModel> locations;
 
   String get _checkIn =>
@@ -651,7 +838,7 @@ class _SummaryCard extends StatelessWidget {
                   _dot(),
                   _line(),
                   const SizedBox(width: 6),
-                  AppText.p2(data.durationLabel, weight: FontWeight.w600),
+                  AppText.p2(durationLabel, weight: FontWeight.w600),
                   const SizedBox(width: 6),
                   _line(),
                   _dot(),

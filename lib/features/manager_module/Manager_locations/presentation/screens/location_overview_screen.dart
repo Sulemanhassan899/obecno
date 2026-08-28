@@ -8,10 +8,10 @@ import 'package:obecno/demo/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
-import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
@@ -78,7 +78,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
 
     await Future.wait([
       attendance.selectedDate == today
-          ? attendance.ensureLoaded()
+          ? attendance.load()
           : attendance.setDate(today),
       employees.load(locationId: location.id),
     ]);
@@ -92,19 +92,10 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   }) {
     if (!_locationReady) return const [];
 
-    final members = ManagerEmployeeFilters.byLocation(
-      source: employees.members,
-      selectedLocationId: location.id,
-      selectedLocationName: location.name,
-    );
-
-    // Only assigned employees for this location — never the full attendance list.
-    if (members.isEmpty) return const [];
-
-    return TeamAttendanceMapper.mergeWithMembers(
+    return LocationAttendanceStats.merge(
+      location: location,
       attendance: attendance.items,
-      members: members,
-      includeUnmatchedAttendance: false,
+      members: employees.members,
     );
   }
 
@@ -155,10 +146,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   Widget build(BuildContext context) {
     final attendance = context.watch<ManagerAttendanceProvider>();
     final employees = context.watch<ManagerEmployeesProvider>();
-    final merged = _mergedItems(
-      attendance: attendance,
-      employees: employees,
-    );
+    final merged = _mergedItems(attendance: attendance, employees: employees);
     final tiles = TeamAttendanceMapper.toTiles(merged);
     final teamCount = merged.isNotEmpty
         ? merged.length
@@ -168,9 +156,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
       teamMemberCount: teamCount,
     );
     final onLeaves = merged.where((e) => e.isOnLeave).length;
-    final absent = merged
-        .where((e) => !e.hasCheckIn && !e.isOnLeave)
-        .length;
+    final absent = merged.where((e) => !e.hasCheckIn && !e.isOnLeave).length;
     final isInitialLoad =
         !_locationReady ||
         ((attendance.isLoading || employees.isLoading) && merged.isEmpty);
@@ -263,8 +249,10 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
                               summary: summary,
                               onLeaves: onLeaves,
                               absent: absent,
-                              onStatTap: (status) =>
-                                  _openAttendance(context, statusFilter: status),
+                              onStatTap: (status) => _openAttendance(
+                                context,
+                                statusFilter: status,
+                              ),
                             ),
                             const SizedBox(height: 8),
                           ],
@@ -280,8 +268,9 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
                           hasScrollBody: false,
                           child: Center(
                             child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 24),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                              ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
