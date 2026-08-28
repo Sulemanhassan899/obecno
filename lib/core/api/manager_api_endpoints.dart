@@ -53,6 +53,9 @@ class ManagerEmployeeApiEndpoints {
   static String employeeAttendance(Object employeeId) =>
       '${employee(employeeId)}/attendance';
 
+  static String employeeAttendanceDetails(Object employeeId) =>
+      '${employeeAttendance(employeeId)}/details';
+
   static String employeeSalary(Object employeeId) =>
       '${employee(employeeId)}/salary';
 

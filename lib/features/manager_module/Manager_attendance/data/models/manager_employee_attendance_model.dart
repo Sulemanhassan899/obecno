@@ -71,6 +71,8 @@ class ManagerEmployeeAttendanceDay {
     this.checkout,
     this.hoursWorked,
     this.isOpen = false,
+    this.locationId,
+    this.locationName,
     this.currentLocation,
     this.lat,
     this.lon,
@@ -83,6 +85,8 @@ class ManagerEmployeeAttendanceDay {
   final String? checkout;
   final String? hoursWorked;
   final bool isOpen;
+  final String? locationId;
+  final String? locationName;
   final String? currentLocation;
   final double? lat;
   final double? lon;
@@ -102,16 +106,67 @@ class ManagerEmployeeAttendanceDay {
             nested['id'],
       ),
       date: _asDate(json['date'] ?? json['attendance_date'] ?? nested['date']),
-      checkin: _asNullableString(json['checkin'] ?? nested['checkin']),
-      checkout: _asNullableString(json['checkout'] ?? nested['checkout']),
-      hoursWorked: _asNullableString(json['hours_worked']),
-      isOpen: _asBool(json['is_open']),
-      currentLocation: _asNullableString(json['current_location']),
-      lat: _asDoubleOrNull(json['lat']),
-      lon: _asDoubleOrNull(json['lon']),
-      details: ManagerEmployeeAttendanceDetail.listFrom(
-        json['attendance_details'],
+      checkin: _asNullableString(
+        json['checkin'] ??
+            json['check_in'] ??
+            nested['checkin'] ??
+            nested['check_in'],
       ),
+      checkout: _asNullableString(
+        json['checkout'] ??
+            json['check_out'] ??
+            nested['checkout'] ??
+            nested['check_out'],
+      ),
+      hoursWorked: _asNullableString(
+        json['hours_worked'] ?? nested['hours_worked'],
+      ),
+      isOpen: _asBool(json['is_open'] ?? nested['is_open']),
+      locationId: _asNullableString(
+        json['location_id'] ??
+            json['office_id'] ??
+            nested['location_id'] ??
+            nested['office_id'],
+      ),
+      locationName: _asNullableString(
+        json['location_name'] ??
+            json['office_name'] ??
+            nested['location_name'] ??
+            nested['office_name'],
+      ),
+      currentLocation: _asNullableString(
+        json['current_location'] ?? nested['current_location'],
+      ),
+      lat: _asDoubleOrNull(json['lat'] ?? nested['lat']),
+      lon: _asDoubleOrNull(json['lon'] ?? nested['lon']),
+      details: ManagerEmployeeAttendanceDetail.listFrom(
+        json['attendance_details'] ?? nested['attendance_details'],
+      ),
+    );
+  }
+
+  ManagerEmployeeAttendanceDay copyWith({
+    int? id,
+    DateTime? date,
+    String? checkin,
+    String? checkout,
+    String? hoursWorked,
+    bool? isOpen,
+    List<ManagerEmployeeAttendanceDetail>? details,
+  }) {
+    return ManagerEmployeeAttendanceDay(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      checkin: checkin ?? this.checkin,
+      checkout: checkout ?? this.checkout,
+      hoursWorked: hoursWorked ?? this.hoursWorked,
+      isOpen: isOpen ?? this.isOpen,
+      locationId: locationId,
+      locationName: locationName,
+      currentLocation: currentLocation,
+      lat: lat,
+      lon: lon,
+      details: details ?? this.details,
     );
   }
 
@@ -206,7 +261,22 @@ String? _asNullableString(dynamic raw) {
 }
 
 DateTime? _asDate(dynamic raw) {
-  final parsed = _asDateTime(raw);
+  if (raw == null) return null;
+  if (raw is DateTime) {
+    final local = raw.isUtc ? raw.toLocal() : raw;
+    return DateTime(local.year, local.month, local.day);
+  }
+  final value = raw.toString().trim();
+  if (value.isEmpty) return null;
+  final dateOnly = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
+  if (dateOnly != null) {
+    return DateTime(
+      int.parse(dateOnly.group(1)!),
+      int.parse(dateOnly.group(2)!),
+      int.parse(dateOnly.group(3)!),
+    );
+  }
+  final parsed = _asDateTime(value);
   if (parsed == null) return null;
   return DateTime(parsed.year, parsed.month, parsed.day);
 }

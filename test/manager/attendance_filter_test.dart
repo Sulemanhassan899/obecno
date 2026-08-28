@@ -1,14 +1,20 @@
 import 'package:obecno/demo/demo_list.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_attendance_repository.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
+import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:flutter/material.dart';
@@ -267,10 +273,7 @@ void main() {
       );
       expect(merged.length, 2);
       expect(merged.map((e) => e.employeeName), ['Employee3', 'Javier Escher']);
-      expect(
-        merged.any((e) => e.employeeName == 'Other Site'),
-        isFalse,
-      );
+      expect(merged.any((e) => e.employeeName == 'Other Site'), isFalse);
     });
 
     test('puts people with a status above empty-state rows', () {
@@ -455,34 +458,61 @@ void main() {
       expect(body['events'], isA<List>());
       expect((body['events'] as List).length, 4);
     });
+
+    test('attaches existing punch ids so an edit updates that event', () {
+      final body = ManagerAttendanceRepository.employeeAttendanceSaveBody(
+        attendanceId: 901,
+        userId: 12,
+        date: '2026-08-28',
+        deviceDetails: 'iPhone',
+        lat: 33.73,
+        lon: 73.17,
+        checkIn: '09:00:00',
+        checkInDetailId: '1001',
+        changes: const [],
+      );
+
+      expect(body['attendance_id'], 901);
+      expect(body['check_in'], '09:00:00');
+      expect(body.containsKey('check_out'), isFalse);
+      final events = body['events'] as List;
+      expect(events, [
+        {'type': 'checkin', 'time': '09:00:00', 'id': 1001},
+      ]);
+    });
   });
 
   group('ManagerEmployeeHistoryMapper', () {
-    test('shows punched times without seconds and fills leave/weekend days', () {
-      final month = ManagerEmployeeHistoryMapper.build(
-        month: DateTime(2026, 7, 1),
-        history: [
-          ManagerEmployeeAttendanceDay(
-            date: DateTime(2026, 7, 1),
-            checkin: '09:00:33',
-            checkout: '17:05:12',
-          ),
-        ],
-        scheduledCheckIn: const TimeOfDay(hour: 9, minute: 0),
-        graceMinutes: 0,
-        scheduledCheckOut: const TimeOfDay(hour: 17, minute: 0),
-      );
+    test(
+      'shows punched times without seconds and fills leave/weekend days',
+      () {
+        final month = ManagerEmployeeHistoryMapper.build(
+          month: DateTime(2026, 7, 1),
+          history: [
+            ManagerEmployeeAttendanceDay(
+              date: DateTime(2026, 7, 1),
+              checkin: '09:00:33',
+              checkout: '17:05:12',
+            ),
+          ],
+          scheduledCheckIn: const TimeOfDay(hour: 9, minute: 0),
+          graceMinutes: 0,
+          scheduledCheckOut: const TimeOfDay(hour: 17, minute: 0),
+        );
 
-      final worked = month.records.firstWhere((record) => record.date.day == 1);
-      expect(worked.checkIn, '09:00 AM');
-      expect(worked.checkOut, '05:05 PM');
-      expect(month.summary.workingDays, 1);
-      expect(month.summary.absentOrLeaves, greaterThan(0));
-      expect(
-        month.records.any((e) => e.status == AttendanceDayStatus.weekend),
-        isTrue,
-      );
-    });
+        final worked = month.records.firstWhere(
+          (record) => record.date.day == 1,
+        );
+        expect(worked.checkIn, '09:00 AM');
+        expect(worked.checkOut, '05:05 PM');
+        expect(month.summary.workingDays, 1);
+        expect(month.summary.absentOrLeaves, greaterThan(0));
+        expect(
+          month.records.any((e) => e.status == AttendanceDayStatus.weekend),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('ManagerEmployeePolicy', () {
@@ -521,6 +551,409 @@ void main() {
       expect(employee.locationId, '12');
       expect(employee.locationIds, ['12', '15']);
       expect(employee.createdBy, 'Ava Montgomery');
+    });
+  });
+
+  group('AttendanceDuration', () {
+    test('uses checkout minus check-in for a closed shift', () {
+      expect(
+        AttendanceDuration.label(
+          day: DateTime(2026, 8, 28),
+          checkIn: '10:50 AM',
+          checkOut: '12:20 PM',
+        ),
+        '1h 30m',
+      );
+    });
+
+    test('uses elapsed time for an open shift on the same day', () {
+      expect(
+        AttendanceDuration.label(
+          day: DateTime(2026, 8, 28),
+          checkIn: '10:50 AM',
+          now: DateTime(2026, 8, 28, 12, 20),
+        ),
+        '1h 30m',
+      );
+    });
+  });
+
+  group('ManagerTeamAttendanceItem', () {
+    test('reads check_in aliases used by some team-attendance payloads', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 1,
+        'employee_name': 'Owner',
+        'check_in': '10:50:00',
+        'is_open': true,
+      });
+      expect(item.hasCheckIn, isTrue);
+      expect(item.checkin, '10:50:00');
+    });
+  });
+
+  group('ManagerEmployeeHistoryMapper punches', () {
+    test('keeps a punched weekday even if it would otherwise be leave', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 8, 1),
+        history: [
+          ManagerEmployeeAttendanceDay(
+            date: DateTime(2026, 8, 28),
+            checkin: '10:50:00',
+            isOpen: true,
+          ),
+        ],
+      );
+
+      final day = month.records.firstWhere((record) => record.date.day == 28);
+      expect(day.status, isNot(AttendanceDayStatus.onLeave));
+      expect(day.checkIn, '10:50 AM');
+    });
+  });
+
+  group('LocationAttendanceStats', () {
+    test('counts present as punched people over assigned total', () {
+      const location = ManagerLocationModel(
+        id: '12',
+        name: 'i-10 cowork',
+        address: 'Islamabad',
+      );
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          checkin: '10:37:00',
+          isLate: true,
+          isOpen: true,
+          locationId: '12',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          checkin: '10:50:00',
+          isOpen: true,
+          locationId: '12',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '1',
+          name: 'Owner',
+          role: 'Owner',
+          locationId: '12',
+        ),
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: '12',
+        ),
+      ];
+
+      final stats = LocationAttendanceStats.of(
+        location: location,
+        attendance: attendance,
+        members: members,
+      );
+      expect(stats.active, 2);
+      expect(stats.total, 2);
+      expect(stats.lateCheckIns, 1);
+    });
+
+    test('includes an owner punch even when assignment lists omit them', () {
+      const location = ManagerLocationModel(
+        id: '12',
+        name: 'i-10 cowork',
+        address: 'Islamabad',
+      );
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          checkin: '10:37:00',
+          isLate: true,
+          locationId: '12',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          checkin: '10:50:00',
+          locationId: '12',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: '12',
+        ),
+      ];
+
+      final stats = LocationAttendanceStats.of(
+        location: location,
+        attendance: attendance,
+        members: members,
+      );
+      expect(stats.active, 2);
+      expect(stats.total, 2);
+    });
+
+    test(
+      'matches an owner punch by office name when location_id is missing',
+      () {
+        const location = ManagerLocationModel(
+          id: '12',
+          name: 'i-10 cowork',
+          address: 'Islamabad',
+        );
+        const attendance = [
+          ManagerTeamAttendanceItem(
+            userId: 3,
+            employeeName: 'Employee3',
+            checkin: '10:37:00',
+            locationId: '12',
+          ),
+          ManagerTeamAttendanceItem(
+            userId: 1,
+            employeeName: 'Owner',
+            checkin: '10:50:00',
+            currentLocation: 'i-10 cowork',
+          ),
+        ];
+        const members = [
+          ManagerEmployeeModel(
+            id: '3',
+            name: 'Employee3',
+            role: 'Sales',
+            locationId: '12',
+          ),
+        ];
+
+        final stats = LocationAttendanceStats.of(
+          location: location,
+          attendance: attendance,
+          members: members,
+        );
+        expect(stats.active, 2);
+      },
+    );
+
+    test('counts an untagged owner punch on the only office', () {
+      const location = ManagerLocationModel(
+        id: '12',
+        name: 'i-10 cowork',
+        address: 'Islamabad',
+      );
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          checkin: '10:37:00',
+          locationId: '12',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          checkin: '10:50:00',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: '12',
+        ),
+      ];
+
+      final stamped = LocationAttendanceStats.stamp(
+        locations: [location],
+        attendance: attendance,
+        members: members,
+      );
+      expect(stamped.single.present, 2);
+    });
+  });
+
+  group('OverviewSummary', () {
+    test('counts the owner check-in in present today', () {
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          checkin: '10:37:00',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 2,
+          employeeName: 'Employee2',
+          checkin: '09:10:00',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          checkin: '10:50:00',
+        ),
+        ManagerTeamAttendanceItem(userId: 4, employeeName: 'Employee4'),
+        ManagerTeamAttendanceItem(userId: 5, employeeName: 'Employee5'),
+        ManagerTeamAttendanceItem(userId: 6, employeeName: 'Employee6'),
+        ManagerTeamAttendanceItem(userId: 7, employeeName: 'Employee7'),
+      ];
+
+      final summary = OverviewSummary.fromAttendance(
+        attendance: attendance,
+        teamMemberCount: 7,
+      );
+      expect(summary.presentToday, 3);
+      expect(summary.totalTeamMembers, 7);
+    });
+  });
+
+  group('ManagerAttendanceDetailsData', () {
+    test('keeps saved times when a stale reload still has the old punches', () {
+      final stale = ManagerAttendanceDetailsData(
+        day: DateTime(2026, 8, 28),
+        name: 'Employee1',
+        checkIn: '11:27 AM',
+        durationLabel: '4h 48m',
+        timeline: const [
+          ManagerAttendanceTimelineEvent(
+            type: ManagerAttendanceEventType.checkIn,
+            timeLabel: '11:27 AM',
+          ),
+        ],
+      );
+
+      final updated = stale.withSavedTimes(
+        const AddAttendanceSaveResult(checkIn: TimeOfDay(hour: 9, minute: 27)),
+      );
+
+      expect(updated.checkIn, '09:27 AM');
+      expect(updated.checkOut, isNull);
+      expect(
+        updated.timeline.any(
+          (e) => e.type == ManagerAttendanceEventType.breakStart,
+        ),
+        isFalse,
+      );
+      expect(
+        updated.timeline.any(
+          (e) => e.type == ManagerAttendanceEventType.checkOut,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('PendingAttendanceOverlay', () {
+    test('keeps employee 1 times after employee 3 is saved and list reloads', () {
+      final day = DateTime(2026, 8, 28);
+      final apiItems = [
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Employee1',
+          checkin: '11:27:00',
+          isOpen: true,
+          isLate: true,
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          checkin: '09:00:00',
+          isOpen: true,
+          isLate: true,
+        ),
+      ];
+
+      final pending = [
+        PendingAttendanceSave(
+          userId: 1,
+          employeeName: 'Employee1',
+          day: day,
+          checkIn: '09:27:00',
+          checkOut: '18:00:00',
+        ),
+        PendingAttendanceSave(
+          userId: 3,
+          employeeName: 'Employee3',
+          day: day,
+          checkIn: '08:37:00',
+          checkOut: '18:00:00',
+        ),
+      ];
+
+      final overlaid = PendingAttendanceOverlay.apply(
+        items: apiItems,
+        pending: pending,
+        selectedDate: day,
+      );
+
+      final employee1 = overlaid.firstWhere((e) => e.userId == 1);
+      final employee3 = overlaid.firstWhere((e) => e.userId == 3);
+
+      expect(employee1.checkin, '09:27:00');
+      expect(employee1.checkout, '18:00:00');
+      expect(employee1.isLate, isFalse);
+      expect(employee3.checkin, '08:37:00');
+      expect(employee3.checkout, '18:00:00');
+    });
+
+    test('matches by name when the list row has no user id', () {
+      final day = DateTime(2026, 8, 28);
+      const apiItems = [
+        ManagerTeamAttendanceItem(
+          employeeName: 'Employee1',
+          checkin: '11:27:00',
+          isLate: true,
+        ),
+      ];
+
+      final overlaid = PendingAttendanceOverlay.apply(
+        items: apiItems,
+        pending: [
+          PendingAttendanceSave(
+            userId: 1,
+            employeeName: 'Employee1',
+            day: day,
+            checkIn: '09:27:00',
+            checkOut: null,
+          ),
+        ],
+        selectedDate: day,
+      );
+
+      expect(overlaid.single.checkin, '09:27:00');
+    });
+
+    test('adds a saved day to empty monthly history so it is not on leave', () {
+      final day = DateTime(2026, 8, 28);
+      final history = PendingAttendanceOverlay.applyToHistory(
+        history: const [],
+        pending: [
+          PendingAttendanceSave(
+            userId: 41,
+            employeeName: 'Test Employee 1',
+            day: day,
+            checkIn: '07:00:00',
+            checkOut: '18:00:00',
+          ),
+        ],
+        userId: 41,
+        employeeName: 'Test Employee 1',
+      );
+
+      expect(history, hasLength(1));
+      expect(history.single.checkin, '07:00:00');
+      expect(history.single.checkout, '18:00:00');
+
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 8, 1),
+        history: history,
+      );
+      final friday = month.records.firstWhere((record) => record.date.day == 28);
+      expect(friday.status, AttendanceDayStatus.normal);
+      expect(friday.checkIn, '07:00 AM');
+      expect(friday.checkOut, '06:00 PM');
+      expect(month.summary.workingDays, greaterThan(0));
     });
   });
 }

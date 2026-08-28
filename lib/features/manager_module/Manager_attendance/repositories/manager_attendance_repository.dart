@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
@@ -52,11 +53,7 @@ class ManagerAttendanceRepository extends BaseRepository {
     required String dateTo,
     ApiCancelToken? cancelToken,
   }) async {
-    final query = {
-      'date_from': dateFrom,
-      'date_to': dateTo,
-      'user_id': userId,
-    };
+    final query = {'date_from': dateFrom, 'date_to': dateTo, 'user_id': userId};
 
     final result = await getRequest<ManagerEmployeeAttendanceData>(
       ManagerEmployeeApiEndpoints.employeeAttendance(userId),
@@ -71,6 +68,51 @@ class ManagerAttendanceRepository extends BaseRepository {
       queryParameters: query,
       cancelToken: cancelToken,
       parser: _parseEmployeeAttendance,
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeAttendanceData>> getEmployeeDayDetails({
+    required int userId,
+    required String date,
+    ApiCancelToken? cancelToken,
+  }) {
+    return getRequest<ManagerEmployeeAttendanceData>(
+      ManagerEmployeeApiEndpoints.employeeAttendanceDetails(userId),
+      queryParameters: {'date': date, 'user_id': userId},
+      cancelToken: cancelToken,
+      parser: (json) {
+        final data = _extractData(
+          json,
+          fallbackKeys: const [
+            'attendance_details',
+            'date',
+            'attendance_id',
+            'check_in',
+            'checkin',
+          ],
+        );
+        return ManagerEmployeeAttendanceData.fromJson({
+          'employee': {
+            'id': data['employee_id'] ?? userId,
+            'name': data['employee_name'] ?? data['name'],
+            'photo_url': data['photo_url'],
+          },
+          'history': [
+            {
+              'date': data['date'] ?? date,
+              'attendance_id': data['attendance_id'] ?? data['id'],
+              'id': data['attendance_id'] ?? data['id'],
+              'checkin': data['check_in'] ?? data['checkin'],
+              'checkout': data['check_out'] ?? data['checkout'],
+              'hours_worked':
+                  data['working_duration_label'] ?? data['hours_worked'],
+              'current_location':
+                  data['location_name'] ?? data['current_location'],
+              'attendance_details': data['attendance_details'],
+            },
+          ],
+        });
+      },
     );
   }
 
@@ -98,6 +140,10 @@ class ManagerAttendanceRepository extends BaseRepository {
     String? checkOut,
     String? breakStart,
     String? breakEnd,
+    String? checkInDetailId,
+    String? checkOutDetailId,
+    String? breakStartDetailId,
+    String? breakEndDetailId,
     required List<AttendanceChangeRequestPayload> changes,
     ApiCancelToken? cancelToken,
   }) async {
@@ -110,6 +156,7 @@ class ManagerAttendanceRepository extends BaseRepository {
 
     final employeeBody = employeeAttendanceSaveBody(
       attendanceId: resolvedId,
+      userId: userId,
       date: date,
       deviceDetails: deviceDetails,
       lat: lat,
@@ -118,27 +165,68 @@ class ManagerAttendanceRepository extends BaseRepository {
       checkOut: checkOut,
       breakStart: breakStart,
       breakEnd: breakEnd,
+      checkInDetailId: checkInDetailId,
+      checkOutDetailId: checkOutDetailId,
+      breakStartDetailId: breakStartDetailId,
+      breakEndDetailId: breakEndDetailId,
       changes: changes,
     );
+    debugPrint(
+      '[ManagerAttendance] SAVE userId=$userId attendanceId=$attendanceId '
+      'resolvedId=$resolvedId date=$date '
+      'in=$checkIn out=$checkOut break=$breakStart-$breakEnd '
+      'inId=$checkInDetailId outId=$checkOutDetailId '
+      'body=$employeeBody',
+    );
+
+    void logResult(String step, ApiResponse<String> result) {
+      debugPrint(
+        '[ManagerAttendance] SAVE $step success=${result.success} '
+        'status=${result.statusCode} message=${result.message} '
+        'data=${result.data}',
+      );
+    }
 
     // Primary: documented manager create/edit endpoint.
     if (userId != null) {
       final path = ManagerEmployeeApiEndpoints.employeeAttendance(userId);
-      var primary = await putRequest<String>(
-        path,
-        cancelToken: cancelToken,
-        data: employeeBody,
-        parser: _parseSaveMessage,
-      );
-      if (primary.success) return primary;
+      if (resolvedId == null) {
+        var created = await postRequest<String>(
+          path,
+          cancelToken: cancelToken,
+          data: employeeBody,
+          parser: _parseSaveMessage,
+        );
+        logResult('POST $path', created);
+        if (created.success) return created;
 
-      primary = await postRequest<String>(
-        path,
-        cancelToken: cancelToken,
-        data: employeeBody,
-        parser: _parseSaveMessage,
-      );
-      if (primary.success) return primary;
+        created = await putRequest<String>(
+          path,
+          cancelToken: cancelToken,
+          data: employeeBody,
+          parser: _parseSaveMessage,
+        );
+        logResult('PUT $path', created);
+        if (created.success) return created;
+      } else {
+        var primary = await putRequest<String>(
+          path,
+          cancelToken: cancelToken,
+          data: employeeBody,
+          parser: _parseSaveMessage,
+        );
+        logResult('PUT $path', primary);
+        if (primary.success) return primary;
+
+        primary = await postRequest<String>(
+          path,
+          cancelToken: cancelToken,
+          data: employeeBody,
+          parser: _parseSaveMessage,
+        );
+        logResult('POST $path', primary);
+        if (primary.success) return primary;
+      }
     }
 
     final legacyBody = editSaveBody(
@@ -161,6 +249,7 @@ class ManagerAttendanceRepository extends BaseRepository {
       data: legacyBody,
       parser: _parseSaveMessage,
     );
+    logResult('POST teamAttendanceEditSave', result);
 
     if (_isRecordNotFound(result) || !result.success) {
       result = await postRequest<String>(
@@ -169,6 +258,7 @@ class ManagerAttendanceRepository extends BaseRepository {
         data: legacyBody,
         parser: _parseSaveMessage,
       );
+      logResult('POST teamAttendanceEdit', result);
     }
 
     return result;
@@ -177,6 +267,7 @@ class ManagerAttendanceRepository extends BaseRepository {
   /// Body for `PUT/POST /manager/employees/{id}/attendance` (API §4.1).
   static Map<String, dynamic> employeeAttendanceSaveBody({
     required int? attendanceId,
+    int? userId,
     required String date,
     required String deviceDetails,
     required double lat,
@@ -185,33 +276,40 @@ class ManagerAttendanceRepository extends BaseRepository {
     String? checkOut,
     String? breakStart,
     String? breakEnd,
+    String? checkInDetailId,
+    String? checkOutDetailId,
+    String? breakStartDetailId,
+    String? breakEndDetailId,
     required List<AttendanceChangeRequestPayload> changes,
   }) {
+    Map<String, dynamic> event(String type, String time, String? id) {
+      final payload = <String, dynamic>{'type': type, 'time': time};
+      final parsedId = int.tryParse((id ?? '').trim());
+      if (parsedId != null) {
+        payload['id'] = parsedId;
+      } else if (id != null && id.trim().isNotEmpty) {
+        payload['id'] = id.trim();
+      }
+      return payload;
+    }
+
     final events = <Map<String, dynamic>>[
       if (checkIn != null && checkIn.isNotEmpty)
-        {'type': 'checkin', 'time': checkIn},
+        event('checkin', checkIn, checkInDetailId),
       if (breakStart != null && breakStart.isNotEmpty)
-        {'type': 'breakout', 'time': breakStart},
+        event('breakout', breakStart, breakStartDetailId),
       if (breakEnd != null && breakEnd.isNotEmpty)
-        {'type': 'breakin', 'time': breakEnd},
+        event('breakin', breakEnd, breakEndDetailId),
       if (checkOut != null && checkOut.isNotEmpty)
-        {'type': 'checkout', 'time': checkOut},
+        event('checkout', checkOut, checkOutDetailId),
     ];
 
     return {
       'date': date,
+      if (userId != null) 'user_id': userId,
       if (attendanceId != null) 'attendance_id': attendanceId,
-      'device_details': deviceDetails,
-      'lat': lat,
-      'lon': lon,
-      if (checkIn != null && checkIn.isNotEmpty) ...{
-        'check_in': checkIn,
-        'checkin': checkIn,
-      },
-      if (checkOut != null && checkOut.isNotEmpty) ...{
-        'check_out': checkOut,
-        'checkout': checkOut,
-      },
+      if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
+      if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
       if (breakStart != null && breakStart.isNotEmpty) 'breakout': breakStart,
       if (breakEnd != null && breakEnd.isNotEmpty) 'breakin': breakEnd,
       if (events.isNotEmpty) 'events': events,
@@ -262,44 +360,29 @@ class ManagerAttendanceRepository extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) async {
     if (attendanceId != null) return attendanceId;
+    if (userId == null) return null;
 
-    final query = <String, dynamic>{
-      if (userId != null) 'user_id': userId,
-      'date': date,
-    };
-
-    for (final path in [
-      ManagerEmployeeApiEndpoints.teamAttendanceDetails,
-      ManagerEmployeeApiEndpoints.teamAttendanceEdit,
-    ]) {
-      try {
-        final response = await getRequest<int?>(
-          path,
-          queryParameters: query,
-          cancelToken: cancelToken,
-          parser: _parseAttendanceId,
-        );
-        if (response.success && response.data != null) return response.data;
-      } catch (_) {}
-    }
+    try {
+      final existing = await getEmployeeAttendance(
+        userId: userId,
+        dateFrom: date,
+        dateTo: date,
+        cancelToken: cancelToken,
+      );
+      if (existing.success && existing.data != null) {
+        for (final day in existing.data!.history) {
+          final dayDate = day.date;
+          if (dayDate == null) continue;
+          final key =
+              '${dayDate.year.toString().padLeft(4, '0')}-'
+              '${dayDate.month.toString().padLeft(2, '0')}-'
+              '${dayDate.day.toString().padLeft(2, '0')}';
+          if (key == date && day.id != null) return day.id;
+        }
+      }
+    } catch (_) {}
 
     return null;
-  }
-
-  int? _parseAttendanceId(dynamic json) {
-    final data = _asMap(json) ?? const <String, dynamic>{};
-    final inner = data['data'];
-    final map = inner is Map
-        ? Map<String, dynamic>.from(inner)
-        : data['attendance'] is Map
-        ? Map<String, dynamic>.from(data['attendance'] as Map)
-        : data;
-    final nested = map['attendance'];
-    return _asIntOrNull(
-      map['attendance_id'] ??
-          (nested is Map ? nested['attendance_id'] ?? nested['id'] : null) ??
-          map['id'],
-    );
   }
 
   String _parseSaveMessage(dynamic json) {
@@ -323,18 +406,6 @@ class ManagerAttendanceRepository extends BaseRepository {
     if (result.success) return false;
     final message = (result.message ?? '').toLowerCase();
     return message.contains('not found') || result.statusCode == 404;
-  }
-
-  int? _asIntOrNull(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString().trim());
-  }
-
-  Map<String, dynamic>? _asMap(dynamic json) {
-    if (json is Map) return Map<String, dynamic>.from(json);
-    return null;
   }
 
   Map<String, dynamic> _extractData(

@@ -11,6 +11,8 @@ class QueueModel {
     required this.isSynced,
   });
 
+  String get syncStatus => isSynced ? 'synced' : 'pending';
+
   factory QueueModel.fromMap(Map<String, dynamic> map) {
     return QueueModel(
       id: map['id'] as int,

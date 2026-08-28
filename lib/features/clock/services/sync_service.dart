@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,7 +8,6 @@ import 'package:obecno/shared/location/service/attendance_connectivity_service.d
 import 'package:obecno/shared/location/service/local_queue_service.dart';
 
 import '../repositories/clock_attendance_repository.dart';
-
 
 enum SyncState { idle, syncing, success, failure }
 
@@ -79,7 +76,9 @@ class SyncService {
     // trailing sync pass. Now a stale-session state change updates _state
     // internally (so the state machine itself stays consistent) but is not
     // broadcast to whichever screen/session is currently listening.
-    final isStale = epoch != null && _sessionEpochProvider != null &&
+    final isStale =
+        epoch != null &&
+        _sessionEpochProvider != null &&
         _sessionEpochProvider() != epoch;
     if (isStale) return;
     onStateChanged?.call(next);
@@ -101,6 +100,7 @@ class SyncService {
     _subscription?.cancel();
     _subscription = null;
   }
+
   void _logEvent(
     String event, {
     required int queueSize,
@@ -108,6 +108,10 @@ class SyncService {
     required int failedCount,
     String? eventId,
     String? error,
+    String? originalDate,
+    String? originalTime,
+    int? localId,
+    String? action,
   }) {
     final entry = <String, dynamic>{
       'event': event,
@@ -118,6 +122,10 @@ class SyncService {
       'failedCount': failedCount,
       if (eventId != null) 'eventId': eventId,
       if (error != null) 'error': error,
+      if (originalDate != null) 'originalDate': originalDate,
+      if (originalTime != null) 'originalTime': originalTime,
+      if (localId != null) 'localId': localId,
+      if (action != null) 'action': action,
     };
     try {
       AppLogger.info(jsonEncode(entry));
@@ -150,10 +158,13 @@ class SyncService {
         processedCount: 0,
         failedCount: 0,
       );
+      AppLogger.info('SYNC START\nPending Records: $queueSize');
 
       for (final item in pending) {
         if (_staleSession(epochAtStart)) {
-          AppLogger.info('[SyncService] session changed mid-sync, aborting remaining items');
+          AppLogger.info(
+            '[SyncService] session changed mid-sync, aborting remaining items',
+          );
           break;
         }
 
@@ -161,6 +172,14 @@ class SyncService {
           stuck = true;
           break;
         }
+
+        AppLogger.info(
+          'SYNC RECORD\n'
+          'Local ID: ${item.id}\n'
+          'Action: ${item.payload.action}\n'
+          'Original Date: ${item.payload.date}\n'
+          'Original Time: ${item.payload.time}',
+        );
 
         final outcome = await _sendItemWithRetry(
           item,
@@ -183,8 +202,18 @@ class SyncService {
             processedCount: syncedCount + failedCount,
             failedCount: failedCount,
             eventId: item.payload.requestId,
+            originalDate: item.payload.date,
+            originalTime: item.payload.time,
+            localId: item.id,
+            action: item.payload.action,
           );
-      
+          AppLogger.info(
+            'SYNC SUCCESS\n'
+            'Local ID: ${item.id}\n'
+            'Action: ${item.payload.action}\n'
+            'Date: ${item.payload.date}',
+          );
+
           if (!_staleSession(epochAtStart)) {
             onQueuedItemSynced?.call(
               item.payload.requestId,
@@ -204,14 +233,33 @@ class SyncService {
           failedCount: failedCount,
           eventId: item.payload.requestId,
           error: failure.error.toString(),
+          originalDate: item.payload.date,
+          originalTime: item.payload.time,
+          localId: item.id,
+          action: item.payload.action,
+        );
+        AppLogger.info(
+          'SYNC FAILED\n'
+          'Local ID: ${item.id}\n'
+          'Action: ${item.payload.action}\n'
+          'Date: ${item.payload.date}\n'
+          'Reason: ${failure.error}',
         );
 
         if (!_isRetryable(failure.error)) {
+          // Business / auth rejection — do not keep retrying automatically.
           await _queueService.markDeadLetter(item.id);
         } else {
+          // Network / timeout / server unavailable: stay pending forever
+          // until a later pass succeeds. Never drop or quarantine these.
           final attempts = await _queueService.recordFailure(item.id);
           if (attempts >= maxRetries) {
-            await _queueService.markDeadLetter(item.id);
+            AppLogger.info(
+              'SYNC FAILED still pending after $attempts attempts\n'
+              'Local ID: ${item.id}\n'
+              'Action: ${item.payload.action}\n'
+              'Date: ${item.payload.date}',
+            );
           }
         }
       }
@@ -227,7 +275,8 @@ class SyncService {
           queueSize: queueSize,
           processedCount: syncedCount + failedCount,
           failedCount: failedCount,
-          error: 'sync exceeded ${_fullSyncTimeout.inSeconds}s budget, '
+          error:
+              'sync exceeded ${_fullSyncTimeout.inSeconds}s budget, '
               'forced back to idle; remaining items retried next pass',
         );
         // Fix (Issue 4): don't rely solely on the next connectivity-changed
@@ -276,7 +325,8 @@ class SyncService {
   }
 
   static bool _isRetryable(Object error) =>
-      error is! AttendanceBusinessException && error is! AttendanceAuthException;
+      error is! AttendanceBusinessException &&
+      error is! AttendanceAuthException;
 
   Future<_ItemOutcome> _sendItemWithRetry(
     QueueModel item, {
@@ -334,6 +384,7 @@ class SyncService {
     stopListening();
   }
 }
+
 sealed class _ItemOutcome {
   const _ItemOutcome();
   static const cancelled = _ItemCancelled();

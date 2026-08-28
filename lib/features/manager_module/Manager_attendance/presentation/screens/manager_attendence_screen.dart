@@ -27,7 +27,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ManagerAttendanceProvider>().ensureLoaded();
+      context.read<ManagerAttendanceProvider>().load();
       context.read<ManagerLocationsProvider>().load();
     });
   }
@@ -48,7 +48,17 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
       ),
       loadDetails: employee.userId == null
           ? null
-          : () => provider.loadEmployeeDay(employee: employee, day: day),
+          : () {
+              final current =
+                  provider.tiles
+                      .where((e) => e.userId == employee.userId)
+                      .firstOrNull ??
+                  employee;
+              return provider.loadEmployeeDay(
+                employee: current,
+                day: provider.selectedDate,
+              );
+            },
     );
   }
 
@@ -115,7 +125,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
                     },
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 if (isInitialLoad)
                   const SliverFillRemaining(
                     hasScrollBody: false,

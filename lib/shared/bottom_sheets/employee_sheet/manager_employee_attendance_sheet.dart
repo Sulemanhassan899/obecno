@@ -2,7 +2,6 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/demo/manager_attendence_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
@@ -12,12 +11,14 @@ import 'package:obecno/features/employee_module/attendance/presentation/widgets/
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
-import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
@@ -161,9 +162,15 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         permissions.data ?? const [],
       );
       final workingDays = WorkingDaysParser.parse(policy.workingDays);
+      final history = PendingAttendanceOverlay.applyToHistory(
+        history: attendance.data!.history,
+        pending: bindings.managerAttendanceProvider.pendingSaves,
+        userId: userId,
+        employeeName: widget.employeeName,
+      );
       final month = ManagerEmployeeHistoryMapper.build(
         month: _month,
-        history: attendance.data!.history,
+        history: history,
         workingWeekdays: workingDays.isEmpty
             ? const {1, 2, 3, 4, 5}
             : workingDays,
@@ -204,33 +211,9 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
 
   Future<void> _openDetails(AttendanceDayRecord record) async {
     final isOnLeave = record.status == AttendanceDayStatus.onLeave;
+    final isDash = _isDashDay(record);
 
-    // Managers can add attendance on On Leave days via the edit sheet.
-    if (isOnLeave) {
-      if (!_isManagerViewer) return;
-      final day = record.date;
-      final saved = await AddAttendanceBottomSheet.show(
-        context,
-        day: day,
-        apiClient: bindings.apiClient,
-        userEmail: bindings.userEmail,
-        employeeUserId: widget.userId,
-        applyImmediately: true,
-      );
-      if (!mounted || saved == null) return;
-
-      _applyOptimisticAttendance(day, saved);
-      await _load(silent: true);
-      if (!mounted) return;
-
-      if (_dayStillOnLeave(day)) {
-        ToastHelper.error(
-          context,
-          message: 'Attendance was not saved. Please try again.',
-        );
-      }
-      return;
-    }
+    if ((isOnLeave || isDash) && !_isManagerViewer) return;
 
     final userId = widget.userId;
     final employee = ManagerAttendanceModel(
@@ -238,12 +221,12 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       role: widget.role,
       photo: widget.photo,
       userId: userId,
-      checkIn: record.checkIn,
-      checkOut: record.checkOut,
-      status: '',
+      checkIn: isOnLeave || isDash ? null : record.checkIn,
+      checkOut: isOnLeave || isDash ? null : record.checkOut,
+      status: isOnLeave ? 'leave' : '',
     );
     final provider = context.read<ManagerAttendanceProvider>();
-    await ManagerAttendanceDetailsSheet.show(
+    final saved = await ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(
         employee: employee,
@@ -251,14 +234,47 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       ),
       loadDetails: userId == null
           ? null
-          : () => provider.loadEmployeeDay(employee: employee, day: record.date),
+          : () =>
+                provider.loadEmployeeDay(employee: employee, day: record.date),
     );
-    if (mounted) await _load(silent: true);
+    if (!mounted) return;
+    if (saved != null) {
+      _applyOptimisticAttendance(record.date, saved);
+    }
+    await _load(silent: true);
+  }
+
+  bool _isDashDay(AttendanceDayRecord record) {
+    if (record.status == AttendanceDayStatus.weekend ||
+        record.status == AttendanceDayStatus.holiday) {
+      return false;
+    }
+    return !_hasPunchTime(record.checkIn) && !_hasPunchTime(record.checkOut);
+  }
+
+  bool _hasPunchTime(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    return lower != 'leave' &&
+        lower != 'holiday' &&
+        lower != '--' &&
+        !lower.startsWith('--:--');
   }
 
   void _applyOptimisticAttendance(DateTime day, AddAttendanceSaveResult saved) {
-    final checkIn = _formatTimeOfDay(saved.checkIn);
-    final checkOut = _formatTimeOfDay(saved.checkOut);
+    AttendanceDayRecord? previous;
+    for (final record in _records) {
+      if (_isSameDay(record.date, day)) {
+        previous = record;
+        break;
+      }
+    }
+    final wasAbsent =
+        previous != null &&
+        (previous.status == AttendanceDayStatus.onLeave ||
+            _isDashDay(previous));
+
     setState(() {
       _records = [
         for (final record in _records)
@@ -267,19 +283,23 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
               day: record.day,
               weekday: record.weekday,
               date: record.date,
-              checkIn: checkIn,
-              checkOut: checkOut,
+              checkIn: saved.checkIn == null
+                  ? (_hasPunchTime(record.checkIn) ? record.checkIn : null)
+                  : _formatTimeOfDay(saved.checkIn!),
+              checkOut: saved.checkOut == null
+                  ? (_hasPunchTime(record.checkOut) ? record.checkOut : null)
+                  : _formatTimeOfDay(saved.checkOut!),
               status: AttendanceDayStatus.normal,
             )
           else
             record,
       ];
       final summary = _summary;
-      if (summary != null && summary.absentOrLeaves > 0) {
+      if (summary != null && wasAbsent) {
         _summary = MonthSummary(
           workingDays: summary.workingDays + 1,
           totalDays: summary.totalDays,
-          absentOrLeaves: summary.absentOrLeaves - 1,
+          absentOrLeaves: (summary.absentOrLeaves - 1).clamp(0, summary.totalDays),
           lateCheckIns: summary.lateCheckIns,
           lateCheckOuts: summary.lateCheckOuts,
         );
@@ -289,12 +309,6 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
-
-  bool _dayStillOnLeave(DateTime day) {
-    return _records.any(
-      (r) => _isSameDay(r.date, day) && r.status == AttendanceDayStatus.onLeave,
-    );
-  }
 
   String _formatTimeOfDay(TimeOfDay t) {
     final period = t.hour >= 12 ? 'PM' : 'AM';
@@ -516,7 +530,7 @@ class _LocationAttendanceSheetBodyState
 
     await Future.wait([
       attendance.selectedDate == day
-          ? attendance.ensureLoaded()
+          ? attendance.load()
           : attendance.setDate(day),
       if (_locationId.isNotEmpty)
         employees.load(locationId: _locationId)
@@ -529,29 +543,25 @@ class _LocationAttendanceSheetBodyState
     required ManagerAttendanceProvider attendance,
     required ManagerEmployeesProvider employees,
   }) {
-    final members = _locationId.isEmpty
-        ? employees.members
-        : ManagerEmployeeFilters.byLocation(
-            source: employees.members,
-            selectedLocationId: _locationId,
-            selectedLocationName: widget.locationName,
-          );
-
-    if (employees.isLoading && members.isEmpty) return const [];
-
-    if (members.isEmpty) {
-      if (_locationId.isNotEmpty) return const [];
-      return ManagerAttendanceFilters.applyItems(
-        source: attendance.items,
-        selectedLocation: LocationFilterOption.allId,
-        locationName: widget.locationName,
+    if (_locationId.isNotEmpty) {
+      return LocationAttendanceStats.merge(
+        location: ManagerLocationModel(
+          id: _locationId,
+          name: widget.locationName,
+          address: widget.locationAddress,
+        ),
+        attendance: attendance.items,
+        members: employees.members,
       );
     }
 
-    return TeamAttendanceMapper.mergeWithMembers(
-      attendance: attendance.items,
-      members: members,
-      includeUnmatchedAttendance: false,
+    if (employees.isLoading && employees.members.isEmpty) return const [];
+
+    return ManagerAttendanceFilters.applyItems(
+      source: attendance.items,
+      selectedLocation: LocationFilterOption.allId,
+      locationName: widget.locationName,
+      members: employees.members,
     );
   }
 
