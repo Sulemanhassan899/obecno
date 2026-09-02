@@ -4,6 +4,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -13,21 +14,25 @@ import 'package:flutter/services.dart';
 class CheckInOutTimingSheet {
   CheckInOutTimingSheet._();
 
-  static Future<void> show(
+  static Future<LocationSchedule?> show(
     BuildContext context, {
     int? userId,
     String? employeeName,
+    String? locationId,
+    LocationSchedule? schedule,
     TimeOfDay? checkIn,
     TimeOfDay? checkOut,
     int? graceMinutes,
   }) {
-    return showModalBottomSheet<void>(
+    return showModalBottomSheet<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _CheckInOutTimingSheetBody(
         userId: userId,
         employeeName: employeeName,
+        locationId: locationId,
+        schedule: schedule,
         checkIn: checkIn,
         checkOut: checkOut,
         graceMinutes: graceMinutes,
@@ -40,6 +45,8 @@ class _CheckInOutTimingSheetBody extends StatefulWidget {
   const _CheckInOutTimingSheetBody({
     this.userId,
     this.employeeName,
+    this.locationId,
+    this.schedule,
     this.checkIn,
     this.checkOut,
     this.graceMinutes,
@@ -47,6 +54,8 @@ class _CheckInOutTimingSheetBody extends StatefulWidget {
 
   final int? userId;
   final String? employeeName;
+  final String? locationId;
+  final LocationSchedule? schedule;
   final TimeOfDay? checkIn;
   final TimeOfDay? checkOut;
   final int? graceMinutes;
@@ -67,43 +76,63 @@ class _CheckInOutTimingSheetBodyState
   int _initialGraceMinutes = 5;
   bool _loading = false;
   bool _saving = false;
+  LocationSchedule _baseSchedule = LocationSchedule.defaults;
 
   static const _graceOptions = [0, 5, 10, 15, 30];
 
   @override
   void initState() {
     super.initState();
-    _checkIn = widget.checkIn ?? _checkIn;
-    _checkOut = widget.checkOut ?? _checkOut;
-    _graceMinutes = widget.graceMinutes ?? _graceMinutes;
+    final seeded = widget.schedule;
+    _baseSchedule = seeded ?? LocationSchedule.defaults;
+    _checkIn = widget.checkIn ?? _baseSchedule.checkIn;
+    _checkOut = widget.checkOut ?? _baseSchedule.checkOut;
+    _graceMinutes = widget.graceMinutes ?? _baseSchedule.graceMinutes;
     _initialCheckIn = _checkIn;
     _initialCheckOut = _checkOut;
     _initialGraceMinutes = _graceMinutes;
     _load();
   }
 
+  void _applySchedule(LocationSchedule schedule) {
+    _baseSchedule = schedule;
+    _checkIn = schedule.checkIn;
+    _checkOut = schedule.checkOut;
+    _graceMinutes = schedule.graceMinutes;
+    _initialCheckIn = _checkIn;
+    _initialCheckOut = _checkOut;
+    _initialGraceMinutes = _graceMinutes;
+  }
+
   Future<void> _load() async {
-    final userId = widget.userId;
-    if (userId == null) return;
-    setState(() => _loading = true);
-    final result = await bindings.managerEmployeesService.loadEmployeePolicy(
-      userId: userId,
-    );
-    if (!mounted) return;
-    if (result.success && result.data != null) {
-      final policy = result.data!;
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _loading = true);
+      final result = await bindings.managerLocationsService
+          .loadLocationSchedule(locationId: locationId);
+      if (!mounted) return;
       setState(() {
-        _checkIn = policy.checkIn;
-        _checkOut = policy.checkOut;
-        _graceMinutes = policy.graceMinutes;
-        _initialCheckIn = _checkIn;
-        _initialCheckOut = _checkOut;
-        _initialGraceMinutes = _graceMinutes;
+        if (result.success && result.data != null) {
+          _applySchedule(result.data!);
+        }
         _loading = false;
       });
       return;
     }
-    setState(() => _loading = false);
+
+    final userId = widget.userId;
+    if (userId == null) return;
+    setState(() => _loading = true);
+    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
+      userId: userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (result.success && result.data != null) {
+        _applySchedule(result.data!);
+      }
+      _loading = false;
+    });
   }
 
   String _formatTime(TimeOfDay t) {
@@ -143,19 +172,53 @@ class _CheckInOutTimingSheetBodyState
     });
   }
 
-  String _formatHms(TimeOfDay t) {
-    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
-  }
-
   bool _sameTime(TimeOfDay a, TimeOfDay b) =>
       a.hour == b.hour && a.minute == b.minute;
 
+  LocationSchedule get _currentSchedule {
+    return _baseSchedule.copyWith(
+      checkIn: _checkIn,
+      checkOut: _checkOut,
+      graceMinutes: _graceMinutes,
+    );
+  }
+
   Future<void> _save() async {
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _saving = true);
+      final next = _currentSchedule;
+      final result = await bindings.managerLocationsService
+          .updateLocationSchedule(locationId: locationId, schedule: next);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (!result.success) {
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to save timing.',
+        );
+        return;
+      }
+      _checkIn = (result.data ?? next).checkIn;
+      _checkOut = (result.data ?? next).checkOut;
+      _graceMinutes = (result.data ?? next).graceMinutes;
+      _applySchedule(result.data ?? next);
+      final saved = result.data ?? next;
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.pop(context, saved);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!rootContext.mounted) return;
+        ToastHelper.changesSaved(rootContext);
+      });
+      return;
+    }
+
     if (widget.userId != null) {
       setState(() => _saving = true);
       final wantedIn = _checkIn;
       final wantedOut = _checkOut;
       final wantedGrace = _graceMinutes;
+      final next = _currentSchedule;
       final result = await bindings.managerEmployeesService
           .updateEmployeePermissions(
             userId: widget.userId!,
@@ -165,9 +228,7 @@ class _CheckInOutTimingSheetBodyState
                 checkOutLabel: _formatTime(wantedOut),
                 graceMinutes: wantedGrace,
               ),
-              'check_in': _formatHms(wantedIn),
-              'check_out': _formatHms(wantedOut),
-              'grace_minutes': wantedGrace,
+              ...next.writePayload(),
             },
           );
       if (!mounted) return;
@@ -180,9 +241,8 @@ class _CheckInOutTimingSheetBodyState
         return;
       }
 
-      final verify = await bindings.managerEmployeesService.loadEmployeePolicy(
-        userId: widget.userId!,
-      );
+      final verify = await bindings.managerEmployeesService
+          .loadEmployeeSchedule(userId: widget.userId!);
       if (!mounted) return;
       setState(() => _saving = false);
       if (!verify.success || verify.data == null) {
@@ -192,19 +252,17 @@ class _CheckInOutTimingSheetBodyState
         );
         return;
       }
-      final policy = verify.data!;
-      if (!_sameTime(policy.checkIn, wantedIn) ||
-          !_sameTime(policy.checkOut, wantedOut) ||
-          policy.graceMinutes != wantedGrace) {
+      final saved = verify.data!;
+      if (!_sameTime(saved.checkIn, wantedIn) ||
+          !_sameTime(saved.checkOut, wantedOut) ||
+          saved.graceMinutes != wantedGrace) {
         ToastHelper.error(
           context,
           message: 'Timing update did not persist. Please try again.',
         );
         return;
       }
-      _checkIn = policy.checkIn;
-      _checkOut = policy.checkOut;
-      _graceMinutes = policy.graceMinutes;
+      _applySchedule(saved);
     }
 
     _initialCheckIn = _checkIn;
@@ -256,7 +314,9 @@ class _CheckInOutTimingSheetBodyState
             Expanded(
               child: Container(
                 color: kbackground2,
-                child: ListView(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   children: [
                     SizedBox(height: 10),

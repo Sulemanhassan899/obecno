@@ -132,8 +132,27 @@ class AttendanceDayTile extends StatelessWidget {
       record.checkIn == "Leave" ||
       record.checkOut == "Leave";
 
+  bool get _isAbsent =>
+      record.status == AttendanceDayStatus.absent ||
+      (!_isOnLeave &&
+          record.status != AttendanceDayStatus.holiday &&
+          record.status != AttendanceDayStatus.weekend &&
+          !_hasPunchTime(record.checkIn) &&
+          !_hasPunchTime(record.checkOut));
+
+  bool _hasPunchTime(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    return lower != 'leave' &&
+        lower != 'holiday' &&
+        lower != '--' &&
+        !lower.startsWith('--:--');
+  }
+
   bool _isHolidayOrLeave() {
     return _isOnLeave ||
+        _isAbsent ||
         record.status == AttendanceDayStatus.holiday ||
         record.checkIn == "Holiday" ||
         record.checkOut == "Holiday";
@@ -164,6 +183,7 @@ class AttendanceDayTile extends StatelessWidget {
       case AttendanceDayStatus.normal:
       case AttendanceDayStatus.weekend:
       case AttendanceDayStatus.onLeave:
+      case AttendanceDayStatus.absent:
       case AttendanceDayStatus.holiday:
         return null;
       default:
@@ -213,7 +233,9 @@ class AttendanceDayTile extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (_isOnLeave) ...[
+                  if (_isAbsent) ...[
+                    const _EmptyAttendanceMark(),
+                  ] else if (_isOnLeave) ...[
                     Icon(
                       Icons.circle,
                       size: 7,
@@ -281,6 +303,24 @@ class AttendanceDayTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EmptyAttendanceMark extends StatelessWidget {
+  const _EmptyAttendanceMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: kGreyColor.withOpacity(0.2),
+      ),
+      child: AppText.caption("-", color: kGreyColor, weight: FontWeight.w500),
     );
   }
 }

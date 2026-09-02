@@ -1,6 +1,7 @@
 import 'package:obecno/demo/demo_list.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_month_bounds.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
@@ -14,8 +15,10 @@ import 'package:obecno/features/manager_module/Manager_locations/domain/location
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -511,8 +514,38 @@ void main() {
           month.records.any((e) => e.status == AttendanceDayStatus.weekend),
           isTrue,
         );
+        expect(
+          month.records.any((e) => e.status == AttendanceDayStatus.absent),
+          isTrue,
+        );
+        expect(
+          month.records.any((e) => e.status == AttendanceDayStatus.onLeave),
+          isFalse,
+        );
       },
     );
+
+    test('does not show days before the employee joining date', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 7, 1),
+        history: [
+          ManagerEmployeeAttendanceDay(
+            date: DateTime(2026, 7, 1),
+            checkin: '09:00:00',
+            checkout: '17:00:00',
+          ),
+          ManagerEmployeeAttendanceDay(
+            date: DateTime(2026, 7, 6),
+            checkin: '09:00:00',
+            checkout: '17:00:00',
+          ),
+        ],
+        joiningDate: DateTime(2026, 7, 5),
+      );
+
+      expect(month.records.any((record) => record.date.day < 5), isFalse);
+      expect(month.records.any((record) => record.date.day == 6), isTrue);
+    });
   });
 
   group('ManagerEmployeePolicy', () {
@@ -552,6 +585,82 @@ void main() {
       expect(employee.locationIds, ['12', '15']);
       expect(employee.createdBy, 'Ava Montgomery');
     });
+
+    test('parses joining_date as a date-only calendar day', () {
+      final employee = ManagerEmployeeModel.fromJson({
+        'id': 12,
+        'name': 'Employee1',
+        'joining_date': '2026-07-05',
+      });
+      expect(employee.joiningDate, DateTime(2026, 7, 5));
+    });
+
+    test('falls back to created_at when joining_date is missing', () {
+      final employee = ManagerEmployeeModel.fromJson({
+        'id': 12,
+        'name': 'Employee1',
+        'created_at': '2026-07-05',
+      });
+      expect(employee.joiningDate, DateTime(2026, 7, 5));
+    });
+  });
+
+  group('AttendanceMonthBounds', () {
+    test('blocks previous month before the joining month', () {
+      final join = DateTime(2026, 7, 5);
+      final now = DateTime(2026, 8, 31);
+
+      expect(
+        AttendanceMonthBounds.canGoPrevious(
+          selectedMonth: DateTime(2026, 7),
+          joiningDate: join,
+        ),
+        isFalse,
+      );
+      expect(
+        AttendanceMonthBounds.canGoPrevious(
+          selectedMonth: DateTime(2026, 8),
+          joiningDate: join,
+        ),
+        isTrue,
+      );
+      expect(
+        AttendanceMonthBounds.clampMonth(
+          selectedMonth: DateTime(2026, 6),
+          joiningDate: join,
+          now: now,
+        ),
+        DateTime(2026, 7),
+      );
+      expect(AttendanceMonthBounds.minimumMonth(join), DateTime(2026, 7));
+    });
+  });
+
+  group('MonthYearContent joining bounds', () {
+    testWidgets('hides months and years before the joining date', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MonthYearContent(
+              initialDate: DateTime(2026, 8, 1),
+              minDate: DateTime(2026, 7, 5),
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('January'), findsNothing);
+      expect(find.text('March'), findsNothing);
+      expect(find.text('June'), findsNothing);
+      expect(find.text('July'), findsOneWidget);
+      expect(find.text('August'), findsOneWidget);
+      expect(find.text('2024'), findsNothing);
+      expect(find.text('2025'), findsNothing);
+      expect(find.text('2026'), findsOneWidget);
+    });
   });
 
   group('AttendanceDuration', () {
@@ -589,6 +698,25 @@ void main() {
       expect(item.hasCheckIn, isTrue);
       expect(item.checkin, '10:50:00');
     });
+
+    test('treats live_status late as a late check-in', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 3,
+        'employee_name': 'Employee1',
+        'check_in_time': '10:50:00',
+        'live_status': 'late',
+      });
+      expect(item.hasCheckIn, isTrue);
+      expect(item.isLate, isTrue);
+      expect(item.checkin, '10:50:00');
+
+      final filtered = ManagerAttendanceFilters.applyItems(
+        source: [item],
+        selectedStatus: 'Late Check-in',
+      );
+      expect(filtered, hasLength(1));
+      expect(filtered.first.employeeName, 'Employee1');
+    });
   });
 
   group('ManagerEmployeeHistoryMapper punches', () {
@@ -606,7 +734,55 @@ void main() {
 
       final day = month.records.firstWhere((record) => record.date.day == 28);
       expect(day.status, isNot(AttendanceDayStatus.onLeave));
+      expect(day.status, isNot(AttendanceDayStatus.absent));
       expect(day.checkIn, '10:50 AM');
+    });
+
+    test('keeps holiday cards instead of grouping them into weekends', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 8, 1),
+        history: const [],
+        holidays: [
+          HolidayInfo(date: DateTime(2026, 8, 14), name: 'National Day'),
+        ],
+      );
+
+      final holiday = month.records.firstWhere((record) => record.date.day == 14);
+      expect(holiday.status, AttendanceDayStatus.holiday);
+      expect(holiday.weekendLabel, 'National Day');
+      expect(
+        month.records.where((e) => e.status == AttendanceDayStatus.holiday),
+        hasLength(1),
+      );
+    });
+
+    test('marks unworked weekdays as absent, not on leave', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 8, 1),
+        history: const [],
+      );
+
+      final friday = month.records.firstWhere((record) => record.date.day == 28);
+      expect(friday.status, AttendanceDayStatus.absent);
+      expect(friday.checkIn, isNull);
+      expect(friday.checkOut, isNull);
+    });
+
+    test('uses is_holiday from history when the holidays list is empty', () {
+      final month = ManagerEmployeeHistoryMapper.build(
+        month: DateTime(2026, 8, 1),
+        history: [
+          ManagerEmployeeAttendanceDay(
+            date: DateTime(2026, 8, 14),
+            isHoliday: true,
+            holidayName: 'National Day',
+          ),
+        ],
+      );
+
+      final holiday = month.records.firstWhere((record) => record.date.day == 14);
+      expect(holiday.status, AttendanceDayStatus.holiday);
+      expect(holiday.weekendLabel, 'National Day');
     });
   });
 
@@ -845,57 +1021,60 @@ void main() {
   });
 
   group('PendingAttendanceOverlay', () {
-    test('keeps employee 1 times after employee 3 is saved and list reloads', () {
-      final day = DateTime(2026, 8, 28);
-      final apiItems = [
-        ManagerTeamAttendanceItem(
-          userId: 1,
-          employeeName: 'Employee1',
-          checkin: '11:27:00',
-          isOpen: true,
-          isLate: true,
-        ),
-        ManagerTeamAttendanceItem(
-          userId: 3,
-          employeeName: 'Employee3',
-          checkin: '09:00:00',
-          isOpen: true,
-          isLate: true,
-        ),
-      ];
+    test(
+      'keeps employee 1 times after employee 3 is saved and list reloads',
+      () {
+        final day = DateTime(2026, 8, 28);
+        final apiItems = [
+          ManagerTeamAttendanceItem(
+            userId: 1,
+            employeeName: 'Employee1',
+            checkin: '11:27:00',
+            isOpen: true,
+            isLate: true,
+          ),
+          ManagerTeamAttendanceItem(
+            userId: 3,
+            employeeName: 'Employee3',
+            checkin: '09:00:00',
+            isOpen: true,
+            isLate: true,
+          ),
+        ];
 
-      final pending = [
-        PendingAttendanceSave(
-          userId: 1,
-          employeeName: 'Employee1',
-          day: day,
-          checkIn: '09:27:00',
-          checkOut: '18:00:00',
-        ),
-        PendingAttendanceSave(
-          userId: 3,
-          employeeName: 'Employee3',
-          day: day,
-          checkIn: '08:37:00',
-          checkOut: '18:00:00',
-        ),
-      ];
+        final pending = [
+          PendingAttendanceSave(
+            userId: 1,
+            employeeName: 'Employee1',
+            day: day,
+            checkIn: '09:27:00',
+            checkOut: '18:00:00',
+          ),
+          PendingAttendanceSave(
+            userId: 3,
+            employeeName: 'Employee3',
+            day: day,
+            checkIn: '08:37:00',
+            checkOut: '18:00:00',
+          ),
+        ];
 
-      final overlaid = PendingAttendanceOverlay.apply(
-        items: apiItems,
-        pending: pending,
-        selectedDate: day,
-      );
+        final overlaid = PendingAttendanceOverlay.apply(
+          items: apiItems,
+          pending: pending,
+          selectedDate: day,
+        );
 
-      final employee1 = overlaid.firstWhere((e) => e.userId == 1);
-      final employee3 = overlaid.firstWhere((e) => e.userId == 3);
+        final employee1 = overlaid.firstWhere((e) => e.userId == 1);
+        final employee3 = overlaid.firstWhere((e) => e.userId == 3);
 
-      expect(employee1.checkin, '09:27:00');
-      expect(employee1.checkout, '18:00:00');
-      expect(employee1.isLate, isFalse);
-      expect(employee3.checkin, '08:37:00');
-      expect(employee3.checkout, '18:00:00');
-    });
+        expect(employee1.checkin, '09:27:00');
+        expect(employee1.checkout, '18:00:00');
+        expect(employee1.isLate, isFalse);
+        expect(employee3.checkin, '08:37:00');
+        expect(employee3.checkout, '18:00:00');
+      },
+    );
 
     test('matches by name when the list row has no user id', () {
       final day = DateTime(2026, 8, 28);
@@ -949,7 +1128,9 @@ void main() {
         month: DateTime(2026, 8, 1),
         history: history,
       );
-      final friday = month.records.firstWhere((record) => record.date.day == 28);
+      final friday = month.records.firstWhere(
+        (record) => record.date.day == 28,
+      );
       expect(friday.status, AttendanceDayStatus.normal);
       expect(friday.checkIn, '07:00 AM');
       expect(friday.checkOut, '06:00 PM');

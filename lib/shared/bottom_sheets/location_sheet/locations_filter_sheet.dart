@@ -97,6 +97,7 @@ class LocationsFilterSheet {
         return _MultiLocationsSheetBody(
           locations: locations,
           initialSelectedId: selectedId,
+          onCreateLocation: onCreateLocation,
         );
       },
     );
@@ -187,10 +188,12 @@ class _MultiLocationsSheetBody extends StatefulWidget {
   const _MultiLocationsSheetBody({
     required this.locations,
     required this.initialSelectedId,
+    this.onCreateLocation,
   });
 
   final List<LocationFilterOption> locations;
   final String initialSelectedId;
+  final VoidCallback? onCreateLocation;
 
   @override
   State<_MultiLocationsSheetBody> createState() =>
@@ -263,6 +266,21 @@ class _MultiLocationsSheetBodyState extends State<_MultiLocationsSheetBody> {
               ),
             ),
             const Divider(height: 1, color: kDividerColor),
+            if (widget.onCreateLocation != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: MyButton(
+                  size: MyButtonSize.normal,
+                  backgroundColor: kWhite,
+                  outlineColor: kBlack200,
+                  fontColor: kBlack,
+                  buttonText: 'Create a Location',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    widget.onCreateLocation?.call();
+                  },
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
               child: Row(

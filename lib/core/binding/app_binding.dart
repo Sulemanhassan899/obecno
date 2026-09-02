@@ -39,6 +39,7 @@ import 'package:obecno/features/manager_module/Manager_overview/services/manager
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
 import 'package:obecno/features/manager_module/Manager_employees/services/manager_employees_service.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/repositories/manager_locations_repository.dart';
 import 'package:obecno/features/manager_module/Manager_locations/services/manager_locations_service.dart';
@@ -203,6 +204,11 @@ class AppBindings {
       managerLocationsRepository,
       authLocationsProvider: () => authProvider.locations,
       attendanceService: managerAttendanceService,
+      companyScheduleProvider: () async {
+        final items = await companyPolicyService.all();
+        if (items.isEmpty) return null;
+        return LocationSchedule.fromPermissionItems(items);
+      },
     );
     managerLocationsProvider = ManagerLocationsProvider(
       managerLocationsService,

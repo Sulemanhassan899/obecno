@@ -2,9 +2,11 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/demo/manager_employee_model.dart';
-import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -13,13 +15,13 @@ import 'package:flutter/material.dart';
 class AddMembersSheet {
   AddMembersSheet._();
 
-  static Future<void> show(
+  static Future<bool?> show(
     BuildContext context, {
     required ManagerLocationModel location,
     String title = 'Add Member',
     bool openSetupOnAdd = true,
   }) {
-    return showModalBottomSheet<void>(
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -50,7 +52,17 @@ class _AddMembersSheetBody extends StatefulWidget {
 class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
   final _searchController = TextEditingController();
   final Set<String> _selectedIds = {};
+  List<ManagerEmployeeModel> _employees = const [];
   String _query = '';
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   @override
   void dispose() {
@@ -58,26 +70,87 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
     super.dispose();
   }
 
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final result = await bindings.managerEmployeesService.loadTeamMembers();
+    if (!mounted) return;
+    if (!result.success || result.data == null) {
+      setState(() {
+        _loading = false;
+        _error = result.message ?? 'Failed to load employees.';
+        _employees = const [];
+      });
+      return;
+    }
+
+    final people = result.data!.members
+        .where((e) => e.status != ManagerEmployeeStatus.deleted)
+        .toList(growable: false);
+    final assigned = <String>{};
+    for (final person in people) {
+      if (person.assignedToLocation(
+        id: widget.location.id,
+        name: widget.location.name,
+      )) {
+        assigned.add(person.id);
+      }
+    }
+
+    setState(() {
+      _employees = people;
+      _selectedIds
+        ..clear()
+        ..addAll(assigned);
+      _loading = false;
+    });
+  }
+
   List<ManagerEmployeeModel> get _filtered {
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return dummyManagerEmployees;
-    return dummyManagerEmployees
+    if (q.isEmpty) return _employees;
+    return _employees
         .where(
           (e) =>
               e.name.toLowerCase().contains(q) ||
-              e.role.toLowerCase().contains(q),
+              e.role.toLowerCase().contains(q) ||
+              (e.email ?? '').toLowerCase().contains(q),
         )
         .toList();
   }
 
   Future<void> _onAdd() async {
+    if (_selectedIds.isEmpty) {
+      ToastHelper.error(context, message: 'Select employees to add.');
+      return;
+    }
+
+    setState(() => _saving = true);
+    final result = await bindings.managerLocationsService.addLocationMembers(
+      locationId: widget.location.id,
+      employeeIds: _selectedIds.toList(),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (!result.success) {
+      ToastHelper.error(
+        context,
+        message: result.message ?? 'Failed to assign employees.',
+      );
+      return;
+    }
+
     if (!widget.openSetupOnAdd) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
       return;
     }
 
     final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context);
+    Navigator.pop(context, true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!rootContext.mounted) return;
@@ -110,7 +183,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
                 child: Row(
                   children: [
                     Expanded(
@@ -121,7 +194,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                       ),
                     ),
                     ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context),
+                      onTap: () => Navigator.pop(context, false),
                       child: const Padding(
                         padding: EdgeInsets.all(8),
                         child: Icon(Icons.close, size: 22),
@@ -143,11 +216,9 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                     height: 16,
                   ),
                   havePrefixIcon: true,
-
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
-
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: Align(
@@ -159,31 +230,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                   ),
                 ),
               ),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  itemCount: people.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: kDividerColor),
-                  itemBuilder: (context, index) {
-                    final person = people[index];
-                    final selected = _selectedIds.contains(person.id);
-                    return _MemberTile(
-                      person: person,
-                      selected: selected,
-                      onTap: () {
-                        setState(() {
-                          if (selected) {
-                            _selectedIds.remove(person.id);
-                          } else {
-                            _selectedIds.add(person.id);
-                          }
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
+              Expanded(child: _buildList(people)),
               const Divider(height: 1, color: kDividerColor),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -197,6 +244,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                         backgroundColor: kWhite,
                         fontColor: kBlack,
                         outlineColor: kBorderColor,
+                        isactive: !_saving,
                         onTap: () async {
                           setState(() => _selectedIds.clear());
                         },
@@ -208,6 +256,8 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                       child: MyButton(
                         buttonText: 'Add',
                         backgroundColor: kPrimaryButtonColor,
+                        isactive: !_loading && !_saving,
+                        isLoadingExternally: _saving,
                         onTap: _onAdd,
                       ),
                     ),
@@ -218,6 +268,62 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildList(List<ManagerEmployeeModel> people) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppText.p1(_error!, color: kSubText, align: TextAlign.center),
+              const SizedBox(height: 12),
+              TextButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (people.isEmpty) {
+      return Center(
+        child: AppText.p1(
+          _query.trim().isEmpty
+              ? 'No employees found.'
+              : 'No employees match your search.',
+          color: kSubText,
+          align: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      itemCount: people.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: kDividerColor),
+      itemBuilder: (context, index) {
+        final person = people[index];
+        final selected = _selectedIds.contains(person.id);
+        return _MemberTile(
+          person: person,
+          selected: selected,
+          onTap: () {
+            setState(() {
+              if (selected) {
+                _selectedIds.remove(person.id);
+              } else {
+                _selectedIds.add(person.id);
+              }
+            });
+          },
+        );
+      },
     );
   }
 }
@@ -240,12 +346,12 @@ class _MemberTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ClipOval(
               child: CommonImageView(
-                imagePath: person.photoPath,
+                url: person.hasNetworkPhoto ? person.photo : null,
+                imagePath: person.hasNetworkPhoto ? null : person.photoPath,
                 height: 44,
                 width: 44,
                 fit: BoxFit.cover,
@@ -256,28 +362,31 @@ class _MemberTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppText.p2(
-                    person.name,
-                    color: kBlack,
-                    weight: FontWeight.w600,
-                    align: TextAlign.left,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 2),
                   Row(
-                    spacing: 4,
-                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
+                      Flexible(
+                        child: AppText.p2(
+                          person.name,
+                          color: kBlack,
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
                       if (person.badgeLabel != null) ...[
+                        const SizedBox(width: 6),
                         _RoleBadge(label: person.badgeLabel!),
                       ],
-                      AppText.caption(
-                        person.role,
-                        color: kGreyColor,
-                        align: TextAlign.left,
-                      ),
                     ],
+                  ),
+                  const SizedBox(height: 2),
+                  AppText.caption(
+                    person.role,
+                    color: kGreyColor,
+                    align: TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -298,20 +407,27 @@ class _RoleBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isManager = label.toLowerCase() == 'manager';
+    final value = label.toLowerCase();
+    final Color background;
+    final Color foreground;
+    if (value == 'manager') {
+      background = const Color(0xFFEDE7FF);
+      foreground = kPurple;
+    } else if (value == 'you') {
+      background = kPrimaryColor;
+      foreground = kWhite;
+    } else {
+      background = kPrimaryColor2.withOpacity(0.5);
+      foreground = kPrimaryColor;
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isManager
-            ? const Color(0xFFEDE7FF)
-            : kPrimaryColor2.withOpacity(0.5),
+        color: background,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: AppText.caption(
-        label,
-        color: isManager ? kPurple : kPrimaryColor,
-        weight: FontWeight.w600,
-      ),
+      child: AppText.caption(label, color: foreground, weight: FontWeight.w600),
     );
   }
 }

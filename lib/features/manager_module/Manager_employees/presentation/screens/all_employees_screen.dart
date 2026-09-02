@@ -13,6 +13,7 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/add_employee_sheet.da
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_profile_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/widgets/animated_searchbar.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -91,6 +92,9 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
       context,
       locations: locationsProvider.filterOptions,
       selectedId: _selectedLocationId,
+      onCreateLocation: () {
+        NewLocationSheet.show(context);
+      },
     );
     if (selected == null || !mounted) return;
     await _applyLocation(selected);

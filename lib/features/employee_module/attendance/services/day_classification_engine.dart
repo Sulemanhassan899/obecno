@@ -1,4 +1,4 @@
-enum DayCardType { holiday, worked, onLeave, weekend }
+enum DayCardType { holiday, worked, onLeave, weekend, absent }
 
 class HolidayInfo {
   final DateTime date;
@@ -25,6 +25,7 @@ class DayClassification {
   bool get isOnLeave => type == DayCardType.onLeave;
   bool get isWeekend => type == DayCardType.weekend;
   bool get isWorked => type == DayCardType.worked;
+  bool get isAbsent => type == DayCardType.absent;
 
   @override
   String toString() =>
@@ -70,6 +71,7 @@ class DayClassificationEngine {
     required Set<int> workingWeekdays,
     required Set<DateTime> attendanceDates,
     required List<HolidayInfo> holidays,
+    Set<DateTime> leaveDates = const {},
   }) {
     final dateOnly = DateTime(date.year, date.month, date.day);
 
@@ -87,10 +89,14 @@ class DayClassificationEngine {
       return DayClassification(date: dateOnly, type: DayCardType.weekend);
     }
 
+    if (leaveDates.contains(dateOnly)) {
+      return DayClassification(date: dateOnly, type: DayCardType.onLeave);
+    }
+
     final hasAttendance = attendanceDates.contains(dateOnly);
     return DayClassification(
       date: dateOnly,
-      type: hasAttendance ? DayCardType.worked : DayCardType.onLeave,
+      type: hasAttendance ? DayCardType.worked : DayCardType.absent,
     );
   }
 
@@ -99,6 +105,7 @@ class DayClassificationEngine {
     required Set<int> workingWeekdays,
     required Set<DateTime> attendanceDates,
     required List<HolidayInfo> holidays,
+    Set<DateTime> leaveDates = const {},
   }) {
     final monday = weekStart.subtract(
       Duration(days: weekStart.weekday - DateTime.monday),
@@ -112,6 +119,7 @@ class DayClassificationEngine {
         workingWeekdays: workingWeekdays,
         attendanceDates: attendanceDates,
         holidays: holidays,
+        leaveDates: leaveDates,
       );
     });
   }

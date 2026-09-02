@@ -27,6 +27,7 @@ import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
 
+import 'package:obecno/demo/monotonic_clock/presentation/monotonic_clock_demo_entry.dart';
 import 'package:obecno/widgets/check_in_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
@@ -662,10 +663,13 @@ class ClockScreenState extends State<ClockScreen>
   @override
   Widget build(BuildContext context) {
     if (!_clockStarted) {
-      return const Scaffold(backgroundColor: kbackground1, body: SizedBox.shrink());
+      return const MonotonicClockDemoEntry(
+        child: Scaffold(backgroundColor: kbackground1, body: SizedBox.shrink()),
+      );
     }
 
-    return Scaffold(
+    return MonotonicClockDemoEntry(
+      child: Scaffold(
       backgroundColor: kbackground1,
       body: Column(
         children: [
@@ -814,6 +818,7 @@ class ClockScreenState extends State<ClockScreen>
             ),
           ),
         ],
+      ),
       ),
     );
   }

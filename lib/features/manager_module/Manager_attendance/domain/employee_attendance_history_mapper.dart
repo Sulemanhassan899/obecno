@@ -19,20 +19,6 @@ class ManagerEmployeeHistoryMapper {
   ManagerEmployeeHistoryMapper._();
 
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
 
   static ManagerEmployeeHistoryMonth build({
     required DateTime month,
@@ -42,6 +28,7 @@ class ManagerEmployeeHistoryMapper {
     TimeOfDay? scheduledCheckIn,
     int graceMinutes = 0,
     TimeOfDay? scheduledCheckOut,
+    DateTime? joiningDate,
   }) {
     final monthStart = DateTime(month.year, month.month);
     final monthEnd = DateTime(month.year, month.month + 1, 0);
@@ -53,16 +40,55 @@ class ManagerEmployeeHistoryMapper {
               : monthEnd)
         : monthEnd;
 
+    var loopStart = monthStart;
+    if (joiningDate != null) {
+      final join = DateTime(
+        joiningDate.year,
+        joiningDate.month,
+        joiningDate.day,
+      );
+      if (loopStart.isBefore(join)) loopStart = join;
+    }
+
+    if (lastDay.isBefore(loopStart)) {
+      return const ManagerEmployeeHistoryMonth(
+        summary: MonthSummary(
+          workingDays: 0,
+          totalDays: 0,
+          absentOrLeaves: 0,
+          lateCheckIns: 0,
+          lateCheckOuts: 0,
+        ),
+        records: [],
+      );
+    }
+
     final byDate = <String, ManagerEmployeeAttendanceDay>{};
     final attendanceDates = <DateTime>{};
+    final leaveDates = <DateTime>{};
+    final mergedHolidays = [...holidays];
     for (final day in history) {
       final date = day.date;
       if (date == null) continue;
+      final dateOnly = DateTime(date.year, date.month, date.day);
       byDate[_key(date)] = day;
       if ((day.checkin ?? '').trim().isNotEmpty ||
           (day.checkout ?? '').trim().isNotEmpty ||
           day.details.isNotEmpty) {
-        attendanceDates.add(DateTime(date.year, date.month, date.day));
+        attendanceDates.add(dateOnly);
+      }
+      if (day.isHoliday) {
+        mergedHolidays.add(
+          HolidayInfo(
+            date: dateOnly,
+            name: (day.holidayName ?? '').trim().isEmpty
+                ? 'Public Holiday'
+                : day.holidayName!.trim(),
+          ),
+        );
+      }
+      if (day.isLeave) {
+        leaveDates.add(dateOnly);
       }
     }
 
@@ -74,7 +100,7 @@ class ManagerEmployeeHistoryMapper {
     var lateOuts = 0;
 
     for (
-      var day = monthStart;
+      var day = loopStart;
       !day.isAfter(lastDay);
       day = day.add(const Duration(days: 1))
     ) {
@@ -82,7 +108,8 @@ class ManagerEmployeeHistoryMapper {
         date: day,
         workingWeekdays: workingWeekdays,
         attendanceDates: attendanceDates,
-        holidays: holidays,
+        holidays: mergedHolidays,
+        leaveDates: leaveDates,
       );
 
       final punched = byDate[_key(day)];
@@ -135,6 +162,11 @@ class ManagerEmployeeHistoryMapper {
             totalWorking += 1;
             absent += 1;
             break;
+          case DayCardType.absent:
+            status = AttendanceDayStatus.absent;
+            totalWorking += 1;
+            absent += 1;
+            break;
           case DayCardType.worked:
             checkIn = TeamAttendanceMapper.formatTime(punched?.checkin);
             checkOut = TeamAttendanceMapper.formatTime(punched?.checkout);
@@ -174,55 +206,9 @@ class ManagerEmployeeHistoryMapper {
         lateCheckIns: lateIns,
         lateCheckOuts: lateOuts,
       ),
-      records: groupNonWorking(rawRecords),
+      records: AttendanceListGrouping.groupConsecutiveWeekends(rawRecords),
     );
   }
-
-  static List<AttendanceDayRecord> groupNonWorking(
-    List<AttendanceDayRecord> ascending,
-  ) {
-    final result = <AttendanceDayRecord>[];
-    var run = <AttendanceDayRecord>[];
-
-    void flush() {
-      if (run.isEmpty) return;
-      final start = run.first.date;
-      final end = run.last.date;
-      final hasHoliday = run.any(
-        (r) => r.status == AttendanceDayStatus.holiday,
-      );
-      final label = hasHoliday ? 'Holiday' : 'Weekend';
-      result.add(
-        AttendanceDayRecord(
-          day: end.day,
-          weekday: '',
-          date: end,
-          status: hasHoliday
-              ? AttendanceDayStatus.holiday
-              : AttendanceDayStatus.weekend,
-          weekendLabel: '$label, ${_formatDate(start)} - ${_formatDate(end)}',
-        ),
-      );
-      run = [];
-    }
-
-    for (final record in ascending) {
-      final isNonWorking =
-          record.status == AttendanceDayStatus.weekend ||
-          record.status == AttendanceDayStatus.holiday;
-      if (isNonWorking) {
-        run.add(record);
-      } else {
-        flush();
-        result.add(record);
-      }
-    }
-    flush();
-    return result.reversed.toList();
-  }
-
-  static String _formatDate(DateTime date) =>
-      '${date.day} ${_months[date.month - 1]} ${date.year}';
 
   static String _key(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

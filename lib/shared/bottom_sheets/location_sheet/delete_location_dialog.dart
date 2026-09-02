@@ -121,7 +121,7 @@ class DeleteLocationDialog {
                   backgroundColor: kredColor,
                   onTap: () async => Navigator.pop(
                     dialogContext,
-                    DeleteLocationAction.deactivate,
+                    DeleteLocationAction.delete,
                   ),
                 ),
                 const SizedBox(height: 20),

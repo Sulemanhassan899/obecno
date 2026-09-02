@@ -66,7 +66,11 @@ class ManagerAttendanceFilters {
     if (StatusFilterOption.sameFamily(id, 'present')) return item.hasCheckIn;
     if (StatusFilterOption.sameFamily(id, 'working')) return item.isActive;
     if (StatusFilterOption.sameFamily(id, 'break')) return item.isOnBreak;
-    if (StatusFilterOption.sameFamily(id, 'late')) return item.isLate;
+    if (StatusFilterOption.sameFamily(id, 'late')) {
+      return item.isLate ||
+          StatusFilterOption.sameFamily(item.status ?? '', 'late') ||
+          StatusFilterOption.sameFamily(item.statusLabel ?? '', 'late');
+    }
     if (StatusFilterOption.sameFamily(id, 'leave')) return item.isOnLeave;
     if (StatusFilterOption.sameFamily(id, 'absent')) return item.isAbsent;
     if (StatusFilterOption.sameFamily(id, 'early_checkout')) {

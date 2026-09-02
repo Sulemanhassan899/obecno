@@ -1,3 +1,5 @@
+import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,7 +39,7 @@ void main() {
       expect(result.holidayName, 'Independence');
     });
 
-    test('marks worked vs on leave', () {
+    test('marks worked vs absent', () {
       final day = DateTime(2026, 8, 17); // Monday
       final worked = DayClassificationEngine.classifyDay(
         date: day,
@@ -45,14 +47,58 @@ void main() {
         attendanceDates: {DateTime(2026, 8, 17)},
         holidays: const [],
       );
-      final leave = DayClassificationEngine.classifyDay(
+      final absent = DayClassificationEngine.classifyDay(
         date: day,
         workingWeekdays: working,
         attendanceDates: {},
         holidays: const [],
       );
       expect(worked.type, DayCardType.worked);
-      expect(leave.type, DayCardType.onLeave);
+      expect(absent.type, DayCardType.absent);
+    });
+
+    test('marks approved leave separately from absent', () {
+      final day = DateTime(2026, 8, 17);
+      final result = DayClassificationEngine.classifyDay(
+        date: day,
+        workingWeekdays: working,
+        attendanceDates: {},
+        holidays: const [],
+        leaveDates: {DateTime(2026, 8, 17)},
+      );
+      expect(result.type, DayCardType.onLeave);
+    });
+  });
+
+  group('AttendanceListGrouping', () {
+    test('keeps holidays as their own cards and only groups weekends', () {
+      final grouped = AttendanceListGrouping.groupConsecutiveWeekends([
+        AttendanceDayRecord(
+          day: 14,
+          weekday: 'Fri',
+          date: DateTime(2026, 8, 14),
+          status: AttendanceDayStatus.holiday,
+          weekendLabel: 'National Day',
+        ),
+        AttendanceDayRecord(
+          day: 15,
+          weekday: 'Sat',
+          date: DateTime(2026, 8, 15),
+          status: AttendanceDayStatus.weekend,
+        ),
+        AttendanceDayRecord(
+          day: 16,
+          weekday: 'Sun',
+          date: DateTime(2026, 8, 16),
+          status: AttendanceDayStatus.weekend,
+        ),
+      ]);
+
+      expect(grouped, hasLength(2));
+      expect(grouped.last.status, AttendanceDayStatus.holiday);
+      expect(grouped.last.weekendLabel, 'National Day');
+      expect(grouped.first.status, AttendanceDayStatus.weekend);
+      expect(grouped.first.weekendLabel, 'Weekend, 15 Aug 2026 - 16 Aug 2026');
     });
   });
 }

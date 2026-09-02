@@ -2,24 +2,48 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 
 class WorkingDaysSheet {
   WorkingDaysSheet._();
 
-  static Future<void> show(BuildContext context) {
-    return showModalBottomSheet<void>(
+  static Future<LocationSchedule?> show(
+    BuildContext context, {
+    int? userId,
+    String? employeeName,
+    String? locationId,
+    LocationSchedule? schedule,
+  }) {
+    return showModalBottomSheet<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _WorkingDaysSheetBody(),
+      builder: (_) => _WorkingDaysSheetBody(
+        userId: userId,
+        employeeName: employeeName,
+        locationId: locationId,
+        schedule: schedule,
+      ),
     );
   }
 }
 
 class _WorkingDaysSheetBody extends StatefulWidget {
-  const _WorkingDaysSheetBody();
+  const _WorkingDaysSheetBody({
+    this.userId,
+    this.employeeName,
+    this.locationId,
+    this.schedule,
+  });
+
+  final int? userId;
+  final String? employeeName;
+  final String? locationId;
+  final LocationSchedule? schedule;
 
   @override
   State<_WorkingDaysSheetBody> createState() => _WorkingDaysSheetBodyState();
@@ -46,12 +70,61 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
   String _initialHoursInWeek = '40:00';
   String _hoursInDay = '08:00';
   String _initialHoursInDay = '08:00';
+  bool _saving = false;
+  bool _loading = false;
+  LocationSchedule _baseSchedule = LocationSchedule.defaults;
 
   @override
   void initState() {
     super.initState();
-    _selectedDays = {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'};
+    _applySchedule(widget.schedule ?? LocationSchedule.defaults);
+    _load();
+  }
+
+  void _applySchedule(LocationSchedule schedule) {
+    _baseSchedule = schedule;
+    _selectedDays = Set<String>.from(schedule.workingDays);
     _initialDays = Set.from(_selectedDays);
+    _workingWeekEnabled = schedule.workingWeekEnabled;
+    _initialWorkingWeekEnabled = schedule.workingWeekEnabled;
+    _startDay = schedule.weekStartDay;
+    _initialStartDay = schedule.weekStartDay;
+    _hoursInWeek = schedule.hoursPerWeek;
+    _initialHoursInWeek = schedule.hoursPerWeek;
+    _hoursInDay = schedule.hoursPerDay;
+    _initialHoursInDay = schedule.hoursPerDay;
+  }
+
+  Future<void> _load() async {
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _loading = true);
+      final result = await bindings.managerLocationsService.loadLocationSchedule(
+        locationId: locationId,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (result.success && result.data != null) {
+          _applySchedule(result.data!);
+        }
+        _loading = false;
+      });
+      return;
+    }
+
+    final userId = widget.userId;
+    if (userId == null) return;
+    setState(() => _loading = true);
+    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
+      userId: userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (result.success && result.data != null) {
+        _applySchedule(result.data!);
+      }
+      _loading = false;
+    });
   }
 
   void _reset() {
@@ -64,7 +137,119 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     });
   }
 
+  LocationSchedule get _currentSchedule {
+    return _baseSchedule.copyWith(
+      workingDays: Set<String>.from(_selectedDays),
+      weekStartDay: _startDay,
+      hoursPerDay: _hoursInDay,
+      hoursPerWeek: _hoursInWeek,
+      workingWeekEnabled: _workingWeekEnabled,
+    );
+  }
+
+  bool _sameDays(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    final normalized = b.map((day) => day.trim().toLowerCase()).toSet();
+    for (final day in a) {
+      if (!normalized.contains(day.trim().toLowerCase())) return false;
+    }
+    return true;
+  }
+
   Future<void> _save() async {
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _saving = true);
+      final next = _currentSchedule;
+      final result = await bindings.managerLocationsService
+          .updateLocationSchedule(locationId: locationId, schedule: next);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (!result.success) {
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to save working days.',
+        );
+        return;
+      }
+      final saved = result.data ?? next;
+      _applySchedule(saved);
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.pop(context, saved);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!rootContext.mounted) return;
+        ToastHelper.changesSaved(rootContext);
+      });
+      return;
+    }
+
+    if (widget.userId != null) {
+      if (_selectedDays.isEmpty) {
+        ToastHelper.error(
+          context,
+          message: 'Select at least one working day.',
+        );
+        return;
+      }
+      setState(() => _saving = true);
+      final next = _currentSchedule;
+      final result = await bindings.managerEmployeesService
+          .updateEmployeePermissions(
+            userId: widget.userId!,
+            payload: {
+              ...ManagerEmployeePolicy.workingDaysPermissionPayload(
+                workingDays: _selectedDays,
+                weekStartDay: _startDay,
+                hoursPerDay: _hoursInDay,
+                hoursPerWeek: _hoursInWeek,
+                workingWeekEnabled: _workingWeekEnabled,
+              ),
+              ...next.writePayload(),
+            },
+          );
+      if (!mounted) return;
+      if (!result.success) {
+        setState(() => _saving = false);
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to save working days.',
+        );
+        return;
+      }
+
+      final verify = await bindings.managerEmployeesService
+          .loadEmployeeSchedule(userId: widget.userId!);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (!verify.success || verify.data == null) {
+        ToastHelper.error(
+          context,
+          message:
+              verify.message ?? 'Working days update could not be confirmed.',
+        );
+        return;
+      }
+      final saved = verify.data!;
+      if (!_sameDays(saved.workingDays, _selectedDays) ||
+          saved.weekStartDay.trim().toLowerCase() !=
+              _startDay.trim().toLowerCase() ||
+          saved.workingWeekEnabled != _workingWeekEnabled) {
+        ToastHelper.error(
+          context,
+          message: 'Working days did not persist. Please try again.',
+        );
+        return;
+      }
+      _applySchedule(saved);
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.pop(context, saved);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!rootContext.mounted) return;
+        ToastHelper.changesSaved(rootContext);
+      });
+      return;
+    }
+
     _initialDays = Set.from(_selectedDays);
     _initialWorkingWeekEnabled = _workingWeekEnabled;
     _initialStartDay = _startDay;
@@ -72,7 +257,7 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     _initialHoursInDay = _hoursInDay;
 
     final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context);
+    Navigator.pop(context, _currentSchedule);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!rootContext.mounted) return;
       ToastHelper.changesSaved(rootContext);
@@ -198,14 +383,19 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
             Expanded(
               child: Container(
                 color: kbackground2,
-                child: ListView(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   children: [
                     SizedBox(height: 10),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: AppText.p1(
-                        'Set working days for this location.',
+                        widget.employeeName != null &&
+                                widget.employeeName!.trim().isNotEmpty
+                            ? 'Set working days for ${widget.employeeName!.trim()}.'
+                            : 'Set working days for this ${widget.userId != null ? 'employee' : 'location'}.',
                         color: kGreyColor,
                         align: TextAlign.left,
                       ),
@@ -334,14 +524,16 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: MyButton(
-                      buttonText: 'Save',
-                      backgroundColor: kPrimaryButtonColor,
-                      onTap: _save,
+                    Expanded(
+                      flex: 4,
+                      child: MyButton(
+                        buttonText: 'Save',
+                        backgroundColor: kPrimaryButtonColor,
+                        isactive: !_saving && !_loading,
+                        isLoadingExternally: _saving,
+                        onTap: _save,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

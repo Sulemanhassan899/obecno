@@ -1,6 +1,7 @@
 import 'package:obecno/core/api/constants.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/auth/data/models/auth_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 
 class ManagerLocationModel {
   const ManagerLocationModel({
@@ -19,6 +20,7 @@ class ManagerLocationModel {
     this.isDefault = false,
     this.isActive = true,
     this.allowCheckinAnywhere = false,
+    this.schedule,
   });
 
   final String id;
@@ -36,6 +38,9 @@ class ManagerLocationModel {
   final bool isDefault;
   final bool isActive;
   final bool allowCheckinAnywhere;
+  final LocationSchedule? schedule;
+
+  LocationSchedule get policy => schedule ?? LocationSchedule.defaults;
 
   bool get hasNetworkImage =>
       image != null && image!.isNotEmpty && image!.startsWith('http');
@@ -77,7 +82,7 @@ class ManagerLocationModel {
       lateCheckIns: _asInt(
         json['late_check_ins'] ?? json['lateCheckIns'] ?? json['late'],
       ),
-      createdBy: _asString(json['created_by'] ?? json['createdBy']),
+      createdBy: _personName(json['created_by'] ?? json['createdBy']),
       createdAt: _formatDate(json['created_at'] ?? json['createdAt']),
       radiusMeters: _asIntOrNull(
         json['radius_meters'] ?? json['radius'] ?? json['geofence_radius'],
@@ -85,6 +90,7 @@ class ManagerLocationModel {
       isDefault: _asBool(json['is_default'] ?? json['isDefault']),
       isActive: _asBool(json['is_active'], fallback: true),
       allowCheckinAnywhere: _asBool(json['allow_checkin_anywhere']),
+      schedule: LocationSchedule.tryParse(json),
     );
   }
 
@@ -127,6 +133,7 @@ class ManagerLocationModel {
     bool? isDefault,
     bool? isActive,
     bool? allowCheckinAnywhere,
+    LocationSchedule? schedule,
   }) {
     return ManagerLocationModel(
       id: id ?? this.id,
@@ -144,6 +151,7 @@ class ManagerLocationModel {
       isDefault: isDefault ?? this.isDefault,
       isActive: isActive ?? this.isActive,
       allowCheckinAnywhere: allowCheckinAnywhere ?? this.allowCheckinAnywhere,
+      schedule: schedule ?? this.schedule,
     );
   }
 }
@@ -190,6 +198,16 @@ bool _asBool(dynamic raw, {bool fallback = false}) {
 }
 
 String _asString(dynamic raw) => raw?.toString().trim() ?? '';
+
+String _personName(dynamic raw) {
+  if (raw == null) return '';
+  if (raw is Map) {
+    return _asString(
+      raw['name'] ?? raw['full_name'] ?? raw['title'] ?? raw['email'],
+    );
+  }
+  return _asString(raw);
+}
 
 String? _asNullableString(dynamic raw) {
   if (raw == null) return null;

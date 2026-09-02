@@ -10,6 +10,7 @@ import 'package:obecno/features/manager_module/Manager_employees/data/models/man
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 
 class ManagerEmployeesService {
   ManagerEmployeesService(
@@ -260,6 +261,59 @@ class ManagerEmployeesService {
             fromSchedule?.locationName,
       ),
       statusCode: profile.statusCode ?? permissions.statusCode,
+    );
+  }
+
+  Future<ApiResponse<LocationSchedule>> loadEmployeeSchedule({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final profileFuture = _repository.getEmployeeProfile(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final permissionsFuture = _repository.getEmployeePermissions(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final dedicatedFuture = _repository.getEmployeeSchedule(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final profile = await profileFuture;
+    final permissions = await permissionsFuture;
+    final dedicated = await dedicatedFuture;
+
+    Map<String, dynamic>? scheduleJson;
+    if (dedicated.success && dedicated.data != null) {
+      scheduleJson = dedicated.data!.toJson();
+    } else if (profile.data?.schedule != null) {
+      scheduleJson = profile.data!.schedule;
+    }
+
+    final merged = LocationSchedule.fromEmployeeSources(
+      schedule: scheduleJson,
+      permissionItems: permissions.data,
+    );
+    final hasSource =
+        dedicated.success ||
+        (profile.data?.schedule != null) ||
+        (permissions.success && (permissions.data?.isNotEmpty ?? false));
+    if (!hasSource) {
+      return ApiResponse.failure(
+        dedicated.message ??
+            permissions.message ??
+            profile.message ??
+            'Failed to load schedule.',
+        statusCode:
+            dedicated.statusCode ??
+            permissions.statusCode ??
+            profile.statusCode,
+      );
+    }
+    return ApiResponse.success(
+      merged,
+      statusCode: dedicated.statusCode ?? profile.statusCode,
     );
   }
 

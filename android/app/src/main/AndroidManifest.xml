@@ -3,8 +3,6 @@
     <!-- Location / motion for clock-in geofence -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <!-- Only request background location if product requires clock while app is killed.
-         Kept for existing clock monitoring; remove if Play policy rejects. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -12,11 +10,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <!-- Camera for manager employee photo updates and employee self-photo. -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- Photo picker on modern Android uses the system picker; legacy storage
-         kept for older devices only (maxSdkVersion). -->
-    <uses-permission
+   <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
 
@@ -24,7 +19,8 @@
         android:label="obecno"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

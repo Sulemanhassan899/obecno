@@ -12,6 +12,7 @@ import 'package:obecno/features/employee_module/more/data/models/device_model.da
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 
 class ManagerEmployeesRepository extends BaseRepository {
   ManagerEmployeesRepository(super.apiClient);
@@ -597,6 +598,37 @@ class ManagerEmployeesRepository extends BaseRepository {
     return write;
   }
 
+  Future<ApiResponse<LocationSchedule>> getEmployeeSchedule({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) {
+    return getRequest<LocationSchedule>(
+      ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+      queryParameters: {'user_id': userId},
+      cancelToken: cancelToken,
+      parser: (json) {
+        final parsed =
+            LocationSchedule.tryParse(json) ??
+            LocationSchedule.tryParse(
+              _extractData(
+                json,
+                fallbackKeys: const [
+                  'schedule',
+                  'attendance',
+                  'check_in',
+                  'check_in_time',
+                  'working_days',
+                ],
+              ),
+            );
+        if (parsed == null) {
+          throw const FormatException('Employee schedule was empty.');
+        }
+        return parsed;
+      },
+    );
+  }
+
   Future<ApiResponse<String>> updateEmployeeSchedule({
     required int userId,
     required Map<String, dynamic> payload,
@@ -615,7 +647,7 @@ class ManagerEmployeesRepository extends BaseRepository {
       path: ManagerEmployeeApiEndpoints.employeePermissions(userId),
       payload: body,
       cancelToken: cancelToken,
-      methods: const ['PUT', 'PATCH', 'POST'],
+      methods: const ['PATCH', 'PUT', 'POST'],
       fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeePermissions,
       fallbackQuery: {'user_id': userId},
     );
@@ -732,21 +764,33 @@ class ManagerEmployeesRepository extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) async {
     final body = {'user_id': userId, ...payload};
-    var write = await _mutate(
-      path: ManagerEmployeeApiEndpoints.employeePermissions(userId),
+    final path = ManagerEmployeeApiEndpoints.employeePermissions(userId);
+
+    var write = await _send(
+      method: 'PATCH',
+      path: path,
       payload: body,
       cancelToken: cancelToken,
-      methods: const ['PUT', 'PATCH', 'POST'],
-      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeePermissions,
-      fallbackQuery: {'user_id': userId},
     );
     if (_isHttpOk(write) || _isClientError(write)) return write;
 
-    return _mutate(
-      path: ManagerEmployeeApiEndpoints.employeeSchedule(userId),
-      payload: body,
+    final status = write.statusCode;
+    if (status == 404 || status == 405 || status == 501) {
+      write = await _send(
+        method: 'PUT',
+        path: path,
+        payload: body,
+        cancelToken: cancelToken,
+      );
+      if (_isHttpOk(write) || _isClientError(write)) return write;
+    }
+
+    return postRequest<String>(
+      ManagerEmployeeApiEndpoints.legacyEmployeePermissionsUpdate,
+      data: body,
+      queryParameters: {'user_id': userId},
       cancelToken: cancelToken,
-      methods: const ['PUT', 'PATCH', 'POST'],
+      parser: _parseWriteAck,
     );
   }
 
@@ -1071,9 +1115,43 @@ class ManagerEmployeesRepository extends BaseRepository {
     if (json is Map) {
       final map = Map<String, dynamic>.from(json);
       final inner = map['data'] ?? map;
-      return PermissionItemModel.listFromEnvelope(inner);
+      final items = PermissionItemModel.listFromEnvelope(inner);
+      final overridden = _employeeOverriddenKeys(map, inner);
+      if (overridden.isEmpty) return items;
+      return [
+        for (final item in items)
+          if (overridden.contains(item.key) && !item.hasEmployeeLevel)
+            PermissionItemModel.fromJson({
+              ...item.toJson(),
+              'source_level': 'employee',
+              'is_override': true,
+              'employee_value':
+                  (item.employeeValue ?? item.value)?.toString(),
+            })
+          else
+            item,
+      ];
     }
     return PermissionItemModel.listFromEnvelope(json);
+  }
+
+  Set<String> _employeeOverriddenKeys(dynamic outer, dynamic inner) {
+    final keys = <String>{};
+    void take(dynamic raw) {
+      if (raw is! List) return;
+      for (final item in raw) {
+        final value = item?.toString().trim();
+        if (value != null && value.isNotEmpty) keys.add(value);
+      }
+    }
+
+    if (outer is Map) {
+      take(outer['employee_overridden_keys']);
+    }
+    if (inner is Map) {
+      take(inner['employee_overridden_keys']);
+    }
+    return keys;
   }
 
   List<HolidayInfo> _parseHolidays(dynamic json) {

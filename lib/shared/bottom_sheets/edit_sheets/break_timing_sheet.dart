@@ -3,6 +3,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -10,20 +11,24 @@ import 'package:flutter/material.dart';
 class BreakTimingSheet {
   BreakTimingSheet._();
 
-  static Future<void> show(
+  static Future<LocationSchedule?> show(
     BuildContext context, {
     int? userId,
     String? employeeName,
+    String? locationId,
+    LocationSchedule? schedule,
     String? maxBreak,
     bool? trackLocation,
   }) {
-    return showModalBottomSheet<void>(
+    return showModalBottomSheet<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _BreakTimingSheetBody(
         userId: userId,
         employeeName: employeeName,
+        locationId: locationId,
+        schedule: schedule,
         maxBreak: maxBreak,
         trackLocation: trackLocation,
       ),
@@ -35,12 +40,16 @@ class _BreakTimingSheetBody extends StatefulWidget {
   const _BreakTimingSheetBody({
     this.userId,
     this.employeeName,
+    this.locationId,
+    this.schedule,
     this.maxBreak,
     this.trackLocation,
   });
 
   final int? userId;
   final String? employeeName;
+  final String? locationId;
+  final LocationSchedule? schedule;
   final String? maxBreak;
   final bool? trackLocation;
 
@@ -54,6 +63,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
   bool _trackLocation = true;
   bool _initialTrackLocation = true;
   bool _saving = false;
+  bool _loading = false;
+  LocationSchedule _baseSchedule = LocationSchedule.defaults;
 
   static const _durationOptions = [
     '30:00 mins',
@@ -65,26 +76,51 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
   @override
   void initState() {
     super.initState();
-    _maxBreak = widget.maxBreak ?? _maxBreak;
-    _trackLocation = widget.trackLocation ?? _trackLocation;
+    final seeded = widget.schedule ?? LocationSchedule.defaults;
+    _applySchedule(seeded);
+    if (widget.maxBreak != null) _maxBreak = widget.maxBreak!;
+    if (widget.trackLocation != null) _trackLocation = widget.trackLocation!;
     _initialMaxBreak = _maxBreak;
     _initialTrackLocation = _trackLocation;
     _load();
   }
 
+  void _applySchedule(LocationSchedule schedule) {
+    _baseSchedule = schedule;
+    _maxBreak = schedule.breakLabel;
+    _trackLocation = schedule.breakLocationTracking;
+    _initialMaxBreak = _maxBreak;
+    _initialTrackLocation = _trackLocation;
+  }
+
   Future<void> _load() async {
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _loading = true);
+      final result = await bindings.managerLocationsService
+          .loadLocationSchedule(locationId: locationId);
+      if (!mounted) return;
+      setState(() {
+        if (result.success && result.data != null) {
+          _applySchedule(result.data!);
+        }
+        _loading = false;
+      });
+      return;
+    }
+
     final userId = widget.userId;
     if (userId == null) return;
-    final result = await bindings.managerEmployeesService.loadEmployeePolicy(
+    setState(() => _loading = true);
+    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
       userId: userId,
     );
-    if (!mounted || !result.success || result.data == null) return;
-    final policy = result.data!;
+    if (!mounted) return;
     setState(() {
-      _maxBreak = policy.breakLabel;
-      _trackLocation = policy.breakLocationTracking;
-      _initialMaxBreak = _maxBreak;
-      _initialTrackLocation = _trackLocation;
+      if (result.success && result.data != null) {
+        _applySchedule(result.data!);
+      }
+      _loading = false;
     });
   }
 
@@ -95,12 +131,45 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
     });
   }
 
+  LocationSchedule get _currentSchedule {
+    return _baseSchedule.copyWith(
+      maxBreakMinutes: ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60,
+      breakLocationTracking: _trackLocation,
+    );
+  }
+
   Future<void> _save() async {
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      setState(() => _saving = true);
+      final next = _currentSchedule;
+      final result = await bindings.managerLocationsService
+          .updateLocationSchedule(locationId: locationId, schedule: next);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      if (!result.success) {
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to save break timing.',
+        );
+        return;
+      }
+      final saved = result.data ?? next;
+      _applySchedule(saved);
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.pop(context, saved);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!rootContext.mounted) return;
+        ToastHelper.changesSaved(rootContext);
+      });
+      return;
+    }
+
     if (widget.userId != null) {
       setState(() => _saving = true);
-      final minutes = ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60;
       final wantedBreak = _maxBreak;
       final wantedTracking = _trackLocation;
+      final next = _currentSchedule;
       final result = await bindings.managerEmployeesService
           .updateEmployeePermissions(
             userId: widget.userId!,
@@ -109,7 +178,7 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                 breakLabel: wantedBreak,
                 trackLocation: wantedTracking,
               ),
-              'max_break_minutes': minutes,
+              ...next.writePayload(),
             },
           );
       if (!mounted) return;
@@ -122,9 +191,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
         return;
       }
 
-      final verify = await bindings.managerEmployeesService.loadEmployeePolicy(
-        userId: widget.userId!,
-      );
+      final verify = await bindings.managerEmployeesService
+          .loadEmployeeSchedule(userId: widget.userId!);
       if (!mounted) return;
       setState(() => _saving = false);
       if (!verify.success || verify.data == null) {
@@ -134,17 +202,16 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
         );
         return;
       }
-      final policy = verify.data!;
-      if (policy.breakLabel != wantedBreak ||
-          policy.breakLocationTracking != wantedTracking) {
+      final saved = verify.data!;
+      if (saved.breakLabel != wantedBreak ||
+          saved.breakLocationTracking != wantedTracking) {
         ToastHelper.error(
           context,
           message: 'Break timing did not persist. Please try again.',
         );
         return;
       }
-      _maxBreak = policy.breakLabel;
-      _trackLocation = policy.breakLocationTracking;
+      _applySchedule(saved);
     }
 
     _initialMaxBreak = _maxBreak;
@@ -271,7 +338,9 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
             Expanded(
               child: Container(
                 color: kbackground2,
-                child: ListView(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   children: [
                     Padding(
@@ -399,7 +468,7 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
                       buttonText: 'Save',
                       backgroundColor: kPrimaryButtonColor,
                       isLoadingExternally: _saving,
-                      isactive: !_saving,
+                      isactive: !_saving && !_loading,
                       onTap: _save,
                     ),
                   ),
