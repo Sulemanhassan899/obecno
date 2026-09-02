@@ -44,68 +44,7 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   List<AttendanceDayRecord> get processedRecords {
     final ascending = List<AttendanceDayRecord>.from(_controller.records)
       ..sort((a, b) => a.date.compareTo(b.date));
-
-    final List<AttendanceDayRecord> result = [];
-    // Collect consecutive non-working days (weekend/holiday) to group them.
-    List<AttendanceDayRecord> nonWorkingRun = [];
-
-    void flushNonWorkingRun() {
-      if (nonWorkingRun.isEmpty) return;
-      final start = nonWorkingRun.first.date;
-      final end = nonWorkingRun.last.date;
-      // Determine the label based on whether these are holidays or weekends.
-      final hasHoliday = nonWorkingRun.any(
-        (r) => r.status == AttendanceDayStatus.holiday,
-      );
-      final label = hasHoliday ? 'Holiday' : 'Weekend';
-      result.add(
-        AttendanceDayRecord(
-          day: end.day,
-          weekday: '',
-          date: end,
-          status: AttendanceDayStatus.weekend,
-          weekendLabel: "$label, ${_formatDate(start)} - ${_formatDate(end)}",
-        ),
-      );
-      nonWorkingRun.clear();
-    }
-
-    for (final record in ascending) {
-      final isNonWorking =
-          record.status == AttendanceDayStatus.weekend ||
-          record.status == AttendanceDayStatus.holiday;
-
-      if (isNonWorking) {
-        // Accumulate consecutive non-working days.
-        nonWorkingRun.add(record);
-      } else {
-        // Flush any accumulated non-working days before this working day.
-        flushNonWorkingRun();
-        result.add(record);
-      }
-    }
-    // Flush any trailing non-working days.
-    flushNonWorkingRun();
-
-    return result.reversed.toList();
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    return "${date.day} ${months[date.month - 1]} ${date.year}";
+    return AttendanceListGrouping.groupConsecutiveWeekends(ascending);
   }
 
   String _formatFullWeekdayDate(DateTime date) {
@@ -194,8 +133,9 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   }
 
   void _onDayTap(AttendanceDayRecord record) {
-    // 1. On Leave -> DO NOT open any bottom sheet
+    // 1. Absent / On Leave -> DO NOT open any bottom sheet
     if (record.status == AttendanceDayStatus.onLeave ||
+        record.status == AttendanceDayStatus.absent ||
         record.checkIn == "Leave" ||
         record.checkOut == "Leave") {
       return;

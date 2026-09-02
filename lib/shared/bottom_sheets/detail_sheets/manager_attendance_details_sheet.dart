@@ -402,6 +402,14 @@ class _ManagerAttendanceDetailsSheetBodyState
   Timer? _hoursTimer;
   AddAttendanceSaveResult? _savedResult;
 
+  DateTime? _joiningDateFor(int? userId) {
+    if (userId == null) return null;
+    for (final member in bindings.managerEmployeesProvider.members) {
+      if (member.userId == userId) return member.joiningDate;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -479,6 +487,7 @@ class _ManagerAttendanceDetailsSheetBodyState
       userId: _data.userId,
       role: _data.role,
       photo: _data.photo,
+      joiningDate: _joiningDateFor(_data.userId),
     );
   }
 

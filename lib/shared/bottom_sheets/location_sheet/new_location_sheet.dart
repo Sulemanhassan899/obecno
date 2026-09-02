@@ -1,7 +1,10 @@
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/demo/manager_location_model.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -29,6 +32,7 @@ class _NewLocationSheetBody extends StatefulWidget {
 
 class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
   final _nameController = TextEditingController();
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -38,26 +42,35 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
 
   Future<void> _onCreate() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      ToastHelper.error(context, message: 'Enter an office / location name.');
+      return;
+    }
+
+    setState(() => _saving = true);
+    final result = await bindings.managerLocationsService.createLocation(
+      name: name,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (!result.success || result.data == null) {
+      ToastHelper.error(
+        context,
+        message: result.message ?? 'Failed to create location.',
+      );
+      return;
+    }
+
+    final location = result.data!;
+    context.read<ManagerLocationsProvider>().refresh();
 
     final rootContext = Navigator.of(context, rootNavigator: true).context;
     Navigator.pop(context);
 
-    final location = ManagerLocationModel(
-      id: 'loc_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      address: 'Address pending setup',
-      present: 0,
-      total: 0,
-      lateCheckIns: 0,
-    );
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!rootContext.mounted) return;
-      AddMembersSheet.show(
-        rootContext,
-        location: location,
-      );
+      AddMembersSheet.show(rootContext, location: location);
     });
   }
 
@@ -126,6 +139,7 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
                         backgroundColor: kWhite,
                         fontColor: kBlack,
                         outlineColor: kBorderColor,
+                        isactive: !_saving,
                         onTap: () async => _nameController.clear(),
                       ),
                     ),
@@ -135,6 +149,8 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
                       child: MyButton(
                         buttonText: 'Create',
                         backgroundColor: kPrimaryButtonColor,
+                        isactive: !_saving,
+                        isLoadingExternally: _saving,
                         onTap: _onCreate,
                       ),
                     ),

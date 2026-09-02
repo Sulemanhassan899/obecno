@@ -4,6 +4,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/employee_location_assignment.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/confirm_location_change_dialog.dart';
@@ -11,6 +12,9 @@ import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_shee
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+
+export 'package:obecno/features/manager_module/Manager_employees/domain/employee_location_assignment.dart'
+    show EmployeeLocationsSheetMode;
 
 class EmployeeDefaultLocationsSheet {
   EmployeeDefaultLocationsSheet._();
@@ -21,6 +25,7 @@ class EmployeeDefaultLocationsSheet {
     int? userId,
     String? initialDefaultId,
     Set<String>? initialSelectedIds,
+    EmployeeLocationsSheetMode mode = EmployeeLocationsSheetMode.assigned,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -31,6 +36,7 @@ class EmployeeDefaultLocationsSheet {
         userId: userId,
         initialDefaultId: initialDefaultId,
         initialSelectedIds: initialSelectedIds,
+        mode: mode,
       ),
     );
   }
@@ -42,12 +48,14 @@ class _EmployeeDefaultLocationsSheetBody extends StatefulWidget {
     this.userId,
     this.initialDefaultId,
     this.initialSelectedIds,
+    this.mode = EmployeeLocationsSheetMode.assigned,
   });
 
   final String employeeName;
   final int? userId;
   final String? initialDefaultId;
   final Set<String>? initialSelectedIds;
+  final EmployeeLocationsSheetMode mode;
 
   @override
   State<_EmployeeDefaultLocationsSheetBody> createState() =>
@@ -59,9 +67,13 @@ class _EmployeeDefaultLocationsSheetBodyState
   List<LocationFilterOption> _locations = const [];
   Set<String> _selectedIds = {};
   String _defaultId = '';
+  String _loadedDefaultId = '';
   bool _loading = true;
   String? _error;
   bool _saving = false;
+
+  bool get _isDefaultMode =>
+      widget.mode == EmployeeLocationsSheetMode.defaultLocation;
 
   @override
   void initState() {
@@ -111,8 +123,8 @@ class _EmployeeDefaultLocationsSheetBodyState
       setState(() {
         _locations = company;
         _selectedIds = selected;
-        // Default badge is driven only by backend — never by local selection.
         _defaultId = defaultId;
+        _loadedDefaultId = defaultId;
         _loading = false;
       });
     } catch (_) {
@@ -126,6 +138,10 @@ class _EmployeeDefaultLocationsSheetBodyState
 
   void _toggleSelection(String id) {
     setState(() {
+      if (_isDefaultMode) {
+        _defaultId = id;
+        return;
+      }
       if (_selectedIds.contains(id)) {
         _selectedIds.remove(id);
       } else {
@@ -134,18 +150,47 @@ class _EmployeeDefaultLocationsSheetBodyState
     });
   }
 
+  EmployeeLocationSavePayload _payload() {
+    if (_isDefaultMode) {
+      return EmployeeLocationSavePayload.fromDefault(
+        assignedIds: _selectedIds,
+        newDefaultId: _defaultId,
+      );
+    }
+    return EmployeeLocationSavePayload.fromAssigned(
+      selectedIds: _selectedIds,
+      currentDefaultId: _defaultId,
+    );
+  }
+
   Future<void> _save() async {
+    if (_isDefaultMode) {
+      if (_defaultId.trim().isEmpty) {
+        ToastHelper.error(context, message: 'Select a default location.');
+        return;
+      }
+    } else if (_selectedIds.isEmpty) {
+      ToastHelper.error(context, message: 'Select at least one location.');
+      return;
+    }
+
+    final payload = _payload();
+    final defaultChanged =
+        payload.defaultLocationId.trim() != _loadedDefaultId.trim();
+    if (defaultChanged) {
+      final confirmed = await ConfirmLocationChangeDialog.show(context);
+      if (confirmed != true || !mounted) return;
+    }
+
     final rootContext = Navigator.of(context, rootNavigator: true).context;
-    final confirmed = await ConfirmLocationChangeDialog.show(context);
-    if (confirmed != true || !mounted) return;
 
     if (widget.userId != null) {
       setState(() => _saving = true);
       final result = await bindings.managerEmployeesService
           .updateEmployeeLocations(
             userId: widget.userId!,
-            defaultLocationId: _defaultId,
-            locationIds: _selectedIds.toList(),
+            defaultLocationId: payload.defaultLocationId,
+            locationIds: payload.locationIds,
           );
       if (!mounted) return;
       if (!result.success) {
@@ -164,7 +209,8 @@ class _EmployeeDefaultLocationsSheetBodyState
       if (profile.success &&
           profile.data != null &&
           (profile.data!.locationId ?? '').trim().isNotEmpty &&
-          (profile.data!.locationId ?? '').trim() != _defaultId.trim()) {
+          (profile.data!.locationId ?? '').trim() !=
+              payload.defaultLocationId.trim()) {
         ToastHelper.error(
           context,
           message: 'Location update did not persist. Please try again.',
@@ -213,7 +259,9 @@ class _EmployeeDefaultLocationsSheetBodyState
                   Expanded(
                     child: Column(
                       children: [
-                        AppText.h5('Default Locations'),
+                        AppText.h5(
+                          _isDefaultMode ? 'Default Locations' : 'Locations',
+                        ),
                         const SizedBox(height: 2),
                         AppText.p2(widget.employeeName, color: kGreyColor),
                       ],
@@ -258,13 +306,16 @@ class _EmployeeDefaultLocationsSheetBodyState
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final option = _locations[index];
-                        final selected = _selectedIds.contains(option.id);
+                        final selected = _isDefaultMode
+                            ? option.id == _defaultId
+                            : _selectedIds.contains(option.id);
                         final isDefault =
                             _defaultId.isNotEmpty && option.id == _defaultId;
                         return _LocationCard(
                           option: option,
                           selected: selected,
                           isDefault: isDefault,
+                          singleSelect: _isDefaultMode,
                           onTap: () => _toggleSelection(option.id),
                         );
                       },
@@ -293,12 +344,14 @@ class _LocationCard extends StatelessWidget {
     required this.option,
     required this.selected,
     required this.isDefault,
+    required this.singleSelect,
     required this.onTap,
   });
 
   final LocationFilterOption option;
   final bool selected;
   final bool isDefault;
+  final bool singleSelect;
   final VoidCallback onTap;
 
   @override
@@ -379,21 +432,9 @@ class _LocationCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Container(
-                    height: 22,
-                    width: 22,
-                    decoration: BoxDecoration(
-                      color: selected ? kPrimaryColor : kWhite,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: selected ? kPrimaryColor : kGreyColor3,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: selected
-                        ? const Icon(Icons.check, size: 14, color: kWhite)
-                        : null,
-                  ),
+                  singleSelect
+                      ? _LocationRadio(selected: selected)
+                      : _LocationCheckBox(selected: selected),
                 ],
               ),
             ),
@@ -421,6 +462,62 @@ class _LocationCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LocationCheckBox extends StatelessWidget {
+  const _LocationCheckBox({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 22,
+      width: 22,
+      decoration: BoxDecoration(
+        color: selected ? kPrimaryColor : kWhite,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: selected ? kPrimaryColor : kGreyColor3,
+          width: 1.5,
+        ),
+      ),
+      child: selected ? const Icon(Icons.check, size: 14, color: kWhite) : null,
+    );
+  }
+}
+
+class _LocationRadio extends StatelessWidget {
+  const _LocationRadio({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? kPrimaryColor : kGreyColor3,
+          width: 2,
+        ),
+      ),
+      child: selected
+          ? Center(
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: kPrimaryColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            )
+          : null,
     );
   }
 }

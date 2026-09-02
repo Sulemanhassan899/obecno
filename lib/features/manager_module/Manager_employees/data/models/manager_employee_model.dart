@@ -22,6 +22,7 @@ class ManagerEmployeeModel {
     this.address,
     this.createdBy,
     this.createdAt,
+    this.joiningDate,
     this.schedule,
     this.status = ManagerEmployeeStatus.active,
     this.badge = ManagerEmployeeBadge.none,
@@ -42,6 +43,9 @@ class ManagerEmployeeModel {
   final String? address;
   final String? createdBy;
   final String? createdAt;
+
+  /// Calendar date from `joining_date` (YYYY-MM-DD). Date-only local midnight.
+  final DateTime? joiningDate;
   final Map<String, dynamic>? schedule;
   final ManagerEmployeeStatus status;
   final ManagerEmployeeBadge badge;
@@ -182,6 +186,12 @@ class ManagerEmployeeModel {
           ? _asNullableString(createdByRaw['name'] ?? createdByRaw['title'])
           : _asNullableString(createdByRaw),
       createdAt: _asNullableString(json['created_at'] ?? json['joining_date']),
+      joiningDate: _parseDateOnly(
+        json['joining_date'] ??
+            json['join_date'] ??
+            json['date_of_joining'] ??
+            json['created_at'],
+      ),
       schedule: scheduleRaw is Map
           ? Map<String, dynamic>.from(scheduleRaw)
           : null,
@@ -218,6 +228,7 @@ class ManagerEmployeeModel {
     String? address,
     String? createdBy,
     String? createdAt,
+    DateTime? joiningDate,
     Map<String, dynamic>? schedule,
     ManagerEmployeeStatus? status,
     ManagerEmployeeBadge? badge,
@@ -238,6 +249,7 @@ class ManagerEmployeeModel {
       address: address ?? this.address,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
+      joiningDate: joiningDate ?? this.joiningDate,
       schedule: schedule ?? this.schedule,
       status: status ?? this.status,
       badge: badge ?? this.badge,
@@ -368,6 +380,27 @@ int _asInt(dynamic raw, {int fallback = 0}) {
 }
 
 String _asString(dynamic raw) => raw?.toString().trim() ?? '';
+
+/// Parses API date-only strings (`YYYY-MM-DD`) without timezone drift.
+DateTime? _parseDateOnly(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString().trim();
+  if (s.isEmpty) return null;
+
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(s);
+  if (match != null) {
+    final y = int.tryParse(match.group(1)!);
+    final m = int.tryParse(match.group(2)!);
+    final d = int.tryParse(match.group(3)!);
+    if (y == null || m == null || d == null) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    return DateTime(y, m, d);
+  }
+
+  final parsed = DateTime.tryParse(s);
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
 
 String? _asNullableString(dynamic raw) {
   if (raw == null || raw is Map || raw is List) return null;

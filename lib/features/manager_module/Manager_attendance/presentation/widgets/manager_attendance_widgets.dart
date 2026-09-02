@@ -6,6 +6,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/widgets/animated_searchbar.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -303,6 +304,9 @@ class _ManagerFiltersState extends State<ManagerFilters> {
       context,
       locations: locations,
       selectedId: _selectedLocationId,
+      onCreateLocation: () {
+        NewLocationSheet.show(context);
+      },
     );
     if (result == null || !mounted) return;
     setState(() => _selectedLocationId = result);
@@ -618,7 +622,7 @@ class ManagerAttendanceTile extends StatelessWidget {
                               ),
                               child: AppText.caption(
                                 data.role!,
-                               // color: _roleTextColor(),
+                                // color: _roleTextColor(),
                                 color: kBlack,
                                 weight: FontWeight.w400,
                               ),
@@ -630,7 +634,7 @@ class ManagerAttendanceTile extends StatelessWidget {
                 ),
               ),
             ),
-        
+
             /// CENTER — alert / edit icons
             if (icon != null) ...[
               const SizedBox(width: 8),
@@ -638,7 +642,7 @@ class ManagerAttendanceTile extends StatelessWidget {
               const SizedBox(width: 8),
             ] else
               const SizedBox(width: 12),
-        
+
             /// RIGHT — times / status / empty dash
             _trailing(),
           ],

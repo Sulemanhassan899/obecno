@@ -79,6 +79,7 @@ class MonthYearPickerSheet {
     BuildContext context, {
     required DateTime initialDate,
     required Function(DateTime) onSelected,
+    DateTime? minDate,
   }) {
     showModalBottomSheet(
       context: context,
@@ -87,7 +88,11 @@ class MonthYearPickerSheet {
       builder: (_) {
         return Wrap(
           children: [
-            MonthYearContent(initialDate: initialDate, onSelected: onSelected),
+            MonthYearContent(
+              initialDate: initialDate,
+              onSelected: onSelected,
+              minDate: minDate,
+            ),
           ],
         );
       },
@@ -174,7 +179,6 @@ class OverviewStatsCard extends StatelessWidget {
         showShare: true,
         statusFilter: "Absent",
       ),
-      
     ];
 
     return LayoutBuilder(

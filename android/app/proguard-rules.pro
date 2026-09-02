@@ -22,3 +22,7 @@
 # Secure storage / cryptography
 -keep class com.google.crypto.tink.** { *; }
 -dontwarn com.google.crypto.tink.**
+-keep class com.it_nomads.fluttersecurestorage.** { *; }
+-dontwarn com.it_nomads.fluttersecurestorage.**
+-keep class androidx.security.crypto.** { *; }
+-dontwarn androidx.security.crypto.**

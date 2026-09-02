@@ -184,6 +184,9 @@ class ManagerTeamAttendanceItem {
   }
 
   factory ManagerTeamAttendanceItem.fromJson(Map<String, dynamic> json) {
+    final liveStatus = _asNullableString(
+      json['live_status'] ?? json['status'] ?? json['filter_status'],
+    );
     return ManagerTeamAttendanceItem(
       attendanceId: _asIntOrNull(json['attendance_id'] ?? json['id']),
       userId: _asIntOrNull(
@@ -214,24 +217,35 @@ class ManagerTeamAttendanceItem {
       ),
       date: _asDate(json['date']),
       checkin: _asNullableString(
-        json['checkin'] ?? json['check_in'] ?? json['first_check_in'],
+        json['checkin'] ??
+            json['check_in'] ??
+            json['check_in_time'] ??
+            json['first_check_in'],
       ),
       checkout: _asNullableString(
-        json['checkout'] ?? json['check_out'] ?? json['last_check_out'],
+        json['checkout'] ??
+            json['check_out'] ??
+            json['check_out_time'] ??
+            json['last_check_out'],
       ),
       breakout: _asNullableString(json['breakout']),
       breakin: _asNullableString(json['breakin']),
-      isOpen: _asBool(json['is_open']),
+      isOpen: _asBool(json['is_open']) || _isLiveClockedIn(liveStatus),
       currentLocation: _asNullableString(json['current_location']),
       lat: _asDoubleOrNull(json['lat']),
       lon: _asDoubleOrNull(json['lon']),
-      status: _asNullableString(json['status']),
+      status: liveStatus,
       statusLabel: _asNullableString(json['status_label']),
-      isLate: _asBool(json['is_late']),
+      isLate:
+          _asBool(json['is_late']) ||
+          _asBool(json['late_check_in']) ||
+          _asBool(json['is_late_check_in']) ||
+          _looksLate(liveStatus) ||
+          _looksLate(_asNullableString(json['status_label'])),
       isEarlyCheckout: _asBool(json['is_early_checkout']),
       isShortHours: _asBool(json['is_short_hours']),
       isBreakExceeded: _asBool(json['is_break_exceeded']),
-      isOnBreak: _asBool(json['is_on_break']),
+      isOnBreak: _asBool(json['is_on_break']) || _looksBreak(liveStatus),
       isOnTime: _asBool(json['is_on_time']),
       hoursVsExpected: _asNullableString(json['hours_vs_expected']),
     );
@@ -388,6 +402,32 @@ bool _asBool(dynamic raw, {bool fallback = false}) {
   if (raw == true || raw == 1 || raw == '1' || raw == 'true') return true;
   if (raw == false || raw == 0 || raw == '0' || raw == 'false') return false;
   return fallback;
+}
+
+String _normStatus(String? raw) =>
+    (raw ?? '').toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
+
+bool _looksLate(String? raw) {
+  final value = _normStatus(raw);
+  if (value.isEmpty) return false;
+  if (value.contains('checkout') || value.contains('early')) return false;
+  return value == 'late' ||
+      value.contains('latecheckin') ||
+      value == 'latecheck';
+}
+
+bool _looksBreak(String? raw) {
+  final value = _normStatus(raw);
+  return value == 'break' || value == 'onbreak';
+}
+
+bool _isLiveClockedIn(String? raw) {
+  final value = _normStatus(raw);
+  return value == 'working' ||
+      value == 'active' ||
+      value == 'late' ||
+      value == 'latecheckin' ||
+      _looksBreak(raw);
 }
 
 String _asString(dynamic raw) => raw?.toString().trim() ?? '';

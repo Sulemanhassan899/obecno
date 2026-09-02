@@ -11,6 +11,7 @@ import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/working_days_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/account_information_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/employee_default_locations_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
@@ -66,9 +67,18 @@ class _ManagerEmployeeProfileSheetBodyState
   late ManagerAttendanceDetailsData _data;
   bool _uploadingPhoto = false;
   File? _localPhoto;
+  int _locationsRevision = 0;
 
   bool get _canEditPhoto =>
       bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+
+  DateTime? _joiningDateFor(int? userId) {
+    if (userId == null) return null;
+    for (final member in bindings.managerEmployeesProvider.members) {
+      if (member.userId == userId) return member.joiningDate;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -338,6 +348,7 @@ class _ManagerEmployeeProfileSheetBodyState
                                 userId: _data.userId,
                                 role: _data.role,
                                 photo: _data.photo,
+                                joiningDate: _joiningDateFor(_data.userId),
                               );
                             },
                           ),
@@ -347,16 +358,20 @@ class _ManagerEmployeeProfileSheetBodyState
                           child: _actionCard(
                             iconAsset: Assets.imagesAddLocationIcon,
                             label: "Locations",
-                            onTap: () {
+                            onTap: () async {
                               if (widget.onLocationsTap != null) {
                                 widget.onLocationsTap!();
                                 return;
                               }
-                              EmployeeDefaultLocationsSheet.show(
+                              await EmployeeDefaultLocationsSheet.show(
                                 context: context,
                                 employeeName: _data.name,
                                 userId: _data.userId,
+                                mode: EmployeeLocationsSheetMode.assigned,
                               );
+                              if (mounted) {
+                                setState(() => _locationsRevision++);
+                              }
                             },
                           ),
                         ),
@@ -391,12 +406,16 @@ class _ManagerEmployeeProfileSheetBodyState
                         _settingsTile(
                           iconAsset: Assets.imagesOfficeLocationIcon,
                           title: "Default Offices & Locations",
-                          onTap: () {
-                            EmployeeDefaultLocationsSheet.show(
+                          onTap: () async {
+                            await EmployeeDefaultLocationsSheet.show(
                               context: context,
                               employeeName: _data.name,
                               userId: _data.userId,
+                              mode: EmployeeLocationsSheetMode.defaultLocation,
                             );
+                            if (mounted) {
+                              setState(() => _locationsRevision++);
+                            }
                           },
                         ),
                         Padding(
@@ -411,7 +430,10 @@ class _ManagerEmployeeProfileSheetBodyState
                               color: kbackground2,
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: _AttendanceRulesBanner(userId: _data.userId),
+                            child: _AttendanceRulesBanner(
+                              key: ValueKey(_locationsRevision),
+                              userId: _data.userId,
+                            ),
                           ),
                         ),
                         const Divider(height: 1, color: kDividerColor),
@@ -419,6 +441,16 @@ class _ManagerEmployeeProfileSheetBodyState
                           iconAsset: Assets.ClockIcon,
                           title: "Check In / Out Timing",
                           onTap: () => CheckInOutTimingSheet.show(
+                            context,
+                            userId: _data.userId,
+                            employeeName: _data.name,
+                          ),
+                        ),
+                        const Divider(height: 1, color: kDividerColor),
+                        _settingsTile(
+                          iconAsset: Assets.WorkingDays,
+                          title: "Working Days",
+                          onTap: () => WorkingDaysSheet.show(
                             context,
                             userId: _data.userId,
                             employeeName: _data.name,
@@ -559,7 +591,7 @@ class _ManagerEmployeeProfileSheetBodyState
 }
 
 class _AttendanceRulesBanner extends StatefulWidget {
-  const _AttendanceRulesBanner({this.userId});
+  const _AttendanceRulesBanner({super.key, this.userId});
 
   final int? userId;
 

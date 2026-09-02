@@ -13,6 +13,7 @@ import 'package:obecno/features/manager_module/Manager_locations/providers/manag
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -92,6 +93,9 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
       context,
       locations: locationsProvider.filterOptions,
       selectedId: row.locationId,
+      onCreateLocation: () {
+        NewLocationSheet.show(context);
+      },
     );
     if (selected == null || !mounted) return;
     setState(() {
@@ -160,9 +164,9 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
     setState(() => _sending = true);
     debugPrint('[AddEmployee] calling API for ${invites.length} invite(s)');
     try {
-      final result = await context.read<ManagerEmployeesProvider>().addEmployees(
-        invites,
-      );
+      final result = await context
+          .read<ManagerEmployeesProvider>()
+          .addEmployees(invites);
       debugPrint(
         '[AddEmployee] UI result success=${result.success} '
         'code=${result.statusCode} message=${result.message} '
@@ -446,7 +450,8 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: ButtonAnimations.press(
-                            onTap: () => setState(() => _rows.add(_InviteRow())),
+                            onTap: () =>
+                                setState(() => _rows.add(_InviteRow())),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,

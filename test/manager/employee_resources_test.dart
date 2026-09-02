@@ -23,6 +23,22 @@ void main() {
         '/manager/employee/update',
       );
       expect(
+        ManagerEmployeeApiEndpoints.legacyEmployeePermissions,
+        '/manager/employee/permissions',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.legacyEmployeePermissionsUpdate,
+        '/manager/employee/permissions/update',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.addLocation,
+        '/manager/locations',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.location(9),
+        '/manager/locations/9',
+      );
+      expect(
         ManagerEmployeeApiEndpoints.employeeSalary(12),
         '/manager/employees/12/salary',
       );
@@ -53,6 +69,134 @@ void main() {
       expect(
         ManagerEmployeeApiEndpoints.legacyEmployeeCalendar,
         '/manager/employee/calendar',
+      );
+    });
+
+    test('binds GET/POST/PUT/PATCH separately on shared paths', () {
+      expect(ManagerEmployeeApiEndpoints.getEmployees.method, 'GET');
+      expect(ManagerEmployeeApiEndpoints.postEmployees.method, 'POST');
+      expect(
+        ManagerEmployeeApiEndpoints.getEmployees.path,
+        ManagerEmployeeApiEndpoints.postEmployees.path,
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getEmployees,
+        isNot(ManagerEmployeeApiEndpoints.postEmployees),
+      );
+
+      expect(ManagerEmployeeApiEndpoints.getEmployee(12).method, 'GET');
+      expect(ManagerEmployeeApiEndpoints.putEmployee(12).method, 'PUT');
+      expect(ManagerEmployeeApiEndpoints.patchEmployee(12).method, 'PATCH');
+      expect(ManagerEmployeeApiEndpoints.getEmployee(12).path, '/manager/employees/12');
+      expect(
+        ManagerEmployeeApiEndpoints.putEmployee(12).path,
+        ManagerEmployeeApiEndpoints.getEmployee(12).path,
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchEmployee(12).path,
+        ManagerEmployeeApiEndpoints.getEmployee(12).path,
+      );
+
+      expect(
+        ManagerEmployeeApiEndpoints.getEmployeePermissions(12).method,
+        'GET',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putEmployeePermissions(12).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchEmployeePermissions(12).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getEmployeePermissions(12).path,
+        '/manager/employees/12/permissions',
+      );
+      expect(ManagerEmployeeApiEndpoints.getEmployeeSchedule(12).method, 'GET');
+      expect(
+        ManagerEmployeeApiEndpoints.putEmployeeSchedule(12).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getEmployeeSchedule(12).path,
+        '/manager/employees/12/schedule',
+      );
+
+      expect(ManagerEmployeeApiEndpoints.getLocations.method, 'GET');
+      expect(ManagerEmployeeApiEndpoints.postLocations.method, 'POST');
+      expect(
+        ManagerEmployeeApiEndpoints.getLocations.path,
+        ManagerEmployeeApiEndpoints.postLocations.path,
+      );
+      expect(ManagerEmployeeApiEndpoints.getLocation(9).method, 'GET');
+      expect(
+        ManagerEmployeeApiEndpoints.getLocation(9).path,
+        '/manager/locations/9',
+      );
+      expect(ManagerEmployeeApiEndpoints.putLocation(9).method, 'PUT');
+      expect(
+        ManagerEmployeeApiEndpoints.putLocation(9).path,
+        '/manager/locations/9',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putLocationSchedule(9).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getLocationSchedule(9).method,
+        'GET',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getLocationSchedule(9).path,
+        '/manager/locations/9/schedule',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putLocationSchedule(9).path,
+        '/manager/locations/9/schedule',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationStatus(9).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationStatus(9).path,
+        '/manager/locations/9/status',
+      );
+      expect(ManagerEmployeeApiEndpoints.deleteLocation(9).method, 'DELETE');
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLocation(9).path,
+        '/manager/locations/9',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationMembers(9).method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationMembers(9).path,
+        '/manager/locations/9/members',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.locationSchedule(9),
+        '/manager/locations/9/schedule',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.locationMembers(9),
+        '/manager/locations/9/members',
+      );
+
+      expect(ManagerEmployeeApiEndpoints.postTeamLeavesReview.method, 'POST');
+      expect(
+        ManagerEmployeeApiEndpoints.postTeamAttendanceEditSave.method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyEmployeeUpdate.method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyEmployeePermissionsUpdate.method,
+        'POST',
       );
     });
   });

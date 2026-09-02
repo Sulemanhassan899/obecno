@@ -77,6 +77,10 @@ class ManagerEmployeeAttendanceDay {
     this.lat,
     this.lon,
     this.details = const [],
+    this.isHoliday = false,
+    this.isLeave = false,
+    this.dayStatus,
+    this.holidayName,
   });
 
   final int? id;
@@ -91,12 +95,20 @@ class ManagerEmployeeAttendanceDay {
   final double? lat;
   final double? lon;
   final List<ManagerEmployeeAttendanceDetail> details;
+  final bool isHoliday;
+  final bool isLeave;
+  final String? dayStatus;
+  final String? holidayName;
 
   factory ManagerEmployeeAttendanceDay.fromJson(Map<String, dynamic> json) {
     final nestedRaw = json['attendance'];
     final nested = nestedRaw is Map
         ? Map<String, dynamic>.from(nestedRaw)
         : const <String, dynamic>{};
+
+    final dayStatus = _asNullableString(
+      json['day_status'] ?? nested['day_status'] ?? json['status'],
+    )?.toLowerCase();
 
     return ManagerEmployeeAttendanceDay(
       id: _asIntOrNull(
@@ -142,6 +154,19 @@ class ManagerEmployeeAttendanceDay {
       details: ManagerEmployeeAttendanceDetail.listFrom(
         json['attendance_details'] ?? nested['attendance_details'],
       ),
+      isHoliday:
+          _asBool(json['is_holiday'] ?? nested['is_holiday']) ||
+          dayStatus == 'holiday',
+      isLeave:
+          _asBool(json['is_leave'] ?? nested['is_leave']) ||
+          dayStatus == 'leave',
+      dayStatus: dayStatus,
+      holidayName: _asNullableString(
+        json['holiday_name'] ??
+            json['holiday_title'] ??
+            nested['holiday_name'] ??
+            nested['holiday_title'],
+      ),
     );
   }
 
@@ -167,6 +192,10 @@ class ManagerEmployeeAttendanceDay {
       lat: lat,
       lon: lon,
       details: details ?? this.details,
+      isHoliday: isHoliday,
+      isLeave: isLeave,
+      dayStatus: dayStatus,
+      holidayName: holidayName,
     );
   }
 

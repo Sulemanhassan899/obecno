@@ -109,6 +109,8 @@ class ManagerEmployeePolicy {
           : tracking.toLowerCase() != '0' &&
                 tracking.toLowerCase() != 'false' &&
                 tracking.toLowerCase() != 'off',
+      workingDays: _workingDaysText(schedule['working_days']) ??
+          read(const ['working_days']),
     );
   }
 
@@ -204,4 +206,57 @@ class ManagerEmployeePolicy {
       'break_timing': attendance,
     };
   }
+
+  static Map<String, dynamic> workingDaysPermissionPayload({
+    required Iterable<String> workingDays,
+    required String weekStartDay,
+    required String hoursPerDay,
+    required String hoursPerWeek,
+    required bool workingWeekEnabled,
+  }) {
+    final days = workingDays
+        .map((day) => day.trim().toLowerCase())
+        .where((day) => day.isNotEmpty)
+        .toList();
+    final joined = days.join(', ');
+    final enabled = workingWeekEnabled ? '1' : '0';
+    final working = {
+      'working_days': days,
+      'week_start_day': weekStartDay.trim().toLowerCase(),
+      'hours_per_day': hoursPerDay,
+      'hours_per_week': hoursPerWeek,
+      'working_week_enabled': workingWeekEnabled,
+    };
+    return {
+      'permission_items': [
+        _permissionItem('attendance', 'working_days', joined),
+        _permissionItem('working_days', 'working_days', joined),
+        _permissionItem('attendance', 'week_start_day', weekStartDay),
+        _permissionItem('working_days', 'week_start_day', weekStartDay),
+        _permissionItem('attendance', 'hours_per_day', hoursPerDay),
+        _permissionItem('working_days', 'hours_per_day', hoursPerDay),
+        _permissionItem('attendance', 'hours_per_week', hoursPerWeek),
+        _permissionItem('working_days', 'hours_per_week', hoursPerWeek),
+        _permissionItem('attendance', 'working_week_enabled', enabled),
+        _permissionItem('working_days', 'working_week_enabled', enabled),
+      ],
+      'permissions': {'attendance': working, 'working_days': working},
+      'attendance': working,
+      'working_days': working,
+      'working_week': working,
+    };
+  }
+}
+
+String? _workingDaysText(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is List) {
+    final days = raw
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    return days.isEmpty ? null : days.join(', ');
+  }
+  final text = raw.toString().trim();
+  return text.isEmpty ? null : text;
 }

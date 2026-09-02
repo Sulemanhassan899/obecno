@@ -9,6 +9,7 @@ import 'package:obecno/features/employee_module/attendance/data/models/attendenc
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_month_bounds.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_history_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';
@@ -36,6 +37,7 @@ class ManagerEmployeeAttendanceSheet {
     int? userId,
     String? role,
     String? photo,
+    DateTime? joiningDate,
     String? locationId,
     String? locationName,
     String? locationAddress,
@@ -69,6 +71,7 @@ class ManagerEmployeeAttendanceSheet {
                     userId: userId,
                     role: role,
                     photo: photo,
+                    joiningDate: joiningDate,
                   ),
           ),
         );
@@ -83,12 +86,14 @@ class _EmployeeHistorySheetBody extends StatefulWidget {
     this.userId,
     this.role,
     this.photo,
+    this.joiningDate,
   });
 
   final String employeeName;
   final int? userId;
   final String? role;
   final String? photo;
+  final DateTime? joiningDate;
 
   @override
   State<_EmployeeHistorySheetBody> createState() =>
@@ -97,20 +102,66 @@ class _EmployeeHistorySheetBody extends StatefulWidget {
 
 class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime? _joiningDate;
   bool _loading = true;
   String? _error;
   MonthSummary? _summary;
   List<AttendanceDayRecord> _records = const [];
 
-  bool get _canGoNext {
-    final now = DateTime.now();
-    return _month.year < now.year ||
-        (_month.year == now.year && _month.month < now.month);
-  }
+  bool get _canGoNext => AttendanceMonthBounds.canGoNext(selectedMonth: _month);
+
+  bool get _canGoPrevious => AttendanceMonthBounds.canGoPrevious(
+    selectedMonth: _month,
+    joiningDate: _joiningDate,
+  );
 
   @override
   void initState() {
     super.initState();
+    _joiningDate =
+        AttendanceMonthBounds.dateOnly(widget.joiningDate) ??
+        _cachedMemberJoiningDate();
+    _month = AttendanceMonthBounds.clampMonth(
+      selectedMonth: _month,
+      joiningDate: _joiningDate,
+    );
+    _load();
+  }
+
+  DateTime? _cachedMemberJoiningDate() {
+    final userId = widget.userId;
+    if (userId == null) return null;
+    for (final member in bindings.managerEmployeesProvider.members) {
+      if (member.userId == userId) {
+        return AttendanceMonthBounds.dateOnly(member.joiningDate);
+      }
+    }
+    return null;
+  }
+
+  void _applyJoiningDate(DateTime? raw) {
+    final next = AttendanceMonthBounds.dateOnly(raw);
+    if (next == null) return;
+    if (_joiningDate != null &&
+        _joiningDate!.year == next.year &&
+        _joiningDate!.month == next.month &&
+        _joiningDate!.day == next.day) {
+      return;
+    }
+    _joiningDate = next;
+    _month = AttendanceMonthBounds.clampMonth(
+      selectedMonth: _month,
+      joiningDate: _joiningDate,
+    );
+  }
+
+  void _setMonth(DateTime date) {
+    setState(() {
+      _month = AttendanceMonthBounds.clampMonth(
+        selectedMonth: date,
+        joiningDate: _joiningDate,
+      );
+    });
     _load();
   }
 
@@ -144,10 +195,13 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           );
       final permissionsFuture = bindings.managerEmployeesService
           .loadEmployeePermissions(userId: userId);
+      final profileFuture = bindings.managerEmployeesService
+          .loadEmployeeProfile(userId: userId);
 
       final attendance = await attendanceFuture;
       final holidays = await holidaysFuture;
       final permissions = await permissionsFuture;
+      final profile = await profileFuture;
       if (!mounted) return;
 
       if (!attendance.success || attendance.data == null) {
@@ -168,6 +222,15 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         userId: userId,
         employeeName: widget.employeeName,
       );
+      if (profile.data?.joiningDate != null) {
+        final requestedMonth = _month;
+        _applyJoiningDate(profile.data!.joiningDate);
+        if (_month != requestedMonth) {
+          await _load(silent: silent);
+          return;
+        }
+      }
+
       final month = ManagerEmployeeHistoryMapper.build(
         month: _month,
         history: history,
@@ -178,6 +241,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         scheduledCheckIn: policy.checkIn,
         graceMinutes: policy.graceMinutes,
         scheduledCheckOut: policy.checkOut,
+        joiningDate: _joiningDate,
       );
 
       setState(() {
@@ -196,14 +260,31 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
   }
 
   void _previousMonth() {
-    setState(() => _month = DateTime(_month.year, _month.month - 1));
-    _load();
+    if (!_canGoPrevious) return;
+    _setMonth(DateTime(_month.year, _month.month - 1));
   }
 
   void _nextMonth() {
     if (!_canGoNext) return;
-    setState(() => _month = DateTime(_month.year, _month.month + 1));
-    _load();
+    _setMonth(DateTime(_month.year, _month.month + 1));
+  }
+
+  Future<void> _openMonthPicker() async {
+    if (_joiningDate == null && widget.userId != null) {
+      final profile = await bindings.managerEmployeesService
+          .loadEmployeeProfile(userId: widget.userId!);
+      if (!mounted) return;
+      if (profile.data?.joiningDate != null) {
+        setState(() => _applyJoiningDate(profile.data!.joiningDate));
+      }
+    }
+    if (!mounted) return;
+    MonthYearPickerSheet.show(
+      context,
+      initialDate: _month,
+      minDate: _joiningDate,
+      onSelected: _setMonth,
+    );
   }
 
   bool get _isManagerViewer =>
@@ -211,7 +292,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
 
   Future<void> _openDetails(AttendanceDayRecord record) async {
     final isOnLeave = record.status == AttendanceDayStatus.onLeave;
-    final isDash = _isDashDay(record);
+    final isDash =
+        record.status == AttendanceDayStatus.absent || _isDashDay(record);
 
     if ((isOnLeave || isDash) && !_isManagerViewer) return;
 
@@ -273,6 +355,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     final wasAbsent =
         previous != null &&
         (previous.status == AttendanceDayStatus.onLeave ||
+            previous.status == AttendanceDayStatus.absent ||
             _isDashDay(previous));
 
     setState(() {
@@ -299,7 +382,10 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         _summary = MonthSummary(
           workingDays: summary.workingDays + 1,
           totalDays: summary.totalDays,
-          absentOrLeaves: (summary.absentOrLeaves - 1).clamp(0, summary.totalDays),
+          absentOrLeaves: (summary.absentOrLeaves - 1).clamp(
+            0,
+            summary.totalDays,
+          ),
           lateCheckIns: summary.lateCheckIns,
           lateCheckOuts: summary.lateCheckOuts,
         );
@@ -385,16 +471,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
               onPrevious: _previousMonth,
               onNext: _nextMonth,
               isNextEnabled: _canGoNext,
-              onTapDropdown: () {
-                MonthYearPickerSheet.show(
-                  context,
-                  initialDate: _month,
-                  onSelected: (date) {
-                    setState(() => _month = DateTime(date.year, date.month));
-                    _load();
-                  },
-                );
-              },
+              isPreviousEnabled: _canGoPrevious,
+              onTapDropdown: _openMonthPicker,
             ),
           ),
           const SizedBox(height: 20),

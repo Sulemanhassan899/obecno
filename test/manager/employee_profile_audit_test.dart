@@ -125,6 +125,64 @@ void main() {
       });
       expect((payload['permission_items'] as List).length, 4);
     });
+
+    test('builds permission payload for working days', () {
+      final payload = ManagerEmployeePolicy.workingDaysPermissionPayload(
+        workingDays: const ['Monday', 'Wednesday'],
+        weekStartDay: 'Monday',
+        hoursPerDay: '08:00',
+        hoursPerWeek: '40:00',
+        workingWeekEnabled: true,
+      );
+      expect(payload['working_week'], {
+        'working_days': ['monday', 'wednesday'],
+        'week_start_day': 'monday',
+        'hours_per_day': '08:00',
+        'hours_per_week': '40:00',
+        'working_week_enabled': true,
+      });
+    });
+
+    test('reads working days from a profile schedule list', () {
+      final policy = ManagerEmployeePolicy.fromSchedule({
+        'check_in': '08:00:00',
+        'working_days': ['monday', 'friday'],
+      });
+      expect(policy.workingDays, 'monday, friday');
+    });
+  });
+
+  group('Employee permission write method', () {
+    test('uses PATCH for partial employee setting updates', () {
+      expect(PermissionItemModel.writeMethod(hasEmployeeLevel: true), 'PATCH');
+      expect(PermissionItemModel.writeMethod(hasEmployeeLevel: false), 'PATCH');
+    });
+
+    test('detects existing employee-level overrides', () {
+      const items = [
+        PermissionItemModel(
+          section: 'attendance',
+          sectionLabel: 'Attendance',
+          key: 'check_in_time',
+          label: 'Check in',
+          value: '09:00 AM',
+          employeeValue: '08:00 AM',
+        ),
+      ];
+      expect(PermissionItemModel.hasEmployeeLevelPermissions(items), isTrue);
+    });
+
+    test('treats source_level=employee as employee-level even without value', () {
+      const item = PermissionItemModel(
+        section: 'attendance',
+        sectionLabel: 'Attendance',
+        key: 'grace_period',
+        label: 'Grace',
+        value: '5',
+        sourceLevel: 'employee',
+      );
+      expect(item.hasEmployeeLevel, isTrue);
+    });
   });
 
   group('ManagerEmployeeModel locations', () {

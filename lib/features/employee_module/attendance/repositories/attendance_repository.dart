@@ -175,7 +175,7 @@ class HistoryAttendanceRepository {
       today: today,
       joiningDate: joiningDate,
     ).reversed.toList();
-    final records = displayDays.map(_toDayRecord).toList();
+    final records = _recordsFor(displayDays, calendar);
 
     final monthLabel = (calendar?.monthLabel.isNotEmpty ?? false)
         ? calendar!.monthLabel
@@ -237,7 +237,7 @@ class HistoryAttendanceRepository {
       today: today,
       joiningDate: joiningDate,
     ).reversed.toList();
-    final records = displayDays.map(_toDayRecord).toList();
+    final records = _recordsFor(displayDays, null);
     final monthLabel = '${_monthNames[month.month - 1]} ${month.year}';
 
     return AttendanceMonthResult(
@@ -460,7 +460,28 @@ class HistoryAttendanceRepository {
   // Uses DayClassificationEngine for backend-driven day classification.
   // ---------------------------------------------------------------------
 
-  AttendanceDayRecord _toDayRecord(AttendanceDay day) {
+  List<AttendanceDayRecord> _recordsFor(
+    List<AttendanceDay> days,
+    AttendanceCalendarData? calendar,
+  ) {
+    final holidays = _holidaysFor(days, calendar);
+    final leaveDates = _leaveDatesFor(days);
+    return days
+        .map(
+          (day) => _toDayRecord(
+            day,
+            holidays: holidays,
+            leaveDates: leaveDates,
+          ),
+        )
+        .toList();
+  }
+
+  AttendanceDayRecord _toDayRecord(
+    AttendanceDay day, {
+    required List<HolidayInfo> holidays,
+    required Set<DateTime> leaveDates,
+  }) {
     // No attendance recorded at all for this date.
     final isFullyMissing =
         day.firstCheckIn == null && day.lastCheckOut == null && !day.isEdited;
@@ -476,29 +497,31 @@ class HistoryAttendanceRepository {
       date: day.date,
       workingWeekdays: _workingWeekdays,
       attendanceDates: attendanceDates,
-      holidays: _holidays,
+      holidays: holidays,
+      leaveDates: leaveDates,
     );
 
     // Map classification to status and labels.
     String? checkInLabel;
     String? checkOutLabel;
     AttendanceDayStatus status;
+    String? weekendLabel;
 
     switch (classification.type) {
       case DayCardType.holiday:
-        checkInLabel = 'Holiday';
-        checkOutLabel = 'Holiday';
         status = AttendanceDayStatus.holiday;
+        weekendLabel = classification.holidayName ?? 'Public Holiday';
         break;
       case DayCardType.weekend:
-        checkInLabel = 'Holiday';
-        checkOutLabel = 'Holiday';
         status = AttendanceDayStatus.weekend;
         break;
       case DayCardType.onLeave:
         checkInLabel = 'Leave';
         checkOutLabel = 'Leave';
         status = AttendanceDayStatus.onLeave;
+        break;
+      case DayCardType.absent:
+        status = AttendanceDayStatus.absent;
         break;
       case DayCardType.worked:
         checkInLabel = _formatTime12h(day.firstCheckIn);
@@ -518,7 +541,46 @@ class HistoryAttendanceRepository {
       checkIn: checkInLabel,
       checkOut: checkOutLabel,
       status: status,
+      weekendLabel: weekendLabel,
     );
+  }
+
+  List<HolidayInfo> _holidaysFor(
+    List<AttendanceDay> days,
+    AttendanceCalendarData? calendar,
+  ) {
+    final holidays = [..._holidays];
+    final seen = {
+      for (final holiday in holidays)
+        '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}',
+    };
+
+    void add(DateTime date, String name) {
+      final key = '${date.year}-${date.month}-${date.day}';
+      if (!seen.add(key)) return;
+      holidays.add(HolidayInfo(date: date, name: name));
+    }
+
+    for (final day in days) {
+      if (!day.isHoliday) continue;
+      add(
+        DateTime(day.date.year, day.date.month, day.date.day),
+        (day.holidayName ?? '').trim().isEmpty
+            ? 'Public Holiday'
+            : day.holidayName!.trim(),
+      );
+    }
+    for (final holiday in calendar?.holidays ?? const []) {
+      add(holiday.date, holiday.name);
+    }
+    return holidays;
+  }
+
+  Set<DateTime> _leaveDatesFor(List<AttendanceDay> days) {
+    return {
+      for (final day in days)
+        if (day.isLeave) DateTime(day.date.year, day.date.month, day.date.day),
+    };
   }
 
   // ---------------------------------------------------------------------

@@ -28,6 +28,9 @@ class AttendanceDay {
     this.checkOutLocations = const [],
     this.breaks = const [],
     this.isEdited = false,
+    this.isHoliday = false,
+    this.isLeave = false,
+    this.holidayName,
   });
 
   final DateTime date;
@@ -41,6 +44,9 @@ class AttendanceDay {
   final List<BreakSession> breaks;
 
   final bool isEdited;
+  final bool isHoliday;
+  final bool isLeave;
+  final String? holidayName;
 
   /// Earliest check-in of the day (immutable session start). Never use a
   /// later re-check-in as the day header check-in.
@@ -171,6 +177,14 @@ class AttendanceDay {
     _sortTimeLocationPairs(checkIns, checkInLocations);
     _sortTimeLocationPairs(checkOuts, checkOutLocations);
 
+    final dayStatus = (json['day_status'] ?? json['status'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final holidayTitle = _normalizedTime(
+      json['holiday_name'] ?? json['holiday_title'] ?? json['holiday'],
+    );
+
     return AttendanceDay(
       date: DateTime(date.year, date.month, date.day),
       recordId: _parseId(json['id']),
@@ -180,7 +194,14 @@ class AttendanceDay {
       checkOutLocations: checkOutLocations,
       breaks: breaks,
       isEdited: false,
+      isHoliday: _asBool(json['is_holiday']) || dayStatus == 'holiday',
+      isLeave: _asBool(json['is_leave']) || dayStatus == 'leave',
+      holidayName: holidayTitle,
     );
+  }
+
+  static bool _asBool(dynamic raw) {
+    return raw == true || raw == 1 || raw == '1' || raw == 'true';
   }
 
   static void _sortTimeLocationPairs(
@@ -282,29 +303,65 @@ class AttendanceCalendarData {
   const AttendanceCalendarData({
     this.monthLabel = '',
     this.attendanceDates = const [],
+    this.holidays = const [],
   });
 
   final String monthLabel;
   final List<DateTime> attendanceDates;
+  final List<({DateTime date, String name})> holidays;
 
   factory AttendanceCalendarData.fromJson(Map<String, dynamic> json) {
     final label = (json['month_label'] ?? json['month'] ?? '').toString();
 
     final dates = <DateTime>[];
+    final holidays = <({DateTime date, String name})>[];
     final rawDates = json['attendance_dates'] ?? json['dates'] ?? json['days'];
     if (rawDates is List) {
       for (final d in rawDates) {
-        final parsed = d is Map
-            ? AttendanceDay._parseDate(
-                d['date'] ?? d['day'] ?? d['attendance_date'],
-              )
-            : AttendanceDay._parseDate(d);
-        if (parsed != null) {
-          dates.add(DateTime(parsed.year, parsed.month, parsed.day));
+        if (d is Map) {
+          final map = Map<String, dynamic>.from(d);
+          final parsed = AttendanceDay._parseDate(
+            map['date'] ?? map['day'] ?? map['attendance_date'],
+          );
+          if (parsed == null) continue;
+          final dateOnly = DateTime(parsed.year, parsed.month, parsed.day);
+          dates.add(dateOnly);
+          final status = (map['day_status'] ?? map['status'] ?? map['type'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          final isHoliday =
+              map['is_holiday'] == true ||
+              map['is_holiday'] == 1 ||
+              map['is_holiday'] == '1' ||
+              status == 'holiday';
+          if (isHoliday) {
+            final name =
+                (map['holiday_name'] ??
+                        map['name'] ??
+                        map['title'] ??
+                        map['label'] ??
+                        'Public Holiday')
+                    .toString()
+                    .trim();
+            holidays.add((
+              date: dateOnly,
+              name: name.isEmpty ? 'Public Holiday' : name,
+            ));
+          }
+        } else {
+          final parsed = AttendanceDay._parseDate(d);
+          if (parsed != null) {
+            dates.add(DateTime(parsed.year, parsed.month, parsed.day));
+          }
         }
       }
     }
 
-    return AttendanceCalendarData(monthLabel: label, attendanceDates: dates);
+    return AttendanceCalendarData(
+      monthLabel: label,
+      attendanceDates: dates,
+      holidays: holidays,
+    );
   }
 }

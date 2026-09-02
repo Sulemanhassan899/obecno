@@ -50,7 +50,10 @@ class PermissionItemModel {
       label: (json['label'] ?? '').toString(),
       value: json['value']?.toString(),
       sourceLevel: json['source_level']?.toString(),
-      isOverride: json['is_override'] == true,
+      isOverride:
+          json['is_override'] == true ||
+          json['is_override'] == 1 ||
+          json['is_override']?.toString() == '1',
       source: json['source']?.toString(),
       companyValue: json['company_value']?.toString(),
       locationValue: json['location_value']?.toString(),
@@ -243,6 +246,33 @@ class PermissionItemModel {
       }
     }
     return result;
+  }
+
+  /// True when this row is an employee-level override (not company/location).
+  bool get hasEmployeeLevel {
+    if (_isEmployeeSource(sourceLevel) || _isEmployeeSource(source)) {
+      return true;
+    }
+    final value = employeeValue?.trim();
+    return value != null && value.isNotEmpty;
+  }
+
+  static bool _isEmployeeSource(String? raw) {
+    final value = raw?.trim().toLowerCase();
+    return value == 'employee' || value == 'user';
+  }
+
+  /// True when any item is already stored as an employee-level permission.
+  static bool hasEmployeeLevelPermissions(List<PermissionItemModel> items) {
+    for (final item in items) {
+      if (item.hasEmployeeLevel) return true;
+    }
+    return false;
+  }
+
+  /// Employee setting writes are partial (timing, break, days, grace).
+  static String writeMethod({bool hasEmployeeLevel = true}) {
+    return 'PATCH';
   }
 
   /// "check_in_time" → "Check in time", "leave_policies" → "Leave policies".
