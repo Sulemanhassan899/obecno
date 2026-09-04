@@ -532,6 +532,54 @@ class ManagerEmployeesRepository extends BaseRepository {
     );
   }
 
+  Future<ApiResponse<String>> updateEmployeeStatus({
+    required int userId,
+    required String status,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final normalized = status.trim().toLowerCase();
+    final body = <String, dynamic>{
+      'user_id': userId,
+      'status': normalized,
+      'account_status': normalized,
+      'is_active': normalized == 'active',
+    };
+    final path = ManagerEmployeeApiEndpoints.employeeStatus(userId);
+
+    var write = await _send(
+      method: 'PATCH',
+      path: path,
+      payload: body,
+      cancelToken: cancelToken,
+    );
+    if (_isHttpOk(write) || _isClientError(write)) return write;
+
+    write = await _send(
+      method: 'PUT',
+      path: path,
+      payload: body,
+      cancelToken: cancelToken,
+    );
+    if (_isHttpOk(write) || _isClientError(write)) return write;
+
+    write = await _send(
+      method: 'POST',
+      path: path,
+      payload: body,
+      cancelToken: cancelToken,
+    );
+    if (_isHttpOk(write) || _isClientError(write)) return write;
+
+    return _mutate(
+      path: ManagerEmployeeApiEndpoints.employee(userId),
+      payload: body,
+      cancelToken: cancelToken,
+      methods: const ['PATCH', 'PUT', 'POST'],
+      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeUpdate,
+      fallbackQuery: {'user_id': userId},
+    );
+  }
+
   bool _isTerminalAccountWrite(ApiResponse<String> write) {
     return _isHttpOk(write) ||
         write.statusCode == 401 ||
@@ -578,6 +626,10 @@ class ManagerEmployeesRepository extends BaseRepository {
       'default_location_id': defaultLocationId,
       'location_id': defaultLocationId,
       'location_ids': ids,
+      'locations': [
+        for (final id in ids)
+          {'id': id, 'is_default': id.trim() == defaultLocationId.trim()},
+      ],
     };
     var write = await _mutate(
       path: ManagerEmployeeApiEndpoints.employeeLocations(userId),
@@ -603,7 +655,7 @@ class ManagerEmployeesRepository extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) {
     return getRequest<LocationSchedule>(
-      ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+      ManagerEmployeeApiEndpoints.employee(userId),
       queryParameters: {'user_id': userId},
       cancelToken: cancelToken,
       parser: (json) {
@@ -636,10 +688,12 @@ class ManagerEmployeesRepository extends BaseRepository {
   }) async {
     final body = {'user_id': userId, ...payload};
     var write = await _mutate(
-      path: ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+      path: ManagerEmployeeApiEndpoints.employee(userId),
       payload: body,
       cancelToken: cancelToken,
       methods: const ['PUT', 'PATCH', 'POST'],
+      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeUpdate,
+      fallbackQuery: {'user_id': userId},
     );
     if (_isHttpOk(write)) return write;
 
@@ -1298,7 +1352,11 @@ class ManagerEmployeesRepository extends BaseRepository {
           lower.contains('changed') ||
           lower.contains('approved') ||
           lower.contains('rejected') ||
-          lower.contains('blocked');
+          lower.contains('blocked') ||
+          lower.contains('unblocked') ||
+          lower.contains('deactivated') ||
+          lower.contains('activated') ||
+          lower.contains('disabled');
       if (!mutated) {
         throw const ApiError(
           type: ApiErrorType.server,

@@ -10,12 +10,14 @@ class StatusFilterOption {
   const StatusFilterOption({
     required this.id,
     required this.label,
-    required this.icon,
+    this.icon = '',
+    this.dotColor,
   });
 
   final String id;
   final String label;
   final String icon;
+  final Color? dotColor;
 
   static const allId = 'all';
 
@@ -145,9 +147,7 @@ class StatusFilterOption {
     if (resolved == allId) {
       return byId(idOrLabel)?.label ?? 'Status';
     }
-    return byId(resolved, options)?.label ??
-        byId(resolved)?.label ??
-        idOrLabel;
+    return byId(resolved, options)?.label ?? byId(resolved)?.label ?? idOrLabel;
   }
 }
 
@@ -320,7 +320,7 @@ class _StatusOptionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CommonImageView(imagePath: option.icon, height: 22),
+            _StatusLeading(option: option),
             const SizedBox(width: 12),
             Expanded(
               child: AppText.p2(
@@ -335,6 +335,33 @@ class _StatusOptionTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _StatusLeading extends StatelessWidget {
+  const _StatusLeading({required this.option});
+
+  final StatusFilterOption option;
+
+  @override
+  Widget build(BuildContext context) {
+    if (option.dotColor != null) {
+      return SizedBox(
+        width: 22,
+        height: 22,
+        child: Center(
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: option.dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      );
+    }
+    return CommonImageView(imagePath: option.icon, height: 22);
   }
 }
 

@@ -5,6 +5,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -117,6 +118,15 @@ class _CheckInOutTimingSheetBodyState
         }
         _loading = false;
       });
+      LocationPolicyLog.dump(
+        sheet: 'check_in_out',
+        phase: 'fetched',
+        locationId: locationId,
+        schedule: result.data ?? _baseSchedule,
+        success: result.success,
+        statusCode: result.statusCode,
+        message: result.message,
+      );
       return;
     }
 
@@ -187,11 +197,33 @@ class _CheckInOutTimingSheetBodyState
     final locationId = widget.locationId?.trim();
     if (locationId != null && locationId.isNotEmpty) {
       setState(() => _saving = true);
+      final current = _baseSchedule;
       final next = _currentSchedule;
+      LocationPolicyLog.dump(
+        sheet: 'check_in_out',
+        phase: 'current',
+        locationId: locationId,
+        schedule: current,
+      );
+      LocationPolicyLog.dump(
+        sheet: 'check_in_out',
+        phase: 'changed',
+        locationId: locationId,
+        schedule: next,
+      );
       final result = await bindings.managerLocationsService
           .updateLocationSchedule(locationId: locationId, schedule: next);
       if (!mounted) return;
       setState(() => _saving = false);
+      LocationPolicyLog.dump(
+        sheet: 'check_in_out',
+        phase: 'response',
+        locationId: locationId,
+        schedule: result.data ?? next,
+        success: result.success,
+        statusCode: result.statusCode,
+        message: result.message,
+      );
       if (!result.success) {
         ToastHelper.error(
           context,
@@ -220,7 +252,7 @@ class _CheckInOutTimingSheetBodyState
       final wantedGrace = _graceMinutes;
       final next = _currentSchedule;
       final result = await bindings.managerEmployeesService
-          .updateEmployeePermissions(
+          .updateEmployeeSchedule(
             userId: widget.userId!,
             payload: {
               ...ManagerEmployeePolicy.timingPermissionPayload(

@@ -134,10 +134,11 @@ class AttendanceRepository {
 
   Future<List<AttendanceEvent>?> fetchTodayEvents({
     ApiCancelToken? cancelToken,
+    DateTime? forDay,
   }) async {
     try {
-      final today = _todayDateString();
-      final todayDate = DateTime.tryParse(today) ?? DateTime.now();
+      final todayDate = forDay ?? DateTime.now();
+      final today = _dateString(todayDate);
 
       // Prefer /employee/attendance/details — includes approved times
       // and change_requests used by the clock card / bottom sheet.
@@ -237,7 +238,7 @@ class AttendanceRepository {
         final sessionLocation = _dayLevelLocation(session);
 
         void addIfPresent(dynamic raw, AttendanceEventType type) {
-          final parsed = _parseTimeOfDay(raw?.toString());
+          final parsed = _parseTimeOfDay(raw?.toString(), day: todayDate);
           if (parsed == null) return;
           if (!_isSameCalendarDay(parsed, todayDate)) return;
           events.add(
@@ -415,14 +416,13 @@ class AttendanceRepository {
     return null;
   }
 
-  String _todayDateString() {
-    final now = DateTime.now();
-    return '${now.year.toString().padLeft(4, '0')}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
+  String _dateString(DateTime day) {
+    return '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
   }
 
-  DateTime? _parseTimeOfDay(String? hms) {
+  DateTime? _parseTimeOfDay(String? hms, {DateTime? day}) {
     if (hms == null || hms.trim().isEmpty) return null;
     final parts = hms.split(':');
     if (parts.length < 2) return null;
@@ -430,7 +430,7 @@ class AttendanceRepository {
     final minute = int.tryParse(parts[1]);
     if (hour == null || minute == null) return null;
     final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    final now = DateTime.now();
+    final now = day ?? DateTime.now();
     return DateTime(now.year, now.month, now.day, hour, minute, second);
   }
 

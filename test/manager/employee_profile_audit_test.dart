@@ -4,6 +4,7 @@ import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
 
 void main() {
   group('DeviceModel manager envelopes', () {
@@ -64,6 +65,320 @@ void main() {
         expect(device.statusLabel, 'Pending');
       },
     );
+
+    test('treats blocked and rejected as distinct from pending', () {
+      final blocked = DeviceModel.fromJson({
+        'id': '4',
+        'name': 'Pixel',
+        'approval_status': 'blocked',
+      });
+      expect(blocked.isBlocked, isTrue);
+      expect(blocked.isApproved, isFalse);
+      expect(blocked.statusLabel, 'Blocked');
+
+      final rejected = DeviceModel.fromJson({
+        'id': '5',
+        'name': 'iPhone',
+        'approval_status': 'rejected',
+      });
+      expect(rejected.isRejected, isTrue);
+      expect(rejected.isBlocked, isFalse);
+      expect(rejected.statusLabel, 'Rejected');
+    });
+
+    test('uses approver name instead of a numeric id', () {
+      final byId = DeviceModel.fromJson({
+        'id': '1',
+        'name': 'Emulator',
+        'approval_status': 'approved',
+        'is_approved': 1,
+        'actioned_by': 28,
+        'actioned_by_name': 'owner',
+      });
+      expect(byId.actionedBy, 'owner');
+      expect(byId.actionedById, '28');
+      expect(byId.actionedByLabel, 'Approved by: owner');
+      expect(byId.showDeleteRequest, isFalse);
+
+      final nested = DeviceModel.fromJson({
+        'id': '2',
+        'name': 'Emulator',
+        'approval_status': 'approved',
+        'approved_by': {'id': 28, 'name': 'owner'},
+      });
+      expect(nested.actionedBy, 'owner');
+      expect(nested.actionedByLabel, 'Approved by: owner');
+
+      final idOnly = DeviceModel.fromJson({
+        'id': '3',
+        'name': 'Emulator',
+        'approval_status': 'approved',
+        'actioned_by': 28,
+      });
+      expect(idOnly.actionedBy, isNull);
+      expect(idOnly.actionedById, '28');
+      expect(idOnly.actionedByLabel, isNull);
+    });
+
+    test('fills approver name from envelope users list', () {
+      final devices = DeviceModel.listFromEnvelope({
+        'devices': [
+          {
+            'id': '1',
+            'name': 'Emulator',
+            'approval_status': 'approved',
+            'is_approved': 1,
+            'actioned_by': 28,
+          },
+        ],
+        'users': [
+          {'id': 28, 'name': 'owner'},
+        ],
+      });
+      expect(devices.single.actionedByLabel, 'Approved by: owner');
+    });
+
+    test('hides delete request on active devices and shows it on pending', () {
+      final active = DeviceModel.fromJson({
+        'id': '1',
+        'name': 'Emulator',
+        'approval_status': 'approved',
+        'is_approved': 1,
+      });
+      expect(active.statusLabel, 'Active');
+      expect(active.showDeleteRequest, isFalse);
+
+      final pending = DeviceModel.fromJson({
+        'id': '2',
+        'name': 'Pixel',
+        'approval_status': 'pending',
+      });
+      expect(pending.statusLabel, 'Pending');
+      expect(pending.showDeleteRequest, isTrue);
+    });
+
+    test('pins the current device at the top of the list', () {
+      final devices = DeviceModel.currentFirst([
+        DeviceModel.fromJson({
+          'id': '1',
+          'name': 'Office phone',
+          'approval_status': 'approved',
+        }),
+        DeviceModel.fromJson({
+          'id': '2',
+          'name': 'Emulator',
+          'is_current': 1,
+          'approval_status': 'approved',
+        }),
+      ]);
+      expect(devices.first.name, 'Emulator');
+      expect(devices.first.isCurrent, isTrue);
+    });
+
+    test(
+      'DeviceListResponse keeps nested current_device and pending groups',
+      () {
+        final response = DeviceListResponse.fromJson({
+          'success': true,
+          'data': {
+            'devices': [
+              {'id': '10', 'name': 'TECNO-CD7', 'approval_status': 'pending'},
+            ],
+            'current_device': {
+              'id': '12',
+              'name': 'sdk_gphone64',
+              'is_current': 1,
+              'approval_status': 'pending',
+              'mac_address': 'emu-uuid',
+            },
+            'pending': [
+              {
+                'id': '13',
+                'device_name': 'Pixel',
+                'approval_status': 'requested',
+              },
+            ],
+          },
+        });
+
+        expect(
+          response.devices.map((d) => d.displayName),
+          containsAll(['TECNO-CD7', 'Emulator', 'Pixel']),
+        );
+        expect(
+          response.devices
+              .firstWhere((d) => d.name == 'sdk_gphone64')
+              .isCurrent,
+          isTrue,
+        );
+        expect(
+          response.devices.firstWhere((d) => d.name == 'Pixel').isPending,
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'DeviceListResponse parses a single device object as a one-item list',
+      () {
+        final response = DeviceListResponse.fromJson({
+          'id': '12',
+          'device_name': 'emu64xa16k',
+          'approval_status': 'pending',
+          'mac_address': 'abc-uuid',
+        });
+
+        expect(response.devices, hasLength(1));
+        expect(response.devices.first.isPending, isTrue);
+        expect(response.devices.first.deviceId, 'abc-uuid');
+      },
+    );
+
+    test('pretty-prints Samsung A-series and emulator names', () {
+      expect(
+        DeviceDisplayName.resolve(
+          name: 'a36xq',
+          model: 'SM-A366B',
+          manufacturer: 'samsung',
+        ),
+        'A36',
+      );
+      expect(DeviceDisplayName.resolve(name: 'a36xq'), 'A36');
+      expect(DeviceDisplayName.resolve(name: 'emu64xa16k'), 'Emulator');
+      expect(
+        DeviceDisplayName.resolve(name: 'sdk_gphone64_arm64', isEmulator: true),
+        'Emulator',
+      );
+      expect(
+        DeviceModel.fromJson({
+          'id': '1',
+          'name': 'a36xq',
+          'model': 'SM-A366B',
+        }).displayName,
+        'A36',
+      );
+    });
+
+    test('parses Laravel created_at as the request date', () {
+      final device = DeviceModel.fromJson({
+        'id': '1',
+        'name': 'a36xq',
+        'approval_status': 'pending',
+        'created_at': '2026-09-02 15:37:51',
+      });
+      expect(device.requestedAt, isNotNull);
+      expect(device.requestedAt!.year, 2026);
+      expect(device.requestedAt!.month, 9);
+      expect(device.requestedAt!.day, 2);
+      expect(device.requestedAt!.hour, 15);
+      expect(device.requestedAt!.minute, 37);
+      expect(device.displayName, 'A36');
+      expect(device.cardTimestamp, device.requestedAt);
+    });
+  });
+
+  group('ManagerLinkedDevice list', () {
+    ManagerLinkedDevice device({
+      required String id,
+      required String name,
+      required ManagerDeviceStatus status,
+      bool isCurrent = false,
+    }) {
+      return ManagerLinkedDevice(
+        id: id,
+        name: name,
+        platform: 'android',
+        status: status,
+        detail: 'Last used: Today',
+        isCurrent: isCurrent,
+      );
+    }
+
+    test('keeps a blocked device on the list when GET omits it', () {
+      final previous = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+        device(
+          id: '2',
+          name: 'Emulator',
+          status: ManagerDeviceStatus.blocked,
+        ),
+      ];
+      final incoming = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+      ];
+
+      final merged = ManagerLinkedDevice.retainKnownDevices(
+        incoming: incoming,
+        previous: previous,
+      );
+      expect(merged.map((d) => d.id), ['1', '2']);
+      expect(
+        merged.firstWhere((d) => d.id == '2').status,
+        ManagerDeviceStatus.blocked,
+      );
+    });
+
+    test('keeps an unblocked device on the list when GET omits it', () {
+      final previous = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+        device(
+          id: '2',
+          name: 'Emulator',
+          status: ManagerDeviceStatus.active,
+        ),
+      ];
+      final incoming = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+      ];
+
+      final merged = ManagerLinkedDevice.retainKnownDevices(
+        incoming: incoming,
+        previous: previous,
+      );
+      expect(merged.map((d) => d.id), ['1', '2']);
+      expect(
+        merged.firstWhere((d) => d.id == '2').status,
+        ManagerDeviceStatus.active,
+      );
+    });
+
+    test('keeps a pending device request on the list when GET omits it', () {
+      final previous = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+        device(
+          id: '3',
+          name: 'Pixel',
+          status: ManagerDeviceStatus.pending,
+        ),
+      ];
+      final incoming = [
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+      ];
+
+      final merged = ManagerLinkedDevice.retainKnownDevices(
+        incoming: incoming,
+        previous: previous,
+      );
+      expect(merged.map((d) => d.id), ['1', '3']);
+      expect(
+        merged.firstWhere((d) => d.id == '3').status,
+        ManagerDeviceStatus.pending,
+      );
+    });
+
+    test('pins the current device at the top', () {
+      final ordered = ManagerLinkedDevice.currentFirst([
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+        device(
+          id: '2',
+          name: 'Emulator',
+          status: ManagerDeviceStatus.active,
+          isCurrent: true,
+        ),
+      ]);
+      expect(ordered.first.id, '2');
+      expect(ordered.first.isCurrent, isTrue);
+    });
   });
 
   group('ManagerEmployeePolicy', () {
@@ -172,17 +487,20 @@ void main() {
       expect(PermissionItemModel.hasEmployeeLevelPermissions(items), isTrue);
     });
 
-    test('treats source_level=employee as employee-level even without value', () {
-      const item = PermissionItemModel(
-        section: 'attendance',
-        sectionLabel: 'Attendance',
-        key: 'grace_period',
-        label: 'Grace',
-        value: '5',
-        sourceLevel: 'employee',
-      );
-      expect(item.hasEmployeeLevel, isTrue);
-    });
+    test(
+      'treats source_level=employee as employee-level even without value',
+      () {
+        const item = PermissionItemModel(
+          section: 'attendance',
+          sectionLabel: 'Attendance',
+          key: 'grace_period',
+          label: 'Grace',
+          value: '5',
+          sourceLevel: 'employee',
+        );
+        expect(item.hasEmployeeLevel, isTrue);
+      },
+    );
   });
 
   group('ManagerEmployeeModel locations', () {
@@ -202,6 +520,19 @@ void main() {
       });
       expect(employee.locationId, '9');
       expect(employee.schedule?['check_in'], '08:00:00');
+    });
+  });
+
+  group('ManagerEmployeeStatus', () {
+    test('maps disabled/deactivated to disabled and apiValue for PATCH', () {
+      final disabled = ManagerEmployeeModel.fromJson({
+        'id': '12',
+        'name': 'Ava',
+        'account_status': 'disabled',
+      });
+      expect(disabled.status, ManagerEmployeeStatus.disabled);
+      expect(disabled.status.apiValue, 'disabled');
+      expect(ManagerEmployeeStatus.active.apiValue, 'active');
     });
   });
 

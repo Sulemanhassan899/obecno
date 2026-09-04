@@ -10,6 +10,10 @@ class AuthCompanyModel {
     this.expertise,
     this.cityName,
     this.countryName,
+    this.cityId,
+    this.countryId,
+    this.timezone,
+    this.timezoneId,
     this.locationLabel,
     this.photoUrl,
     this.status,
@@ -26,6 +30,10 @@ class AuthCompanyModel {
   final String? expertise;
   final String? cityName;
   final String? countryName;
+  final Object? cityId;
+  final Object? countryId;
+  final String? timezone;
+  final Object? timezoneId;
   final String? locationLabel;
   final String? photoUrl;
   final String? status;
@@ -41,8 +49,20 @@ class AuthCompanyModel {
       teamSize: json['team_size']?.toString(),
       founded: (json['founded'] ?? json['Founded'])?.toString(),
       expertise: json['expertise']?.toString(),
-      cityName: json['city_name']?.toString(),
-      countryName: json['country_name']?.toString(),
+      cityName: (json['city_name'] ??
+              (json['city'] is Map ? json['city']['name'] : json['city']))
+          ?.toString(),
+      countryName: (json['country_name'] ??
+              (json['country'] is Map
+                  ? json['country']['name']
+                  : json['country']))
+          ?.toString(),
+      cityId: json['city_id'] ??
+          (json['city'] is Map ? json['city']['id'] : null),
+      countryId: json['country_id'] ??
+          (json['country'] is Map ? json['country']['id'] : null),
+      timezone: _companyTimezoneName(json),
+      timezoneId: _companyTimezoneId(json),
       locationLabel: json['location_label']?.toString(),
       photoUrl: (json['photo_url'] ?? json['photo'])?.toString(),
       status: json['status']?.toString(),
@@ -61,6 +81,10 @@ class AuthCompanyModel {
     'expertise': expertise,
     'city_name': cityName,
     'country_name': countryName,
+    'city_id': cityId,
+    'country_id': countryId,
+    'timezone': timezone,
+    'timezone_id': timezoneId,
     'location_label': locationLabel,
     'photo_url': photoUrl,
     'status': status,
@@ -79,4 +103,30 @@ class AuthCompanyModel {
 
   @override
   String toString() => 'AuthCompanyModel(id: $id, name: $name)';
+}
+
+String? _companyTimezoneName(Map<String, dynamic> json) {
+  final raw =
+      json['timezone_name'] ?? json['timezone'] ?? json['time_zone'];
+  if (raw is Map) {
+    return (raw['name'] ?? raw['iana'] ?? raw['label'] ?? raw['title'])
+        ?.toString();
+  }
+  final value = raw?.toString().trim();
+  if (value == null || value.isEmpty) return null;
+  if (int.tryParse(value) != null) return null;
+  return value;
+}
+
+Object? _companyTimezoneId(Map<String, dynamic> json) {
+  final raw =
+      json['timezone_id'] ??
+      json['time_zone_id'] ??
+      json['timezone'] ??
+      json['time_zone'];
+  if (raw is Map) return raw['id'] ?? raw['timezone_id'];
+  if (raw is num) return raw.toInt();
+  final value = raw?.toString().trim() ?? '';
+  if (value.isEmpty || value.contains('/')) return null;
+  return int.tryParse(value);
 }

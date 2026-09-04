@@ -8,13 +8,16 @@ import 'package:obecno/demo/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
@@ -80,10 +83,61 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
       attendance.selectedDate == today
           ? attendance.load()
           : attendance.setDate(today),
-      employees.load(locationId: location.id),
+      employees.load(),
     ]);
     if (!mounted) return;
+    try {
+      await bindings.managerLocationsService.loadLocationMembers(
+        locationId: location.id,
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    LocationPolicyLog.dump(
+      sheet: 'location_overview',
+      phase: 'fetched',
+      locationId: location.id,
+      extra: {
+        'employees': employees.members.map((e) => e.id).join(','),
+        'remembered': bindings.managerLocationsService
+            .assignedMemberIds(location.id)
+            .join(','),
+      },
+    );
     setState(() => _locationReady = true);
+  }
+
+  List<ManagerEmployeeModel> _membersForLocation(
+    ManagerEmployeesProvider employees,
+  ) {
+    final remembered = bindings.managerLocationsService.assignedMemberIds(
+      location.id,
+    );
+    return [
+      for (final member in employees.members)
+        _isRemembered(member, remembered)
+            ? member.copyWith(
+                locationId: member.locationId ?? location.id,
+                locationIds: {...member.locationIds, location.id}.toList(),
+                locationName: member.locationName ?? location.name,
+              )
+            : member,
+    ];
+  }
+
+  bool _isRemembered(ManagerEmployeeModel member, Set<String> remembered) {
+    if (remembered.isEmpty) return false;
+    final ids = <String>{
+      member.id.trim(),
+      if (member.userId != null) '${member.userId}',
+    };
+    for (final raw in remembered) {
+      final id = raw.trim();
+      if (id.isEmpty) continue;
+      for (final candidate in ids) {
+        if (candidate.toLowerCase() == id.toLowerCase()) return true;
+      }
+    }
+    return false;
   }
 
   List<ManagerTeamAttendanceItem> _mergedItems({
@@ -95,7 +149,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
     return LocationAttendanceStats.merge(
       location: location,
       attendance: attendance.items,
-      members: employees.members,
+      members: _membersForLocation(employees),
     );
   }
 
@@ -118,13 +172,15 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
     );
   }
 
-  void _openSettings(BuildContext context) {
-    Navigator.push(
+  Future<void> _openSettings(BuildContext context) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => LocationSetupScreen(location: location),
       ),
     );
+    if (!mounted) return;
+    await _load();
   }
 
   void _openDetails(BuildContext context, ManagerAttendanceModel employee) {

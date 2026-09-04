@@ -30,7 +30,7 @@ class DeleteLocationDialog {
                   height: 80,
                 ),
                 const SizedBox(height: 18),
-                AppText.h4('Deactivate Location', ),
+                AppText.h4('Deactivate Location'),
                 const SizedBox(height: 10),
                 AppText.p1(
                   'Location will be deactivate and user will be moved to the another location.',
@@ -47,7 +47,7 @@ class DeleteLocationDialog {
                   children: [
                     MyButton(
                       size: MyButtonSize.normal,
-                      width: 130,
+                      width: 100,
                       buttonText: 'Cancel',
                       backgroundColor: kWhite,
                       fontColor: kGreyColor,
@@ -58,10 +58,10 @@ class DeleteLocationDialog {
                     MyButton(
                       size: MyButtonSize.normal,
                       width: 200,
-                     
+
                       buttonText: 'Deactivate',
                       backgroundColor: kredColor,
-               
+
                       onTap: () async => Navigator.pop(dialogContext, true),
                     ),
                   ],
@@ -91,10 +91,7 @@ class DeleteLocationDialog {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                 CommonImageView(
-                  imagePath: Assets.DeleteLocation,
-                  height: 80,
-                ),
+                CommonImageView(imagePath: Assets.DeleteLocation, height: 80),
                 const SizedBox(height: 18),
                 AppText.h2('Delete Location'),
                 const SizedBox(height: 20),
@@ -119,10 +116,8 @@ class DeleteLocationDialog {
                 MyButton(
                   buttonText: 'Delete Location',
                   backgroundColor: kredColor,
-                  onTap: () async => Navigator.pop(
-                    dialogContext,
-                    DeleteLocationAction.delete,
-                  ),
+                  onTap: () async =>
+                      Navigator.pop(dialogContext, DeleteLocationAction.delete),
                 ),
                 const SizedBox(height: 20),
                 // MyButton(

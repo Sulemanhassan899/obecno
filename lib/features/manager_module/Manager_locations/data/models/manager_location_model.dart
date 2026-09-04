@@ -20,6 +20,8 @@ class ManagerLocationModel {
     this.isDefault = false,
     this.isActive = true,
     this.allowCheckinAnywhere = false,
+    this.timezone,
+    this.timezoneId,
     this.schedule,
   });
 
@@ -38,6 +40,8 @@ class ManagerLocationModel {
   final bool isDefault;
   final bool isActive;
   final bool allowCheckinAnywhere;
+  final String? timezone;
+  final Object? timezoneId;
   final LocationSchedule? schedule;
 
   LocationSchedule get policy => schedule ?? LocationSchedule.defaults;
@@ -90,8 +94,125 @@ class ManagerLocationModel {
       isDefault: _asBool(json['is_default'] ?? json['isDefault']),
       isActive: _asBool(json['is_active'], fallback: true),
       allowCheckinAnywhere: _asBool(json['allow_checkin_anywhere']),
+      timezone: _timezoneNameFrom(json),
+      timezoneId: ManagerLocationModel.timezoneIdFrom(
+        json['timezone_id'] ??
+            json['time_zone_id'] ??
+            json['timezone'] ??
+            json['time_zone'],
+      ),
       schedule: LocationSchedule.tryParse(json),
     );
+  }
+
+  /// Body for `POST /manager/locations`.
+  ///
+  /// The New Location sheet only collects a name, but the API still requires
+  /// address / lat / lng / radius (see manager spec §13.1).
+  static const defaultLatitude = 52.4862;
+  static const defaultLongitude = -1.8904;
+  static const defaultRadiusMeters = 250;
+  static const defaultCity = 'Birmingham';
+  static const defaultCountry = 'United Kingdom';
+  static const defaultTimezone = 'Europe/London';
+
+  static String timezoneFor({
+    String? timezone,
+    String? city,
+    String? country,
+  }) {
+    final explicit = timezone?.trim() ?? '';
+    if (explicit.contains('/')) return explicit;
+
+    final haystack = '$explicit ${city ?? ''} ${country ?? ''}'.toLowerCase();
+    if (haystack.contains('pakistan') ||
+        haystack.contains('islamabad') ||
+        haystack.contains('karachi') ||
+        haystack.contains('lahore')) {
+      return 'Asia/Karachi';
+    }
+    if (haystack.contains('dubai') ||
+        haystack.contains('emirates') ||
+        haystack.contains('uae')) {
+      return 'Asia/Dubai';
+    }
+    if (haystack.contains('london') ||
+        haystack.contains('birmingham') ||
+        haystack.contains('united kingdom') ||
+        haystack.contains('england')) {
+      return 'Europe/London';
+    }
+    if (explicit.isNotEmpty) return explicit;
+    return defaultTimezone;
+  }
+
+  /// Numeric / UUID timezone row id. IANA names like `Europe/London` are
+  /// not ids — Laravel `exists:timezones,id` rejects those.
+  static Object? timezoneIdFrom(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map) {
+      return timezoneIdFrom(
+        raw['id'] ?? raw['timezone_id'] ?? raw['time_zone_id'] ?? raw['value'],
+      );
+    }
+    if (raw is num) return raw.toInt();
+    final value = raw.toString().trim();
+    if (value.isEmpty || value.contains('/')) return null;
+    return int.tryParse(value) ?? (value.contains('-') ? value : null);
+  }
+
+  static Map<String, dynamic> createPayload({
+    required String name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    int radiusMeters = defaultRadiusMeters,
+    String? city,
+    String? country,
+    Object? cityId,
+    Object? countryId,
+    String? timezone,
+    Object? timezoneId,
+  }) {
+    final trimmedName = name.trim();
+    final trimmedAddress = address?.trim() ?? '';
+    final lat = latitude ?? defaultLatitude;
+    final lng = longitude ?? defaultLongitude;
+    final resolvedCity = (city ?? '').trim().isEmpty
+        ? defaultCity
+        : city!.trim();
+    final resolvedCountry = (country ?? '').trim().isEmpty
+        ? defaultCountry
+        : country!.trim();
+    final resolvedTimezone = timezoneFor(
+      timezone: timezone,
+      city: resolvedCity,
+      country: resolvedCountry,
+    );
+    final tzId = timezoneIdFrom(timezoneId);
+    final tzValue = tzId ?? resolvedTimezone;
+    return {
+      'name': trimmedName,
+      'title': trimmedName,
+      'address': trimmedAddress.isEmpty ? trimmedName : trimmedAddress,
+      'latitude': lat,
+      'longitude': lng,
+      'lat_lon': '$lat,$lng',
+      'radius_meters': radiusMeters,
+      'city': resolvedCity,
+      'city_name': resolvedCity,
+      'country': resolvedCountry,
+      'country_name': resolvedCountry,
+      if (cityId != null) 'city_id': cityId,
+      if (countryId != null) 'country_id': countryId,
+      'timezone': tzValue,
+      'time_zone': tzValue,
+      'timeZone': tzValue,
+      'timezone_id': tzValue,
+      'time_zone_id': tzValue,
+      'timeZoneId': tzValue,
+      'timezone_name': resolvedTimezone,
+    };
   }
 
   factory ManagerLocationModel.fromAuth(AuthLocationModel location) {
@@ -106,6 +227,8 @@ class ManagerLocationModel {
       longitude: _latLonPart(location.latLon, 1),
       isDefault: location.isDefault,
       radiusMeters: location.radiusMeters,
+      timezone: location.timezone,
+      timezoneId: location.timezoneId,
     );
   }
 
@@ -133,6 +256,8 @@ class ManagerLocationModel {
     bool? isDefault,
     bool? isActive,
     bool? allowCheckinAnywhere,
+    String? timezone,
+    Object? timezoneId,
     LocationSchedule? schedule,
   }) {
     return ManagerLocationModel(
@@ -151,6 +276,8 @@ class ManagerLocationModel {
       isDefault: isDefault ?? this.isDefault,
       isActive: isActive ?? this.isActive,
       allowCheckinAnywhere: allowCheckinAnywhere ?? this.allowCheckinAnywhere,
+      timezone: timezone ?? this.timezone,
+      timezoneId: timezoneId ?? this.timezoneId,
       schedule: schedule ?? this.schedule,
     );
   }
@@ -209,6 +336,17 @@ String _personName(dynamic raw) {
   return _asString(raw);
 }
 
+String? _timezoneNameFrom(Map<String, dynamic> json) {
+  final raw =
+      json['timezone_name'] ?? json['timezone'] ?? json['time_zone'];
+  if (raw is Map) {
+    return _asNullableString(raw['name'] ?? raw['iana'] ?? raw['label']);
+  }
+  final value = _asNullableString(raw);
+  if (value == null || int.tryParse(value) != null) return null;
+  return value;
+}
+
 String? _asNullableString(dynamic raw) {
   if (raw == null) return null;
   final value = raw.toString().trim();
@@ -241,4 +379,96 @@ String? _absoluteUrl(String? path) {
   if (path.startsWith('http')) return path;
   final base = AppConstants.baseUrl.replaceAll(RegExp(r'/$'), '');
   return '$base/${path.replaceFirst(RegExp(r'^/'), '')}';
+}
+
+class TimezoneLookup {
+  const TimezoneLookup({required this.id, required this.label});
+
+  final Object id;
+  final String label;
+
+  factory TimezoneLookup.fromJson(Map<String, dynamic> json) {
+    final id =
+        json['id'] ??
+        json['timezone_id'] ??
+        json['time_zone_id'] ??
+        json['value'] ??
+        json['iana'] ??
+        json['name'];
+    final label =
+        (json['iana'] ??
+                json['name'] ??
+                json['timezone'] ??
+                json['time_zone'] ??
+                json['label'] ??
+                json['title'] ??
+                json['value'] ??
+                id)
+            ?.toString()
+            .trim() ??
+        '';
+    return TimezoneLookup(
+      id: id is num ? id.toInt() : id,
+      label: label,
+    );
+  }
+
+  static Object? matchId(
+    List<TimezoneLookup> options, {
+    required String iana,
+    String? city,
+    String? country,
+  }) {
+    if (options.isEmpty) return null;
+
+    String norm(String value) =>
+        value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9/]+'), '');
+
+    bool matches(TimezoneLookup option, String needle) {
+      if (needle.isEmpty) return false;
+      final label = norm(option.label);
+      final id = norm(option.id.toString());
+      return label == needle ||
+          id == needle ||
+          label.contains(needle) ||
+          needle.contains(label);
+    }
+
+    final ianaN = norm(iana);
+    for (final option in options) {
+      if (matches(option, ianaN)) return option.id;
+    }
+
+    final inferred = ManagerLocationModel.timezoneFor(
+      timezone: iana,
+      city: city,
+      country: country,
+    );
+    final inferredN = norm(inferred);
+    if (inferredN != ianaN) {
+      for (final option in options) {
+        if (matches(option, inferredN)) return option.id;
+      }
+    }
+
+    final haystack = '${city ?? ''} ${country ?? ''}'.toLowerCase();
+    for (final option in options) {
+      final label = option.label.toLowerCase();
+      if ((haystack.contains('pakistan') ||
+              haystack.contains('islamabad') ||
+              haystack.contains('karachi')) &&
+          (label.contains('karachi') || label.contains('pakistan'))) {
+        return option.id;
+      }
+      if ((haystack.contains('kingdom') ||
+              haystack.contains('london') ||
+              haystack.contains('birmingham') ||
+              haystack.contains('england')) &&
+          (label.contains('london') || label.contains('britain'))) {
+        return option.id;
+      }
+    }
+
+    return options.first.id;
+  }
 }

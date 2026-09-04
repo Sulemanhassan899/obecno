@@ -3,17 +3,39 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+Future<void> _openCreatedLocationFlow(
+  BuildContext context,
+  ManagerLocationModel location,
+) async {
+  await AddMembersSheet.show(
+    context,
+    location: location,
+    openSetupOnAdd: false,
+  );
+  if (!context.mounted) return;
+  await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => LocationOverviewScreen(location: location),
+    ),
+  );
+}
 
 class NewLocationSheet {
   NewLocationSheet._();
 
   static Future<void> show(BuildContext context) {
+    debugPrint('[AddLocation] sheet opened');
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -42,7 +64,9 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
 
   Future<void> _onCreate() async {
     final name = _nameController.text.trim();
+    debugPrint('[AddLocation] Create tapped name="$name"');
     if (name.isEmpty) {
+      debugPrint('[AddLocation] blocked: empty name');
       ToastHelper.error(context, message: 'Enter an office / location name.');
       return;
     }
@@ -54,10 +78,20 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
     if (!mounted) return;
     setState(() => _saving = false);
 
+    debugPrint(
+      '[AddLocation] create result success=${result.success} '
+      'status=${result.statusCode} message=${result.message} '
+      'field=${result.firstFieldMessage} '
+      'id=${result.data?.id} name=${result.data?.name}',
+    );
+
     if (!result.success || result.data == null) {
       ToastHelper.error(
         context,
-        message: result.message ?? 'Failed to create location.',
+        message:
+            result.firstFieldMessage ??
+            result.message ??
+            'Failed to create location.',
       );
       return;
     }
@@ -65,12 +99,12 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
     final location = result.data!;
     context.read<ManagerLocationsProvider>().refresh();
 
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    final navigator = Navigator.of(context, rootNavigator: true);
     Navigator.pop(context);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootContext.mounted) return;
-      AddMembersSheet.show(rootContext, location: location);
+      if (!navigator.mounted) return;
+      _openCreatedLocationFlow(navigator.context, location);
     });
   }
 

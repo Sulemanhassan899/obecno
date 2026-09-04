@@ -6,6 +6,7 @@ import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -43,17 +44,25 @@ class _LinkedDevicesState extends State<LinkedDevices> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<DeviceProvider>().fetchDevices();
+      context.read<DeviceProvider>().loadLinkedDevices();
     });
   }
 
   String _deviceIcon(DeviceModel device) {
-    final platform = device.platform.toLowerCase();
-    final os = device.os.toLowerCase();
-    if (platform.contains('ios') || os.contains('ios')) {
+    final blob =
+        '${device.platform} ${device.os} ${device.manufacturer} ${device.name} ${device.model}'
+            .toLowerCase();
+    if (blob.contains('ios') ||
+        blob.contains('iphone') ||
+        blob.contains('ipad')) {
       return Assets.imagesApple;
     }
-    if (platform.contains('android') || os.contains('android')) {
+    if (blob.contains('android') ||
+        blob.contains('samsung') ||
+        DeviceDisplayName.looksLikeEmulator(device.name) ||
+        DeviceDisplayName.looksLikeEmulator(device.model) ||
+        device.displayName == 'Emulator' ||
+        RegExp(r'^A\d{2}$').hasMatch(device.displayName)) {
       return Assets.imagesAndroid;
     }
     return Assets.imagesDesktop;
@@ -66,22 +75,15 @@ class _LinkedDevicesState extends State<LinkedDevices> {
     return '$hour:$min $period';
   }
 
-  String _formatLastUsed(DateTime? dt) {
-    if (dt == null) return 'No recent activity';
-    final now = DateTime.now();
+  String _formatStamp(DateTime dt, {required String prefix}) {
     final local = dt.toLocal();
+    final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(local.year, local.month, local.day);
     if (day == today) {
-      return 'Last used: Today at ${_formatTime(local)}';
+      return '$prefix: Today at ${_formatTime(local)}';
     }
-    return 'Last used: ${_months[local.month - 1]} ${local.day}, ${local.year}';
-  }
-
-  String _formatRequested(DateTime? dt) {
-    if (dt == null) return 'Requested: —';
-    final local = dt.toLocal();
-    return 'Requested: ${_months[local.month - 1]} ${local.day}, ${local.year}';
+    return '$prefix: ${_months[local.month - 1]} ${local.day}, ${local.year} at ${_formatTime(local)}';
   }
 
   (Color text, Color bg) _statusColors(String label) {
@@ -99,21 +101,27 @@ class _LinkedDevicesState extends State<LinkedDevices> {
   }
 
   Future<void> _onDeleteRequest(DeviceModel device) async {
-    if (device.id.isEmpty || _deletingIds.contains(device.id)) return;
+    final key = _deleteKey(device);
+    if (key.isEmpty || _deletingIds.contains(key)) return;
 
-    setState(() => _deletingIds.add(device.id));
+    setState(() => _deletingIds.add(key));
 
     final provider = context.read<DeviceProvider>();
-    final ok = await provider.deleteDevice(device.id);
+    final ok = await provider.deleteDevice(device);
 
     if (!mounted) return;
-    setState(() => _deletingIds.remove(device.id));
+    setState(() => _deletingIds.remove(key));
 
     if (ok) {
       ToastHelper.deviceDeleted(context);
     } else {
       ToastHelper.deviceDeleteFailed(context, message: provider.errorMessage);
     }
+  }
+
+  String _deleteKey(DeviceModel device) {
+    if (device.id.isNotEmpty && device.id != '0') return device.id;
+    return device.deviceId;
   }
 
   @override
@@ -134,7 +142,7 @@ class _LinkedDevicesState extends State<LinkedDevices> {
             final showEmpty = !isInitialLoad && !showError && devices.isEmpty;
 
             return RefreshIndicator(
-              onRefresh: () => deviceProvider.refreshDevices(),
+              onRefresh: () => deviceProvider.loadLinkedDevices(),
               child: ListView(
                 children: [
                   const SizedBox(height: 20),
@@ -170,7 +178,7 @@ class _LinkedDevicesState extends State<LinkedDevices> {
                               size: MyButtonSize.normal,
                               width: 140,
                               buttonText: "Retry",
-                              onTap: () => deviceProvider.fetchDevices(),
+                              onTap: () => deviceProvider.loadLinkedDevices(),
                             ),
                           ],
                         ),
@@ -200,39 +208,45 @@ class _LinkedDevicesState extends State<LinkedDevices> {
   }
 
   List<Widget> _buildDeviceList(DeviceProvider deviceProvider) {
-    final devices = deviceProvider.devices;
-    final currentDevice = deviceProvider.currentDevice;
-    final otherDevices = currentDevice == null
-        ? devices
-        : devices
-              .where((device) => device.deviceId != currentDevice.deviceId)
-              .toList(growable: false);
+    return DeviceModel.currentFirst(deviceProvider.devices)
+        .expand((device) => [_deviceCard(device), const SizedBox(height: 12)])
+        .toList(growable: false);
+  }
 
-    final widgets = <Widget>[];
-
-    if (currentDevice != null) {
-      widgets.add(const SizedBox(height: 12));
-      widgets.add(_deviceCard(currentDevice));
-      widgets.add(const SizedBox(height: 12));
+  String? _nameForUserId(String? id) {
+    if (id == null || id.isEmpty) return null;
+    final user = bindings.authProvider.user;
+    if (user != null && user.id == id && user.name.trim().isNotEmpty) {
+      return user.name.trim();
     }
+    for (final member in bindings.managerEmployeesProvider.members) {
+      if (member.id.toString() == id && member.name.trim().isNotEmpty) {
+        return member.name.trim();
+      }
+    }
+    return null;
+  }
 
-    widgets.addAll(
-      otherDevices.expand(
-        (device) => [_deviceCard(device), const SizedBox(height: 12)],
-      ),
-    );
-
-    return widgets;
+  String? _actionedByLabel(DeviceModel device) {
+    final existing = device.actionedByLabel;
+    if (existing != null) return existing;
+    if (device.isPending) return null;
+    final name = _nameForUserId(device.actionedById);
+    if (name == null || name.isEmpty) return null;
+    if (device.isApproved) return 'Approved by: $name';
+    if (device.isRejected) return 'Rejected by: $name';
+    if (device.isBlocked) return 'Blocked by: $name';
+    return null;
   }
 
   Widget _deviceCard(DeviceModel device) {
     final status = device.statusLabel;
     final colors = _statusColors(status);
-    final isDeleting = _deletingIds.contains(device.id);
-    final actionedBy = device.actionedByLabel;
+    final isDeleting = _deletingIds.contains(_deleteKey(device));
+    final actionedBy = _actionedByLabel(device);
     final detailLine = device.isPending
-        ? _formatRequested(device.requestedAt ?? device.lastActive)
-        : _formatLastUsed(device.lastActive);
+        ? _formatStamp(device.cardTimestamp, prefix: 'Requested')
+        : _formatStamp(device.cardTimestamp, prefix: 'Last used');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -289,21 +303,25 @@ class _LinkedDevicesState extends State<LinkedDevices> {
               ],
             ),
           ],
-          const SizedBox(height: 16),
-          MyButton(
-            size: MyButtonSize.normal,
-            compact: true,
-            buttonText: isDeleting ? 'Deleting...' : 'Delete Request',
-            backgroundColor: kWhite,
-            fontColor: kRed,
-            outlineColor: kRed,
-            radius: 25,
-            onTap: isDeleting
-                ? () async {}
-                : () async {
-                    await _onDeleteRequest(device);
-                  },
-          ),
+          if (device.showDeleteRequest) ...[
+            const SizedBox(height: 16),
+            MyButton(
+              size: MyButtonSize.normal,
+              compact: true,
+              buttonText: isDeleting ? 'Deleting' : 'Delete Request',
+              backgroundColor: kWhite,
+              fontColor: kRed,
+              outlineColor: kRed,
+              radius: 25,
+              showLoadingSpinner: false,
+              isLoadingExternally: isDeleting,
+              onTap: isDeleting
+                  ? null
+                  : () async {
+                      await _onDeleteRequest(device);
+                    },
+            ),
+          ],
         ],
       ),
     );

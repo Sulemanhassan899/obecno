@@ -5,12 +5,12 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/all_locations_screen.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_employee_sheet.dart';
-import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
-import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/widgets/bottom_nav_bars/manager_nav.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -19,13 +19,12 @@ import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
 /// =======================================================
-/// 🔥 REUSABLE DATE WIDGET
+/// 🔥 READ-ONLY TODAY DATE
 /// =======================================================
 class ReusableDateRow extends StatelessWidget {
   final DateTime date;
-  final ValueChanged<DateTime>? onDateSelected;
 
-  const ReusableDateRow({super.key, required this.date, this.onDateSelected});
+  const ReusableDateRow({super.key, required this.date});
 
   String get formattedDate {
     return "${date.day} ${_monthName(date.month)} ${date.year}";
@@ -51,51 +50,12 @@ class ReusableDateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ButtonAnimations.press(
-      onTap: () {
-        DateMonthYearPickerSheet.show(
-          context,
-          initialDate: date,
-          onSelected: (selectedDate) {
-            onDateSelected?.call(selectedDate);
-          },
-        );
-      },
-      child: Row(
-        children: [
-          CommonImageView(imagePath: Assets.imagesCalender, height: 14),
-          const SizedBox(width: 8),
-          AppText.p1(formattedDate, color: kSubText, weight: FontWeight.w500),
-          const SizedBox(width: 6),
-          CommonImageView(imagePath: Assets.imagesDown, height: 8),
-        ],
-      ),
-    );
-  }
-}
-
-class MonthYearPickerSheet {
-  static void show(
-    BuildContext context, {
-    required DateTime initialDate,
-    required Function(DateTime) onSelected,
-    DateTime? minDate,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Wrap(
-          children: [
-            MonthYearContent(
-              initialDate: initialDate,
-              onSelected: onSelected,
-              minDate: minDate,
-            ),
-          ],
-        );
-      },
+    return Row(
+      children: [
+        CommonImageView(imagePath: Assets.imagesCalender, height: 14),
+        const SizedBox(width: 8),
+        AppText.p1(formattedDate, color: kSubText, weight: FontWeight.w500),
+      ],
     );
   }
 }
@@ -104,30 +64,16 @@ class MonthYearPickerSheet {
 /// 🔥 HEADER
 /// =======================================================
 class OverviewHeader extends StatelessWidget {
-  const OverviewHeader({super.key, required this.date, this.onDateSelected});
-
-  final DateTime date;
-  final ValueChanged<DateTime>? onDateSelected;
+  const OverviewHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final isToday = DateUtils.isSameDay(date, DateTime.now());
-
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        /// LEFT
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppText.h2(isToday ? "Today" : "Overview", align: TextAlign.left),
-
-              const SizedBox(height: 10),
-
-              ReusableDateRow(date: date, onDateSelected: onDateSelected),
-            ],
-          ),
-        ),
+        AppText.h2("Today", align: TextAlign.left),
+        const SizedBox(height: 10),
+        ReusableDateRow(date: DateTime.now()),
       ],
     );
   }
@@ -393,38 +339,161 @@ class OverviewActionsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 14,
-      childAspectRatio: 2,
+    final overview = context.watch<ManagerOverviewProvider>();
+    final employees = context.watch<ManagerEmployeesProvider>();
+    final locations = context.watch<ManagerLocationsProvider>();
+
+    final employeeCount = employees.total > 0
+        ? employees.total
+        : overview.summary?.totalTeamMembers ?? 0;
+    final locationCount = locations.locations.length;
+
+    return Column(
       children: [
-        ActionTile(
-          "Add Location",
-          Assets.imagesAddLocationIcon,
-          () => NewLocationSheet.show(context),
+        GridView.count(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 14,
+          childAspectRatio: 2,
+          children: [
+            ActionTile(
+              "Add Location",
+              Assets.imagesAddLocationIcon,
+              () => NewLocationSheet.show(context),
+            ),
+            ActionTile(
+              "Add Employee",
+              Assets.imagesAddEmployee,
+              () => AddEmployeeSheet.show(context),
+            ),
+          ],
         ),
-        ActionTile("All Locations", Assets.imagesLocationIcon, () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AllLocationsScreen()),
-          );
-        }),
-        ActionTile(
-          "Add Employee",
-          Assets.imagesAddEmployee,
-          () => AddEmployeeSheet.show(context),
+        const SizedBox(height: 14),
+        _DirectoryCard(
+          employeeCount: employeeCount,
+          locationCount: locationCount,
         ),
-        ActionTile("All Employee", Assets.imagesAllEmployees, () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AllEmployeesScreen()),
-          );
-        }),
+        const SizedBox(height: 14),
       ],
+    );
+  }
+}
+
+class _DirectoryCard extends StatelessWidget {
+  const _DirectoryCard({
+    required this.employeeCount,
+    required this.locationCount,
+  });
+
+  final int employeeCount;
+  final int locationCount;
+
+  String _countLabel(int count) => count.toString().padLeft(2, '0');
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: Column(
+        children: [
+          _DirectoryRow(
+            icon: Assets.imagesAllEmployees,
+            label: 'Employees',
+            count: _countLabel(employeeCount),
+            onViewAll: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AllEmployeesScreen()),
+              );
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(height: 1, thickness: 1, color: kDividerColor),
+          ),
+          _DirectoryRow(
+            icon: Assets.imagesLocationIcon,
+            label: 'Locations',
+            count: _countLabel(locationCount),
+            onViewAll: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  settings: const RouteSettings(
+                    name: AllLocationsScreen.routeName,
+                  ),
+                  builder: (_) => const AllLocationsScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectoryRow extends StatelessWidget {
+  const _DirectoryRow({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.onViewAll,
+  });
+
+  final String icon;
+  final String label;
+  final String count;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          CommonImageView(imagePath: icon, height: 16),
+          const SizedBox(width: 12),
+          AppText.p2(label, weight: FontWeight.w600, align: TextAlign.left),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: kbackgroundBlueContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: AppText.p2(count, color: kBlue2, weight: FontWeight.w600),
+          ),
+          const Spacer(),
+          ButtonAnimations.press(
+            onTap: onViewAll,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: kWhite,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: kBorderColor),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppText.p2('View All',color: kSubText, weight: FontWeight.w400),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.chevron_right, size: 16, color: kSubText),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

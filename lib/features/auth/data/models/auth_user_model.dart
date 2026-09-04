@@ -1,5 +1,6 @@
 import 'auth_company_model.dart';
 import 'auth_location_model.dart';
+import 'communication_options.dart';
 import 'permission_item_model.dart';
 import 'token_model.dart';
 
@@ -21,6 +22,7 @@ class AuthUserModel {
     this.permissionLocation,
     this.department,
     this.joiningDate,
+    this.communicationOption,
   });
 
   final String id;
@@ -48,6 +50,12 @@ class AuthUserModel {
   /// Calendar date from `user.joining_date` (YYYY-MM-DD). Date-only local
   /// midnight — never a UTC-shifted timestamp.
   final DateTime? joiningDate;
+
+  /// Raw `communication_option` / `communication_options` from `/auth/me`.
+  final dynamic communicationOption;
+
+  CommunicationOptions get communicationOptions =>
+      CommunicationOptions.parse(communicationOption);
 
   /// Parses API date-only strings (`YYYY-MM-DD`) without timezone drift.
   static DateTime? parseDateOnly(dynamic raw) {
@@ -131,12 +139,26 @@ class AuthUserModel {
         department = asString;
       }
     }
-    department ??=
-        (user['department_name'] ?? json['department_name'])?.toString();
+    department ??= (user['department_name'] ?? json['department_name'])
+        ?.toString();
 
     final joiningDate = parseDateOnly(
       user['joining_date'] ?? json['joining_date'],
     );
+
+    final communicationOption =
+        user['communication_option'] ??
+        user['communication_options'] ??
+        json['communication_option'] ??
+        json['communication_options'] ??
+        (user['company'] is Map
+            ? (user['company'] as Map)['communication_option'] ??
+                  (user['company'] as Map)['communication_options']
+            : null) ??
+        (json['company'] is Map
+            ? (json['company'] as Map)['communication_option'] ??
+                  (json['company'] as Map)['communication_options']
+            : null);
 
     return AuthUserModel(
       id: (user['id'] ?? user['user_id'] ?? '').toString(),
@@ -149,14 +171,16 @@ class AuthUserModel {
       token: token,
       permissions: permissions,
       isEmployee: (user['is_employee'] ?? json['is_employee']) as bool? ?? true,
-      activeRoleView:
-          (user['active_role_view'] ?? json['active_role_view'])?.toString(),
+      activeRoleView: (user['active_role_view'] ?? json['active_role_view'])
+          ?.toString(),
       canSwitchRoleView:
-          (user['can_switch_role_view'] ?? json['can_switch_role_view']) == true,
+          (user['can_switch_role_view'] ?? json['can_switch_role_view']) ==
+          true,
       serverRememberMe: json['remember_me'] as bool? ?? true,
       permissionLocation: permissionLocation,
       department: department,
       joiningDate: joiningDate,
+      communicationOption: communicationOption,
     );
   }
 

@@ -28,9 +28,7 @@ android {
     }
 
     defaultConfig {
-        // Store id (Play / App Store). Java package stays com.example.obecno
-        // until MainActivity is moved under com/obecno/app.
-        applicationId = "com.obecno.app"
+       applicationId = "com.obecno.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

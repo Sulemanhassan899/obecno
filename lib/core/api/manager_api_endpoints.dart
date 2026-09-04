@@ -31,6 +31,7 @@ class ManagerEmployeeApiEndpoints {
   static const _base = '/manager';
   static const _employees = '$_base/employees';
   static const _legacyEmployee = '$_base/employee';
+  static const _legacyLocation = '$_base/location';
   static const _locations = '$_base/locations';
   static const _teamAttendance = '$_base/team-attendance';
 
@@ -99,6 +100,40 @@ class ManagerEmployeeApiEndpoints {
   static ManagerApiRoute deleteLocation(Object locationId) =>
       ManagerApiRoute.delete('$_locations/$locationId');
 
+  static ManagerApiRoute postLocationDelete(Object locationId) =>
+      ManagerApiRoute.post('$_locations/$locationId/delete');
+
+  static const postLocationsDelete = ManagerApiRoute.post('$_locations/delete');
+
+  // GET list · PUT first write · PATCH edit · DELETE — same path, different verbs.
+  static ManagerApiRoute getLocationPermissions(Object locationId) =>
+      ManagerApiRoute.get('$_locations/$locationId/permissions');
+
+  static ManagerApiRoute putLocationPermissions(Object locationId) =>
+      ManagerApiRoute.put('$_locations/$locationId/permissions');
+
+  static ManagerApiRoute patchLocationPermissions(Object locationId) =>
+      ManagerApiRoute.patch('$_locations/$locationId/permissions');
+
+  static ManagerApiRoute deleteLocationPermissions(Object locationId) =>
+      ManagerApiRoute.delete('$_locations/$locationId/permissions');
+
+  // Singular aliases — same verbs as the plural routes above.
+  static ManagerApiRoute getLocationPermission(Object locationId) =>
+      ManagerApiRoute.get('$_locations/$locationId/permission');
+
+  static ManagerApiRoute putLocationPermission(Object locationId) =>
+      ManagerApiRoute.put('$_locations/$locationId/permission');
+
+  static ManagerApiRoute patchLocationPermission(Object locationId) =>
+      ManagerApiRoute.patch('$_locations/$locationId/permission');
+
+  static ManagerApiRoute deleteLocationPermission(Object locationId) =>
+      ManagerApiRoute.delete('$_locations/$locationId/permission');
+
+  static ManagerApiRoute postLocationInactive(Object locationId) =>
+      ManagerApiRoute.post('$_locations/$locationId/inactive');
+
   static ManagerApiRoute postLocationMembers(Object locationId) =>
       ManagerApiRoute.post('$_locations/$locationId/members');
 
@@ -121,6 +156,15 @@ class ManagerEmployeeApiEndpoints {
 
   static ManagerApiRoute patchEmployee(Object employeeId) =>
       ManagerApiRoute.patch(_employee(employeeId));
+
+  static ManagerApiRoute patchEmployeeStatus(Object employeeId) =>
+      ManagerApiRoute.patch('${_employee(employeeId)}/status');
+
+  static ManagerApiRoute putEmployeeStatus(Object employeeId) =>
+      ManagerApiRoute.put('${_employee(employeeId)}/status');
+
+  static ManagerApiRoute postEmployeeStatus(Object employeeId) =>
+      ManagerApiRoute.post('${_employee(employeeId)}/status');
 
   static ManagerApiRoute getEmployeeEdit(Object employeeId) =>
       ManagerApiRoute.get('${_employee(employeeId)}/edit');
@@ -174,15 +218,6 @@ class ManagerEmployeeApiEndpoints {
   static ManagerApiRoute patchEmployeeLocations(Object employeeId) =>
       ManagerApiRoute.patch('${_employee(employeeId)}/locations');
 
-  static ManagerApiRoute getEmployeeSchedule(Object employeeId) =>
-      ManagerApiRoute.get('${_employee(employeeId)}/schedule');
-
-  static ManagerApiRoute putEmployeeSchedule(Object employeeId) =>
-      ManagerApiRoute.put('${_employee(employeeId)}/schedule');
-
-  static ManagerApiRoute patchEmployeeSchedule(Object employeeId) =>
-      ManagerApiRoute.patch('${_employee(employeeId)}/schedule');
-
   static ManagerApiRoute getEmployeeDevice(
     Object employeeId,
     Object deviceId,
@@ -203,6 +238,53 @@ class ManagerEmployeeApiEndpoints {
     Object deviceId,
   ) => ManagerApiRoute.post(
     '${_employee(employeeId)}/devices/$deviceId/review',
+  );
+
+  static ManagerApiRoute putEmployeeDeviceReview(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.put(
+    '${_employee(employeeId)}/devices/$deviceId/review',
+  );
+
+  static ManagerApiRoute patchEmployeeDeviceReview(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.patch(
+    '${_employee(employeeId)}/devices/$deviceId/review',
+  );
+
+  static ManagerApiRoute deleteEmployeeDevice(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.delete('${_employee(employeeId)}/devices/$deviceId');
+
+  static ManagerApiRoute postEmployeeDeviceDelete(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.post(
+    '${_employee(employeeId)}/devices/$deviceId/delete',
+  );
+
+  static ManagerApiRoute postEmployeeDeviceStatus(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.post(
+    '${_employee(employeeId)}/devices/$deviceId/status',
+  );
+
+  static ManagerApiRoute putEmployeeDeviceStatus(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.put(
+    '${_employee(employeeId)}/devices/$deviceId/status',
+  );
+
+  static ManagerApiRoute patchEmployeeDeviceStatus(
+    Object employeeId,
+    Object deviceId,
+  ) => ManagerApiRoute.patch(
+    '${_employee(employeeId)}/devices/$deviceId/status',
   );
 
   static ManagerApiRoute postEmployeeDeviceAction(
@@ -267,6 +349,31 @@ class ManagerEmployeeApiEndpoints {
   static const postLegacyEmployeePhoto = ManagerApiRoute.post(
     '$_legacyEmployee/photo',
   );
+  static const postLegacyEmployeeDeviceReview = ManagerApiRoute.post(
+    '$_legacyEmployee/device/review',
+  );
+  static const postLegacyEmployeeDeviceDelete = ManagerApiRoute.post(
+    '$_legacyEmployee/device/delete',
+  );
+  static const postLegacyEmployeeDeviceStatus = ManagerApiRoute.post(
+    '$_legacyEmployee/device/status',
+  );
+
+  // =====================================================================
+  // Legacy query-param location APIs (`/manager/location/...`)
+  // =====================================================================
+  static const postLegacyLocationPermissionsUpdate = ManagerApiRoute.post(
+    '$_legacyLocation/permissions/update',
+  );
+  static const deleteLegacyLocationPermissions = ManagerApiRoute.delete(
+    '$_legacyLocation/permissions/delete',
+  );
+  static const postLegacyLocationDelete = ManagerApiRoute.post(
+    '$_legacyLocation/delete',
+  );
+  static const postLegacyLocationInactive = ManagerApiRoute.post(
+    '$_legacyLocation/inactive',
+  );
 
   // ---------------------------------------------------------------------
   // Path-only aliases for existing repositories (prefer ManagerApiRoute).
@@ -287,6 +394,8 @@ class ManagerEmployeeApiEndpoints {
 
   static const String locations = _locations;
   static const String addLocation = _locations;
+  static const String locationsCreate = '$_locations/create';
+  static const String timezones = '$_base/timezones';
 
   static String location(Object locationId) => getLocation(locationId).path;
 
@@ -299,12 +408,29 @@ class ManagerEmployeeApiEndpoints {
   static String locationMembers(Object locationId) =>
       postLocationMembers(locationId).path;
 
+  static String locationDelete(Object locationId) =>
+      postLocationDelete(locationId).path;
+
+  static String locationPermissions(Object locationId) =>
+      getLocationPermissions(locationId).path;
+
+  static String locationPermission(Object locationId) =>
+      getLocationPermission(locationId).path;
+
+  static String locationInactive(Object locationId) =>
+      postLocationInactive(locationId).path;
+
+  static const String locationsDelete = '$_locations/delete';
+
   static const String employees = _employees;
   static const String addEmployee = _employees;
   static const String inviteEmployees = '$_employees/invite';
   static const String employeesCreate = '$_employees/create';
 
   static String employee(Object employeeId) => getEmployee(employeeId).path;
+
+  static String employeeStatus(Object employeeId) =>
+      patchEmployeeStatus(employeeId).path;
 
   static String employeeEdit(Object employeeId) =>
       getEmployeeEdit(employeeId).path;
@@ -345,9 +471,6 @@ class ManagerEmployeeApiEndpoints {
   static String employeeLocations(Object employeeId) =>
       getEmployeeLocations(employeeId).path;
 
-  static String employeeSchedule(Object employeeId) =>
-      getEmployeeSchedule(employeeId).path;
-
   static String employeeDevices(Object employeeId) =>
       getEmployeeDevices(employeeId).path;
 
@@ -356,6 +479,12 @@ class ManagerEmployeeApiEndpoints {
 
   static String employeeDeviceReview(Object employeeId, Object deviceId) =>
       postEmployeeDeviceReview(employeeId, deviceId).path;
+
+  static String employeeDeviceDelete(Object employeeId, Object deviceId) =>
+      postEmployeeDeviceDelete(employeeId, deviceId).path;
+
+  static String employeeDeviceStatus(Object employeeId, Object deviceId) =>
+      postEmployeeDeviceStatus(employeeId, deviceId).path;
 
   static String employeeDeviceAction(
     Object employeeId,
@@ -383,6 +512,18 @@ class ManagerEmployeeApiEndpoints {
       '$_legacyEmployee/permissions/update';
   static const String legacyEmployeeDevices = '$_legacyEmployee/devices';
   static const String legacyEmployeePhoto = '$_legacyEmployee/photo';
+  static const String legacyEmployeeDeviceReview =
+      '$_legacyEmployee/device/review';
+  static const String legacyEmployeeDeviceDelete =
+      '$_legacyEmployee/device/delete';
+  static const String legacyEmployeeDeviceStatus =
+      '$_legacyEmployee/device/status';
+  static const String legacyLocationPermissionsUpdate =
+      '$_legacyLocation/permissions/update';
+  static const String legacyLocationPermissionsDelete =
+      '$_legacyLocation/permissions/delete';
+  static const String legacyLocationDelete = '$_legacyLocation/delete';
+  static const String legacyLocationInactive = '$_legacyLocation/inactive';
 
   static const String subscriptions = '$_base/subscriptions';
   static const String payments = '$_base/payments';

@@ -146,6 +146,20 @@ class ToastHelper {
     );
   }
 
+  static void accountDeactivated(BuildContext context) {
+    success(
+      context,
+      message: 'Account deactivated.',
+    );
+  }
+
+  static void accountActivated(BuildContext context) {
+    success(
+      context,
+      message: 'Account activated.',
+    );
+  }
+
   static void couldNotGetLocation(BuildContext context) {
     show(context, message: 'Could not get current location.');
   }
@@ -246,6 +260,15 @@ class ToastHelper {
 
   static void breakLimitReached(BuildContext context) {
     error(context, message: 'Break limit reached');
+  }
+
+  static void timeUnavailable(BuildContext context, {String? message}) {
+    error(
+      context,
+      message: (message != null && message.trim().isNotEmpty)
+          ? message
+          : AppStrings.timeUnavailable,
+    );
   }
 
   static void locationRequiredForOffice(BuildContext context) {

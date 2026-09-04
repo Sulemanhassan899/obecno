@@ -16,6 +16,7 @@ import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 import '../../repositories/clock_attendance_repository.dart';
 import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';
+import '../../services/employee_trusted_time.dart';
 import 'package:obecno/main.dart';
 
 class SyncedClockScreenController extends ClockScreenController {
@@ -27,12 +28,16 @@ class SyncedClockScreenController extends ClockScreenController {
         const AttendancePermissionService(),
     LocationService? locationService,
     SyncService? syncService,
+    EmployeeTrustedTime? trustedTime,
   }) : _repository = repository,
        _companyPolicyService = companyPolicyService,
        _permissionService = permissionService,
        _locationService = locationService ?? LocationServiceImpl(),
        _sessionEpoch = bindings.authProvider.sessionEpoch,
-       super(userId: userId) {
+       super(
+         userId: userId,
+         trustedTime: trustedTime ?? bindings.employeeTrustedTime,
+       ) {
     isProcessing = true;
     syncService?.onQueuedItemSynced = _onQueuedItemSynced;
     // Phase 6: when the background sync service completes a pass that
@@ -41,21 +46,29 @@ class SyncedClockScreenController extends ClockScreenController {
     syncService?.onSyncCompleted = () {
       unawaited(reconcileWithServer());
     };
-    unawaited(_loadBreakDurationPolicy());
-    unawaited(
-      reconcileWithServer().whenComplete(() {
-        if (!_isStale) {
-          isProcessing = false;
-          notifyListeners();
-        }
-      }),
-    );
+    this.trustedTime?.addListener(_onTrustedTimeChanged);
+    unawaited(_bootstrap());
   }
 
   final AttendanceRepository _repository;
   final CompanyPolicyService _companyPolicyService;
   final AttendancePermissionService _permissionService;
   final LocationService _locationService;
+
+  void _onTrustedTimeChanged() {
+    if (!_isStale) notifyListeners();
+  }
+
+  Future<void> _bootstrap() async {
+    await trustedTime?.ensureLogin(userId: userId);
+    await _loadBreakDurationPolicy();
+    await reconcileWithServer().whenComplete(() {
+      if (!_isStale) {
+        isProcessing = false;
+        notifyListeners();
+      }
+    });
+  }
 
   void _onQueuedItemSynced(String requestId, String action, String message) {
     _raiseLocationAlert(requestId, AppStrings.synced);
@@ -121,7 +134,11 @@ class SyncedClockScreenController extends ClockScreenController {
   GpsReading? _lastGpsReading;
 
   void _captureRealLocationIfOutOfRange(AttendanceActionResult result) {
-    if (isInRange || result == AttendanceActionResult.none) return;
+    if (isInRange ||
+        result == AttendanceActionResult.none ||
+        result == AttendanceActionResult.timeUnavailable) {
+      return;
+    }
     final reading = _lastGpsReading;
     if (reading == null || events.isEmpty) return;
     final justRecorded = events.last;
@@ -147,7 +164,8 @@ class SyncedClockScreenController extends ClockScreenController {
   DateTime? get breakStartedAt =>
       _summary.isOnBreak ? _summary.openSessionStart : null;
 
-  Duration get liveBreakDuration => _summary.liveBreakDuration();
+  Duration get liveBreakDuration =>
+      _summary.liveBreakDuration(now: clockNow);
 
   int get breakDurationMinutes => liveBreakDuration.inMinutes;
 
@@ -179,7 +197,7 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   bool get isEarlyForCheckIn {
-    final now = DateTime.now();
+    final now = clockNow;
     final scheduledCheckIn = DateTime(
       now.year,
       now.month,
@@ -191,7 +209,7 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   bool get isEarlyForCheckOut {
-    final now = DateTime.now();
+    final now = clockNow;
     final scheduledCheckOut = DateTime(
       now.year,
       now.month,
@@ -243,6 +261,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
   @override
   void dispose() {
+    trustedTime?.removeListener(_onTrustedTimeChanged);
     _localDisposed = true;
     super.dispose();
   }
@@ -263,6 +282,7 @@ class SyncedClockScreenController extends ClockScreenController {
     notifyListeners();
 
     try {
+      trustedNetworkOnline = await bindings.networkChecker.isConnected;
       final permitted = await _permissionService.checkAndRequestPermissions();
       if (!permitted) {
         lastServerMessage =
@@ -311,6 +331,7 @@ class SyncedClockScreenController extends ClockScreenController {
     notifyListeners();
 
     try {
+      trustedNetworkOnline = await bindings.networkChecker.isConnected;
       final permitted = await _permissionService.checkAndRequestPermissions();
       if (!permitted) {
         lastServerMessage =
@@ -444,7 +465,7 @@ class SyncedClockScreenController extends ClockScreenController {
   void _recordBreakEnd(List<AttendanceEvent> previousEvents) {
     final previousSummary = AttendanceEngine.compute(previousEvents);
     final startedAt = previousSummary.openSessionStart;
-    final endedAt = events.isNotEmpty ? events.last.time : DateTime.now();
+    final endedAt = events.isNotEmpty ? events.last.time : clockNow;
 
     if (startedAt == null || !previousSummary.isOnBreak) {
       AppLogger.error(
@@ -515,9 +536,11 @@ class SyncedClockScreenController extends ClockScreenController {
     _reconcileInFlight = true;
     try {
       debugPrint('[SyncedClockScreenController] reconcileWithServer: start');
+      final today = clockNow;
       final serverEvents = await _repository
           .fetchTodayEvents(
             cancelToken: bindings.authProvider.sessionCancelToken,
+            forDay: today,
           )
           .timeout(const Duration(seconds: 10));
       if (_isStale) return false;
@@ -529,7 +552,6 @@ class SyncedClockScreenController extends ClockScreenController {
         return false;
       }
 
-      final today = DateTime.now();
       bool isToday(AttendanceEvent e) =>
           e.effectiveTime.year == today.year &&
           e.effectiveTime.month == today.month &&
@@ -619,10 +641,12 @@ class SyncedClockScreenController extends ClockScreenController {
     AttendanceActionResult localResult,
   ) async {
     _lastSubmitWasConflict = false;
-    final todayEvents = events;
-    final capturedAt = todayEvents.isEmpty
-        ? DateTime.now()
-        : todayEvents.last.time;
+    final recorded = lastRecordedEvent;
+    final capturedAt = recorded?.time;
+    if (capturedAt == null) {
+      lastTrustedTimeError = 'No trusted punch timestamp to send.';
+      return false;
+    }
 
     LocationModel? location = _lastGpsReading?.location;
     if (location == null) {
@@ -665,8 +689,7 @@ class SyncedClockScreenController extends ClockScreenController {
       blockNextAction = false;
 
       if (submitResult.synced) {
-        final recordedEvent = todayEvents.isEmpty ? null : todayEvents.last;
-        if (recordedEvent != null && !recordedEvent.isValidLocation) {
+        if (!recorded!.isValidLocation) {
           _raiseLocationAlert(
             payload.requestId,
             submitResult.notification ??
@@ -705,6 +728,7 @@ class SyncedClockScreenController extends ClockScreenController {
       case AttendanceActionResult.outOfRange:
       case AttendanceActionResult.nonWorkingDay:
       case AttendanceActionResult.breakLimitReached:
+      case AttendanceActionResult.timeUnavailable:
       case AttendanceActionResult.none:
         return null;
     }

@@ -12,6 +12,7 @@ import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_det
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_employee_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_profile_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
 import 'package:obecno/widgets/animated_searchbar.dart';
@@ -32,6 +33,7 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   final _searchController = TextEditingController();
   bool _isSearching = false;
   String _query = '';
+  String _selectedStatusId = ManagerEmployeeFilters.allStatusId;
   late String _selectedLocationId;
 
   @override
@@ -72,11 +74,23 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   }) {
     return ManagerEmployeeFilters.roleFirst(
       ManagerEmployeeFilters.byQuery(
-        source: _locationEmployees(source, locationName: locationName),
+        source: ManagerEmployeeFilters.byStatus(
+          source: _locationEmployees(source, locationName: locationName),
+          selectedStatusId: _selectedStatusId,
+        ),
         query: _query,
       ),
     );
   }
+
+  bool get _hasStatusFilter =>
+      _selectedStatusId != ManagerEmployeeFilters.allStatusId;
+
+  bool get _hasLocationFilter =>
+      _selectedLocationId != LocationFilterOption.allId;
+
+  String get _statusChipLabel =>
+      ManagerEmployeeFilters.statusChipLabel(_selectedStatusId);
 
   String _locationChipLabel(ManagerLocationsProvider locationsProvider) {
     if (_selectedLocationId == LocationFilterOption.allId) {
@@ -98,6 +112,20 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     );
     if (selected == null || !mounted) return;
     await _applyLocation(selected);
+  }
+
+  Future<void> _openStatusFilter() async {
+    final selected = await StatusFilterSheet.show(
+      context,
+      selectedId: _selectedStatusId,
+      options: ManagerEmployeeFilters.directoryStatusOptions,
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _selectedStatusId = selected);
+  }
+
+  void _clearStatusFilter() {
+    setState(() => _selectedStatusId = ManagerEmployeeFilters.allStatusId);
   }
 
   Future<void> _applyLocation(String locationId) async {
@@ -236,18 +264,43 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
                         disabled: counts.disabled,
                       ),
                       const SizedBox(height: 12),
-                      if (_selectedLocationId == LocationFilterOption.allId)
-                        FilterChipButton(
-                          label: _locationChipLabel(locationsProvider),
-                          onTap: () => _openLocationFilter(locationsProvider),
-                        )
-                      else
-                        SelectedFilterChip(
-                          label: _locationChipLabel(locationsProvider),
-                          onTap: () => _openLocationFilter(locationsProvider),
-                          onClear: () =>
-                              _applyLocation(LocationFilterOption.allId),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _hasStatusFilter
+                                ? SelectedFilterChip(
+                                    label: _statusChipLabel,
+                                    onTap: _openStatusFilter,
+                                    onClear: _clearStatusFilter,
+                                  )
+                                : FilterChipButton(
+                                    label: _statusChipLabel,
+                                    onTap: _openStatusFilter,
+                                  ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _hasLocationFilter
+                                ? SelectedFilterChip(
+                                    label: _locationChipLabel(
+                                      locationsProvider,
+                                    ),
+                                    onTap: () =>
+                                        _openLocationFilter(locationsProvider),
+                                    onClear: () => _applyLocation(
+                                      LocationFilterOption.allId,
+                                    ),
+                                  )
+                                : FilterChipButton(
+                                    label: _locationChipLabel(
+                                      locationsProvider,
+                                    ),
+                                    onTap: () =>
+                                        _openLocationFilter(locationsProvider),
+                                  ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 14),
                     ],
                   ),

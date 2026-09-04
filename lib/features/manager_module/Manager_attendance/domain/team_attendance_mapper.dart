@@ -6,6 +6,7 @@ class TeamAttendanceMapper {
   TeamAttendanceMapper._();
 
   static ManagerAttendanceModel toTile(ManagerTeamAttendanceItem item) {
+    final live = item.isOpen || item.isCurrentlyOnBreak;
     return ManagerAttendanceModel(
       userId: item.userId,
       attendanceId: item.attendanceId,
@@ -15,7 +16,7 @@ class TeamAttendanceMapper {
       role: item.departmentTitle,
       team: item.locationName ?? item.currentLocation,
       checkIn: formatTime(item.checkin),
-      checkOut: formatTime(item.checkout),
+      checkOut: live ? null : formatTime(item.checkout),
       status: uiStatus(item),
       photo: item.photoUrl,
     );
@@ -99,10 +100,10 @@ class TeamAttendanceMapper {
   }
 
   static String uiStatus(ManagerTeamAttendanceItem item) {
-    if (item.isOnBreak) return 'break';
+    if (item.isCurrentlyOnBreak) return 'break';
+    if (item.isOnLeave && !item.isOpen && !item.isActive) return 'leave';
     if (item.isLate) return 'late';
-    if (item.isActive) return 'working';
-    if (item.isOnLeave) return 'leave';
+    if (item.isActive || item.isOpen) return 'working';
     return '';
   }
 

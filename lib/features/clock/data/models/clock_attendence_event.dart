@@ -1,4 +1,5 @@
 import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/shared/location/service/geofence_helper.dart';
 
@@ -11,6 +12,14 @@ class AttendanceEvent {
   final bool isValidLocation;
   final List<AttendanceEditRequest> editRequests;
 
+  /// Phone wall-clock at punch — detection only, never sent to the server.
+  final DateTime? phoneWallClock;
+  final DateTime? calculatedActualTime;
+  final bool? clockChanged;
+  final Duration? clockDifference;
+  final TimeComparisonResult? timeComparison;
+  final Duration? monotonicElapsed;
+
   const AttendanceEvent({
     required this.id,
     required this.type,
@@ -18,6 +27,12 @@ class AttendanceEvent {
     this.location,
     this.isValidLocation = true,
     this.editRequests = const [],
+    this.phoneWallClock,
+    this.calculatedActualTime,
+    this.clockChanged,
+    this.clockDifference,
+    this.timeComparison,
+    this.monotonicElapsed,
   });
 
   bool get isEdited => editRequests.isNotEmpty;
@@ -85,6 +100,13 @@ class AttendanceEvent {
       editRequests: primary.editRequests.isNotEmpty
           ? primary.editRequests
           : other.editRequests,
+      phoneWallClock: primary.phoneWallClock ?? other.phoneWallClock,
+      calculatedActualTime:
+          primary.calculatedActualTime ?? other.calculatedActualTime,
+      clockChanged: primary.clockChanged ?? other.clockChanged,
+      clockDifference: primary.clockDifference ?? other.clockDifference,
+      timeComparison: primary.timeComparison ?? other.timeComparison,
+      monotonicElapsed: primary.monotonicElapsed ?? other.monotonicElapsed,
     );
   }
 
@@ -95,6 +117,12 @@ class AttendanceEvent {
     String? location,
     bool? isValidLocation,
     List<AttendanceEditRequest>? editRequests,
+    DateTime? phoneWallClock,
+    DateTime? calculatedActualTime,
+    bool? clockChanged,
+    Duration? clockDifference,
+    TimeComparisonResult? timeComparison,
+    Duration? monotonicElapsed,
   }) {
     return AttendanceEvent(
       id: id ?? this.id,
@@ -103,6 +131,12 @@ class AttendanceEvent {
       location: location ?? this.location,
       isValidLocation: isValidLocation ?? this.isValidLocation,
       editRequests: editRequests ?? this.editRequests,
+      phoneWallClock: phoneWallClock ?? this.phoneWallClock,
+      calculatedActualTime: calculatedActualTime ?? this.calculatedActualTime,
+      clockChanged: clockChanged ?? this.clockChanged,
+      clockDifference: clockDifference ?? this.clockDifference,
+      timeComparison: timeComparison ?? this.timeComparison,
+      monotonicElapsed: monotonicElapsed ?? this.monotonicElapsed,
     );
   }
 
@@ -113,9 +147,27 @@ class AttendanceEvent {
     'location': location,
     'is_valid_location': isValidLocation,
     'edit_requests': editRequests.map((e) => e.toJson()).toList(),
+    if (phoneWallClock != null)
+      'phone_wall_clock': phoneWallClock!.toIso8601String(),
+    if (calculatedActualTime != null)
+      'calculated_actual_time': calculatedActualTime!.toIso8601String(),
+    if (clockChanged != null) 'clock_changed': clockChanged,
+    if (clockDifference != null)
+      'clock_difference_ms': clockDifference!.inMilliseconds,
+    if (timeComparison != null) 'time_comparison': timeComparison!.name,
+    if (monotonicElapsed != null)
+      'monotonic_ms': monotonicElapsed!.inMilliseconds,
   };
 
   factory AttendanceEvent.fromJson(Map<String, dynamic> json) {
+    TimeComparisonResult? comparison;
+    final comparisonRaw = json['time_comparison'] as String?;
+    if (comparisonRaw == 'mismatch') {
+      comparison = TimeComparisonResult.mismatch;
+    } else if (comparisonRaw == 'match') {
+      comparison = TimeComparisonResult.match;
+    }
+
     return AttendanceEvent(
       id: json['id'] as String? ?? "${DateTime.now().microsecondsSinceEpoch}",
       type: AttendanceEventType.values.firstWhere(
@@ -128,7 +180,22 @@ class AttendanceEvent {
       editRequests: AttendanceEditRequest.listFromJson(
         json['edit_requests'] ?? json['fix_requests'],
       ),
+      phoneWallClock: _parseOptionalDate(json['phone_wall_clock']),
+      calculatedActualTime: _parseOptionalDate(json['calculated_actual_time']),
+      clockChanged: json['clock_changed'] as bool?,
+      clockDifference: json['clock_difference_ms'] is int
+          ? Duration(milliseconds: json['clock_difference_ms'] as int)
+          : null,
+      timeComparison: comparison,
+      monotonicElapsed: json['monotonic_ms'] is int
+          ? Duration(milliseconds: json['monotonic_ms'] as int)
+          : null,
     );
+  }
+
+  static DateTime? _parseOptionalDate(dynamic raw) {
+    if (raw is! String || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw.trim());
   }
 
   String get label {

@@ -22,7 +22,13 @@ class DeviceService {
   Map<String, dynamic> _buildPayload(DeviceInfoSnapshot info) {
     return {
       // Required by spec
-      'device_name': info.deviceName,
+      'device_name': DeviceDisplayName.resolve(
+        name: info.deviceName,
+        model: info.model,
+        manufacturer: info.manufacturer,
+        platform: info.platform,
+        os: info.os,
+      ),
       'device_details': info.deviceDetails,
       'mac_address': info.macAddress,
       // Extended
@@ -63,15 +69,68 @@ class DeviceService {
       result = await _repository.registerDevice(payload);
     }
 
-    return result;
+    return _withFallbackDevice(result, info);
+  }
+
+  DeviceRegisterResult _withFallbackDevice(
+    DeviceRegisterResult result,
+    DeviceInfoSnapshot info,
+  ) {
+    if (result.device != null) return result;
+    if (result.outcome != DeviceRegisterOutcome.registered &&
+        result.outcome != DeviceRegisterOutcome.alreadyRegistered) {
+      return result;
+    }
+    return DeviceRegisterResult(
+      outcome: result.outcome,
+      message: result.message,
+      device: pendingDeviceFrom(info),
+    );
+  }
+
+  DeviceModel pendingDeviceFrom(
+    DeviceInfoSnapshot info, {
+    DeviceModel? registered,
+  }) {
+    final name = DeviceDisplayName.resolve(
+      name: registered?.name.isNotEmpty == true
+          ? registered!.name
+          : info.deviceName,
+      model: info.model,
+      manufacturer: info.manufacturer,
+      platform: info.platform,
+      os: info.os,
+    );
+
+    return DeviceModel(
+      id: registered?.id ?? '',
+      deviceId: info.deviceId,
+      name: name,
+      model: info.model,
+      manufacturer: info.manufacturer,
+      os: info.os,
+      osVersion: info.osVersion,
+      appVersion: info.appVersion,
+      ipAddress: registered?.ipAddress ?? '',
+      timezone: info.timezone,
+      platform: info.platform,
+      lastActive: registered?.lastActive,
+      requestedAt: registered?.requestedAt ?? DateTime.now(),
+      status: (registered?.status.isNotEmpty ?? false)
+          ? registered!.status
+          : 'pending',
+      isCurrent: true,
+      approvedFlag: registered?.approvedFlag ?? false,
+      actionedBy: registered?.actionedBy,
+    );
   }
 
   Future<ApiResponse<DeviceListResponse>> fetchLinkedDevices() {
     return _repository.fetchLinkedDevices();
   }
 
-  Future<ApiResponse<bool>> deleteDevice(String id) {
-    return _repository.deleteDevice(id);
+  Future<ApiResponse<bool>> deleteDevice(String id, {String? alternateId}) {
+    return _repository.deleteDevice(id, alternateId: alternateId);
   }
 
   Future<String> currentDeviceId() async {

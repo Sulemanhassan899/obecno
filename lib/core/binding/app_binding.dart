@@ -28,6 +28,7 @@ import 'package:obecno/features/employee_module/attendance/repositories/attendan
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
+import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
 import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
 import 'package:obecno/features/employee_module/more/repositories/profile_repository.dart';
@@ -89,6 +90,7 @@ class AppBindings {
   late final AttendanceRepository clockAttendanceRepository;
   late final HistoryAttendanceRepository attendanceRepository;
   late final SyncService clockSyncService;
+  late final EmployeeTrustedTime employeeTrustedTime;
   late final LocationProvider locationProvider;
   late final ManagerOverviewRepository managerOverviewRepository;
   late final ManagerOverviewService managerOverviewService;
@@ -142,6 +144,9 @@ class AppBindings {
       await companyPolicyService.refreshFromNetwork();
       await permissionProvider.refresh();
     });
+
+    employeeTrustedTime = EmployeeTrustedTime();
+    await employeeTrustedTime.init();
 
     locationProvider = LocationProvider();
     _syncLocationProviderFromAuth();
@@ -203,6 +208,7 @@ class AppBindings {
     managerLocationsService = ManagerLocationsService(
       managerLocationsRepository,
       authLocationsProvider: () => authProvider.locations,
+      companyProvider: () => authProvider.company,
       attendanceService: managerAttendanceService,
       companyScheduleProvider: () async {
         final items = await companyPolicyService.all();
@@ -228,6 +234,10 @@ class AppBindings {
     if (_wasAuthenticated) {
       unawaited(termsProvider.preloadOnLogin());
       unawaited(privacyProvider.preloadOnLogin());
+      final userId = authProvider.user?.id;
+      if (userId != null && userId.isNotEmpty) {
+        unawaited(employeeTrustedTime.ensureLogin(userId: userId));
+      }
 
       // Device registration/status is checked in the background by
       // AuthWrapper (session-restore path) and LoginPasswordScreen (fresh
@@ -241,6 +251,10 @@ class AppBindings {
       if (isAuthenticatedNow && !_wasAuthenticated) {
         unawaited(termsProvider.preloadOnLogin());
         unawaited(privacyProvider.preloadOnLogin());
+        final userId = authProvider.user?.id;
+        if (userId != null && userId.isNotEmpty) {
+          unawaited(employeeTrustedTime.ensureLogin(userId: userId));
+        }
       } else if (!isAuthenticatedNow && _wasAuthenticated) {
         // Logged out: drop cached device state so a different user logging
         // in on this device doesn't inherit stale approval/blocked flags.
@@ -350,6 +364,11 @@ class AppBindings {
         }
       });
 
+      await _guardedCleanupStep(
+        'expireTrustedTime',
+        employeeTrustedTime.ensureLoggedOut,
+      );
+
       await _guardedCleanupStep('clearTermsCache', termsService.clearCache);
 
       await _guardedCleanupStep('clearPrivacyCache', privacyService.clearCache);
@@ -381,6 +400,7 @@ class AppBindings {
       _locationSyncListener = null;
     }
     clockSyncService.stopListening();
+    employeeTrustedTime.dispose();
   }
 
   void _syncLocationProviderFromAuth() {

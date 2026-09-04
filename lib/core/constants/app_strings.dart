@@ -17,4 +17,6 @@ class AppStrings {
       "Please turn on location services.";
   static const String locationPermissionRequired =
       "Location permission required.";
+  static const String timeUnavailable =
+      "Can't record attendance time. Log in again after restarting the app.";
 }

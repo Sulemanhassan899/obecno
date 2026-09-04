@@ -60,6 +60,7 @@ class EmployeeApiEndpoints {
   // ---------------------------------------------------------------------
   static const String countries = '/countries';
   static const String cities = '/cities';
+  static const String timezones = '/timezones';
 
   // ---------------------------------------------------------------------
   // Tickets (Ansupport) — 🔥 NEW
@@ -76,6 +77,8 @@ class EmployeeApiEndpoints {
   static const String devices = '/employee/devices';
   static const String registerdevices = '/employee/devices';
   static String deleteDevice(String id) => '/employee/devices/$id';
+  static String deleteDeviceAction(String id) => '/employee/devices/$id/delete';
+  static const String deleteDeviceCollection = '/employee/devices/delete';
 
   // ---------------------------------------------------------------------
   // Device  — 🔥 NEW

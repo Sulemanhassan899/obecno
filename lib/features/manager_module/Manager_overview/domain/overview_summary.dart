@@ -30,7 +30,7 @@ class OverviewSummary {
       presentToday: present,
       totalTeamMembers: total,
       active: attendance.where((e) => e.isActive).length,
-      onBreak: attendance.where((e) => e.isOnBreak).length,
+      onBreak: attendance.where((e) => e.isCurrentlyOnBreak).length,
       lateCheckIn: attendance.where((e) => e.isLate).length,
       absent: (total - present).clamp(0, total),
     );

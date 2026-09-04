@@ -7,6 +7,7 @@ import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/auth/services/company_policy_service.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
+import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 
 enum AttendanceActionResult {
   checkedIn,
@@ -16,6 +17,7 @@ enum AttendanceActionResult {
   outOfRange,
   nonWorkingDay,
   breakLimitReached,
+  timeUnavailable,
   none,
 }
 
@@ -26,14 +28,22 @@ class _ParsedTime {
 }
 
 class ClockTicker extends ValueNotifier<DateTime> {
-  ClockTicker() : super(DateTime.now());
+  ClockTicker({DateTime Function()? now})
+      : _now = now,
+        super((now ?? DateTime.now)());
 
+  DateTime Function()? _now;
   Timer? _timer;
+
+  set now(DateTime Function()? value) => _now = value;
+
+  DateTime _read() => _now?.call() ?? DateTime.now();
 
   void start() {
     _timer?.cancel();
+    value = _read();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      value = DateTime.now();
+      value = _read();
     });
   }
 
@@ -59,10 +69,28 @@ class ClockScreenController extends ChangeNotifier {
   /// device.
   final String userId;
 
+  final EmployeeTrustedTime? trustedTime;
+
+  /// Online flag used only when stamping a punch (whether to consult an
+  /// extra trusted-time source). Offline queue still freezes the issued time.
+  @protected
+  bool trustedNetworkOnline = true;
+
+  String? lastTrustedTimeError;
+
+  DateTime get clockNow => trustedTime?.displayNow() ?? DateTime.now();
+
+  /// Phone wall clock — UI only. Never sent to the server.
+  DateTime get phoneNow => DateTime.now();
+
+  bool get rebootDetected => trustedTime?.rebootDetected ?? false;
+
+  bool get canIssueTrustedPunch =>
+      trustedTime != null && trustedTime!.canPunch;
+
   final List<AttendanceEvent> _events = [];
-  List<AttendanceEvent> get events =>
-      List.unmodifiable(_eventsOn(DateTime.now()));
-  bool get hasAnyEventToday => _eventsOn(DateTime.now()).isNotEmpty;
+  List<AttendanceEvent> get events => List.unmodifiable(_eventsOn(clockNow));
+  bool get hasAnyEventToday => _eventsOn(clockNow).isNotEmpty;
 
   bool isInRange = true;
   bool isCompanyValid = true;
@@ -303,19 +331,19 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   DateTime get _todayWorkEnd {
-    final now = DateTime.now();
+    final now = clockNow;
     return DateTime(now.year, now.month, now.day, workEndHour, workEndMinute);
   }
 
   bool get isPastGraceThreshold {
-    final now = DateTime.now();
+    final now = clockNow;
     final graceStart = _todayWorkEnd.subtract(checkoutGracePeriod);
 
     return !now.isBefore(graceStart);
   }
 
   bool get isAfterCheckOutThreshold {
-    final now = DateTime.now();
+    final now = clockNow;
     final graceEnd = _todayWorkEnd.add(checkoutGracePeriod);
 
     return now.isAfter(graceEnd);
@@ -329,7 +357,7 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   DateTime get _todayWorkStart {
-    final now = DateTime.now();
+    final now = clockNow;
     return DateTime(
       now.year,
       now.month,
@@ -341,7 +369,7 @@ class ClockScreenController extends ChangeNotifier {
 
   /// NEW: Late check-in (AFTER grace window)
   bool get isAfterCheckInThreshold {
-    final now = DateTime.now();
+    final now = clockNow;
     final graceEnd = _todayWorkStart.add(checkoutGracePeriod);
 
     return now.isAfter(graceEnd);
@@ -349,7 +377,7 @@ class ClockScreenController extends ChangeNotifier {
 
   /// NEW: Inside grace window (no dialogs)
   bool get isWithinCheckInGrace {
-    final now = DateTime.now();
+    final now = clockNow;
     final graceStart = _todayWorkStart.subtract(checkoutGracePeriod);
     final graceEnd = _todayWorkStart.add(checkoutGracePeriod);
 
@@ -357,7 +385,7 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   bool get isBeforeCheckInThreshold {
-    final now = DateTime.now();
+    final now = clockNow;
     final graceStart = _todayWorkStart.subtract(checkoutGracePeriod);
 
     return now.isBefore(graceStart);
@@ -389,14 +417,14 @@ class ClockScreenController extends ChangeNotifier {
   String get _prefsKeyIsInRange => 'clock_is_in_range_$userId';
   String get _prefsKeyLocationName => 'clock_selected_location_name_$userId';
 
-  ClockScreenController({required this.userId}) {
+  ClockScreenController({required this.userId, this.trustedTime}) {
     unawaited(_restorePersistedEvents());
     unawaited(_restoreWorkingHoursPolicy());
     unawaited(_restoreGeofenceState());
   }
 
   String get _todayPrefsKey {
-    final now = DateTime.now();
+    final now = clockNow;
     return '$_prefsKeyPrefixBase${userId}_${now.year}-${now.month}-${now.day}';
   }
 
@@ -419,7 +447,7 @@ class ClockScreenController extends ChangeNotifier {
 
   Future<void> _persistEvents() async {
     try {
-      final today = DateTime.now();
+      final today = clockNow;
       final todayEvents = _eventsOn(today);
       final encoded = jsonEncode(todayEvents.map((e) => e.toJson()).toList());
       if (encoded == _lastPersistedEventsJson) return;
@@ -474,7 +502,7 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   AttendanceDayStatus get _statusFromEvents {
-    final todayEvents = _eventsOn(DateTime.now());
+    final todayEvents = _eventsOn(clockNow);
     if (todayEvents.isEmpty) return AttendanceDayStatus.checkedOut;
     final summary = AttendanceEngine.compute(todayEvents);
     if (summary.isOnBreak) return AttendanceDayStatus.onBreak;
@@ -497,27 +525,58 @@ class ClockScreenController extends ChangeNotifier {
 
   bool get isOnBreak => effectiveStatus == AttendanceDayStatus.onBreak;
 
-  bool get isTodayWorkingDay =>
-      workingWeekdays.contains(DateTime.now().weekday);
+  bool get isTodayWorkingDay => workingWeekdays.contains(clockNow.weekday);
 
   bool get isBreakLimitReached =>
-      AttendanceEngine.compute(_eventsOn(DateTime.now())).liveBreakDuration() >=
+      AttendanceEngine.compute(_eventsOn(clockNow)).liveBreakDuration(
+        now: clockNow,
+      ) >=
       maxBreakDuration;
 
-  bool get isButtonEnabled => !isCoolingDown;
+  bool get isButtonEnabled => !isCoolingDown && canIssueTrustedPunch;
 
-  void _addEvent(AttendanceEventType type) {
+  Future<bool> _addEvent(AttendanceEventType type) async {
+    lastTrustedTimeError = null;
+    final source = trustedTime;
+    if (source == null) {
+      lastTrustedTimeError = 'Trusted time is not ready.';
+      return false;
+    }
+
+    final result = await source.issuePunch(
+      networkOnline: trustedNetworkOnline,
+    );
+    final punch = result.punch;
+    if (!result.isOk || punch == null) {
+      lastTrustedTimeError = result.error ?? 'Cannot issue authoritative time.';
+      return false;
+    }
+
+    // Phone wall-clock is stored for detection only. [time] is what the
+    // server must receive — never DateTime.now().
+    final at = punch.timeSentToServer;
     _events.add(
       AttendanceEvent(
-        id: '${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(10000)}',
+        id: '${at.microsecondsSinceEpoch}_${math.Random().nextInt(10000)}',
         type: type,
-        time: DateTime.now(),
+        time: at,
         location: selectedLocationName,
         isValidLocation: isInRange,
+        phoneWallClock: punch.phoneWallClock,
+        calculatedActualTime: punch.calculatedActualTime,
+        clockChanged: punch.clockChanged,
+        clockDifference: punch.clockDifference,
+        timeComparison: punch.comparison,
+        monotonicElapsed: punch.monotonicElapsed,
       ),
     );
     unawaited(_persistEvents());
+    return true;
   }
+
+  @protected
+  AttendanceEvent? get lastRecordedEvent =>
+      _events.isEmpty ? null : _events.last;
 
   @protected
   void updateEventLocationIfStillLast({
@@ -534,7 +593,7 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   bool get lastEventFlaggedInvalidLocation {
-    final todayEvents = _eventsOn(DateTime.now());
+    final todayEvents = _eventsOn(clockNow);
     return todayEvents.isNotEmpty && !todayEvents.last.isValidLocation;
   }
 
@@ -560,7 +619,7 @@ class ClockScreenController extends ChangeNotifier {
   void restoreEvents(List<AttendanceEvent> snapshot) {
     if (_disposed) return;
 
-    final today = DateTime.now();
+    final today = clockNow;
     _dropEventsNotOn(today);
 
     final merged = <AttendanceEvent>[..._events];
@@ -596,7 +655,7 @@ class ClockScreenController extends ChangeNotifier {
   Future<AttendanceActionResult> handleMainTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
 
-    _dropEventsNotOn(DateTime.now());
+    _dropEventsNotOn(clockNow);
 
     final status = _statusFromEvents;
 
@@ -613,20 +672,29 @@ class ClockScreenController extends ChangeNotifier {
 
     switch (status) {
       case AttendanceDayStatus.checkedOut:
-        _addEvent(AttendanceEventType.checkIn);
+        if (!await _addEvent(AttendanceEventType.checkIn)) {
+          result = AttendanceActionResult.timeUnavailable;
+          break;
+        }
         _startActionCooldown();
         result = AttendanceActionResult.checkedIn;
         break;
 
       case AttendanceDayStatus.checkedIn:
       case AttendanceDayStatus.endedBreak:
-        _addEvent(AttendanceEventType.checkOut);
+        if (!await _addEvent(AttendanceEventType.checkOut)) {
+          result = AttendanceActionResult.timeUnavailable;
+          break;
+        }
         _startActionCooldown();
         result = AttendanceActionResult.checkedOut;
         break;
 
       case AttendanceDayStatus.onBreak:
-        _addEvent(AttendanceEventType.breakEnd);
+        if (!await _addEvent(AttendanceEventType.breakEnd)) {
+          result = AttendanceActionResult.timeUnavailable;
+          break;
+        }
         _startActionCooldown();
         result = AttendanceActionResult.breakEnded;
         break;
@@ -652,7 +720,7 @@ class ClockScreenController extends ChangeNotifier {
   Future<AttendanceActionResult> handleBreakTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
 
-    _dropEventsNotOn(DateTime.now());
+    _dropEventsNotOn(clockNow);
 
     final status = _statusFromEvents;
     if (status != AttendanceDayStatus.checkedIn &&
@@ -668,7 +736,11 @@ class ClockScreenController extends ChangeNotifier {
     await Future.delayed(tapProcessingDelay);
     if (_disposed) return AttendanceActionResult.none;
 
-    _addEvent(AttendanceEventType.breakStart);
+    if (!await _addEvent(AttendanceEventType.breakStart)) {
+      isProcessing = false;
+      notifyListeners();
+      return AttendanceActionResult.timeUnavailable;
+    }
     _startActionCooldown();
 
     isProcessing = false;

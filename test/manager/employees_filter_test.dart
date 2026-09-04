@@ -21,6 +21,24 @@ void main() {
       expect(all.length, dummyManagerEmployees.length);
     });
 
+    test('filters by account status', () {
+      final pending = ManagerEmployeeFilters.byStatus(
+        source: dummyManagerEmployees,
+        selectedStatusId: 'pending',
+      );
+      expect(pending, isNotEmpty);
+      expect(
+        pending.every((e) => e.status == ManagerEmployeeStatus.pending),
+        isTrue,
+      );
+
+      final all = ManagerEmployeeFilters.byStatus(
+        source: dummyManagerEmployees,
+        selectedStatusId: ManagerEmployeeFilters.allStatusId,
+      );
+      expect(all.length, dummyManagerEmployees.length);
+    });
+
     test('filters by name query', () {
       final found = ManagerEmployeeFilters.byQuery(
         source: dummyManagerEmployees,
@@ -40,7 +58,10 @@ void main() {
         ],
       });
       expect(employee.assignedToLocation(id: '5', name: 'i-10 cowork'), isTrue);
-      expect(employee.assignedToLocation(id: '9', name: 'Head Office'), isFalse);
+      expect(
+        employee.assignedToLocation(id: '9', name: 'Head Office'),
+        isFalse,
+      );
 
       final filtered = ManagerEmployeeFilters.byLocation(
         source: [employee, dummyManagerEmployees.first],
@@ -64,10 +85,13 @@ void main() {
         ),
       ];
 
-      expect(
-        ManagerEmployeeFilters.roleFirst(source).map((e) => e.name),
-        ['Owner', 'Zara', 'Manager 1', 'Employee1', 'Employee3'],
-      );
+      expect(ManagerEmployeeFilters.roleFirst(source).map((e) => e.name), [
+        'Owner',
+        'Zara',
+        'Manager 1',
+        'Employee1',
+        'Employee3',
+      ]);
     });
   });
 }

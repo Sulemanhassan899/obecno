@@ -138,6 +138,18 @@ class ManagerEmployeesService {
     );
   }
 
+  Future<ApiResponse<String>> updateEmployeeStatus({
+    required int userId,
+    required String status,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.updateEmployeeStatus(
+      userId: userId,
+      status: status,
+      cancelToken: cancelToken,
+    );
+  }
+
   Future<ApiResponse<String>> updateEmployeeLocations({
     required int userId,
     required String defaultLocationId,
@@ -176,28 +188,60 @@ class ManagerEmployeesService {
     );
     if (!result.success) return result;
 
+    var persisted = await _deviceMatchesAction(
+      userId: userId,
+      deviceId: deviceId,
+      action: action,
+      cancelToken: cancelToken,
+    );
+    if (persisted) return result;
+
+    if (action == 'unblock') {
+      final retry = await _repository.reviewEmployeeDevice(
+        userId: userId,
+        deviceId: deviceId,
+        action: 'approve',
+        cancelToken: cancelToken,
+      );
+      if (!retry.success) return retry;
+      persisted = await _deviceMatchesAction(
+        userId: userId,
+        deviceId: deviceId,
+        action: 'approve',
+        cancelToken: cancelToken,
+      );
+      if (persisted) return retry;
+    }
+
+    return ApiResponse.failure(
+      'Device status did not persist. Please try again.',
+      statusCode: result.statusCode,
+    );
+  }
+
+  Future<bool> _deviceMatchesAction({
+    required int userId,
+    required String deviceId,
+    required String action,
+    ApiCancelToken? cancelToken,
+  }) async {
     final devices = await _repository.getEmployeeDevices(
       userId: userId,
       cancelToken: cancelToken,
     );
-    if (!devices.success || devices.data == null) return result;
+    if (!devices.success || devices.data == null) return true;
 
     final device = _findDevice(devices.data!, deviceId);
-    if (device == null) return result;
+    if (device == null) return true;
 
-    final persisted = switch (action) {
+    return switch (action) {
       'approve' || 'unblock' => device.isApproved,
       'reject' => device.isRejected,
-      'block' => device.isBlocked,
+      // Some APIs drop blocked devices from GET; others keep them as
+      // not-approved. Either way the card must stay on the list.
+      'block' => device.isBlocked || !device.isApproved,
       _ => true,
     };
-    if (!persisted) {
-      return ApiResponse.failure(
-        'Device status did not persist. Please try again.',
-        statusCode: result.statusCode,
-      );
-    }
-    return result;
   }
 
   DeviceModel? _findDevice(List<DeviceModel> devices, String deviceId) {
@@ -276,18 +320,11 @@ class ManagerEmployeesService {
       userId: userId,
       cancelToken: cancelToken,
     );
-    final dedicatedFuture = _repository.getEmployeeSchedule(
-      userId: userId,
-      cancelToken: cancelToken,
-    );
     final profile = await profileFuture;
     final permissions = await permissionsFuture;
-    final dedicated = await dedicatedFuture;
 
     Map<String, dynamic>? scheduleJson;
-    if (dedicated.success && dedicated.data != null) {
-      scheduleJson = dedicated.data!.toJson();
-    } else if (profile.data?.schedule != null) {
+    if (profile.data?.schedule != null) {
       scheduleJson = profile.data!.schedule;
     }
 
@@ -296,24 +333,19 @@ class ManagerEmployeesService {
       permissionItems: permissions.data,
     );
     final hasSource =
-        dedicated.success ||
         (profile.data?.schedule != null) ||
         (permissions.success && (permissions.data?.isNotEmpty ?? false));
     if (!hasSource) {
       return ApiResponse.failure(
-        dedicated.message ??
-            permissions.message ??
+        permissions.message ??
             profile.message ??
             'Failed to load schedule.',
-        statusCode:
-            dedicated.statusCode ??
-            permissions.statusCode ??
-            profile.statusCode,
+        statusCode: permissions.statusCode ?? profile.statusCode,
       );
     }
     return ApiResponse.success(
       merged,
-      statusCode: dedicated.statusCode ?? profile.statusCode,
+      statusCode: profile.statusCode ?? permissions.statusCode,
     );
   }
 

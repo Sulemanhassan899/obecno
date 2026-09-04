@@ -113,15 +113,20 @@ void main() {
         ManagerEmployeeApiEndpoints.getEmployeePermissions(12).path,
         '/manager/employees/12/permissions',
       );
-      expect(ManagerEmployeeApiEndpoints.getEmployeeSchedule(12).method, 'GET');
       expect(
-        ManagerEmployeeApiEndpoints.putEmployeeSchedule(12).method,
-        'PUT',
+        ManagerEmployeeApiEndpoints.patchEmployeeStatus(12).method,
+        'PATCH',
       );
       expect(
-        ManagerEmployeeApiEndpoints.getEmployeeSchedule(12).path,
-        '/manager/employees/12/schedule',
+        ManagerEmployeeApiEndpoints.patchEmployeeStatus(12).path,
+        '/manager/employees/12/status',
       );
+      expect(
+        ManagerEmployeeApiEndpoints.employeeStatus(12),
+        '/manager/employees/12/status',
+      );
+      expect(ManagerEmployeeApiEndpoints.putEmployeeStatus(12).method, 'PUT');
+      expect(ManagerEmployeeApiEndpoints.postEmployeeStatus(12).method, 'POST');
 
       expect(ManagerEmployeeApiEndpoints.getLocations.method, 'GET');
       expect(ManagerEmployeeApiEndpoints.postLocations.method, 'POST');
@@ -197,6 +202,166 @@ void main() {
       expect(
         ManagerEmployeeApiEndpoints.postLegacyEmployeePermissionsUpdate.method,
         'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationDelete(9).method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationDelete(9).path,
+        '/manager/locations/9/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationsDelete.method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationsDelete.path,
+        '/manager/locations/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getLocationPermissions(9).method,
+        'GET',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putLocationPermissions(9).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationPermissions(9).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLocationPermissions(9).method,
+        'DELETE',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getLocationPermissions(9).path,
+        '/manager/locations/9/permissions',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.getLocationPermission(9).path,
+        '/manager/locations/9/permission',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putLocationPermission(9).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationPermission(9).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationPermission(9).path,
+        '/manager/locations/9/permission',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLocationPermission(9).method,
+        'DELETE',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLocationPermission(9).path,
+        '/manager/locations/9/permission',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyLocationDelete.method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyLocationDelete.path,
+        '/manager/location/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationInactive(9).method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationInactive(9).path,
+        '/manager/locations/9/inactive',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyLocationPermissionsUpdate.path,
+        '/manager/location/permissions/update',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLegacyLocationPermissions.method,
+        'DELETE',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteLegacyLocationPermissions.path,
+        '/manager/location/permissions/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyLocationInactive.path,
+        '/manager/location/inactive',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putEmployeeDeviceReview(12, 3).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchEmployeeDeviceReview(12, 3).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteEmployeeDevice(12, 3).method,
+        'DELETE',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.deleteEmployeeDevice(12, 3).path,
+        '/manager/employees/12/devices/3',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postEmployeeDeviceDelete(12, 3).path,
+        '/manager/employees/12/devices/3/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postEmployeeDeviceStatus(12, 3).method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putEmployeeDeviceStatus(12, 3).method,
+        'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchEmployeeDeviceStatus(12, 3).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postEmployeeDeviceStatus(12, 3).path,
+        '/manager/employees/12/devices/3/status',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyEmployeeDeviceReview.path,
+        '/manager/employee/device/review',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyEmployeeDeviceDelete.path,
+        '/manager/employee/device/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLegacyEmployeeDeviceStatus.path,
+        '/manager/employee/device/status',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.locationPermissions(9),
+        '/manager/locations/9/permissions',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.employeeDeviceDelete(12, 3),
+        '/manager/employees/12/devices/3/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.legacyEmployeeDeviceReview,
+        '/manager/employee/device/review',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.legacyLocationDelete,
+        '/manager/location/delete',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.legacyLocationInactive,
+        '/manager/location/inactive',
       );
     });
   });

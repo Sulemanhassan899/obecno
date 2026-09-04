@@ -373,18 +373,31 @@ class ManagerAttendanceTile extends StatelessWidget {
 
   bool get _hasRole => data.role != null && data.role!.trim().isNotEmpty;
 
+  bool get _isRoleBadge {
+    switch (data.role?.toLowerCase().trim()) {
+      case "owner":
+      case "ceo":
+      case "manager":
+        return true;
+      default:
+        return false;
+    }
+  }
+
   bool get _hasTeam => data.team != null && data.team!.trim().isNotEmpty;
 
+  String get _statusKey =>
+      data.status.toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
+
   bool get _isRecognizedStatus {
-    switch (data.status.toLowerCase().trim()) {
+    switch (_statusKey) {
       case "working":
       case "active":
       case "break":
       case "onbreak":
-      case "on break":
       case "late":
       case "leave":
-      case "on leave":
+      case "onleave":
         return true;
       default:
         return false;
@@ -394,33 +407,24 @@ class ManagerAttendanceTile extends StatelessWidget {
   bool get _showEmptyState =>
       !_hasCheckIn && !_hasCheckOut && !_isRecognizedStatus;
 
-  bool get _isLate => data.status.toLowerCase() == "late";
+  bool get _isLate => _statusKey == "late";
 
-  bool get _isLeave {
-    switch (data.status.toLowerCase().trim()) {
-      case "leave":
-      case "on leave":
-        return true;
-      default:
-        return false;
-    }
-  }
+  bool get _isLeave => _statusKey == "leave" || _statusKey == "onleave";
 
   bool get _timesInRed => data.warningred || _isLate;
 
   String _statusText() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (_statusKey) {
       case "working":
       case "active":
         return "Working";
       case "break":
       case "onbreak":
-      case "on break":
         return "On Break";
       case "late":
         return "Late";
       case "leave":
-      case "on leave":
+      case "onleave":
         return "On Leave";
       default:
         return "";
@@ -428,7 +432,7 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Color _statusBgColor() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFFE6F9ED);
@@ -436,10 +440,9 @@ class ManagerAttendanceTile extends StatelessWidget {
         return const Color(0xFFFFEBEE);
       case "break":
       case "onbreak":
-      case "on break":
         return const Color(0xFFFFF4E0);
       case "leave":
-      case "on leave":
+      case "onleave":
         return const Color(0xFFE8F1FF);
       default:
         return kgreenColorLight;
@@ -447,7 +450,7 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Color _statusTextColor() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFF1FA855);
@@ -455,10 +458,9 @@ class ManagerAttendanceTile extends StatelessWidget {
         return kredColor;
       case "break":
       case "onbreak":
-      case "on break":
         return const Color(0xFFCC8B00);
       case "leave":
-      case "on leave":
+      case "onleave":
         return const Color(0xFF3B82F6);
       default:
         return kPrimaryColor;
@@ -466,22 +468,26 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Color _roleBgColor() {
-    switch (data.role?.toLowerCase()) {
+    switch (data.role?.toLowerCase().trim()) {
       case "manager":
         return kPurple.withOpacity(0.15);
       case "owner":
-      default:
+      case "ceo":
         return kPrimaryColor2;
+      default:
+        return kTransperentColor;
     }
   }
 
   Color _roleTextColor() {
-    switch (data.role?.toLowerCase()) {
+    switch (data.role?.toLowerCase().trim()) {
       case "manager":
         return kPurple;
       case "owner":
-      default:
+      case "ceo":
         return const Color(0xFF1FA855);
+      default:
+        return kBlack;
     }
   }
 
@@ -549,13 +555,31 @@ class ManagerAttendanceTile extends StatelessWidget {
   Widget _connector() =>
       const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Dot());
 
+  bool get _showLiveStatusBadge {
+    switch (_statusKey) {
+      case "working":
+      case "active":
+      case "break":
+      case "onbreak":
+      case "leave":
+      case "onleave":
+        return true;
+      default:
+        return false;
+    }
+  }
+
   /// Right-side: times and/or status badge.
   /// Leave rows: `5 Days` / `09:05 AM` —●——●— `On Leave`
+  /// A later re-check-in keeps the Working / On Break badge even if an
+  /// earlier checkout is still on the record.
   Widget _trailing() {
     if (_showEmptyState) return _emptyState();
 
     final statusLabel = _statusText();
-    final showBadgeInsteadOfCheckout = statusLabel.isNotEmpty && !_hasCheckOut;
+    final hideCheckout = _showLiveStatusBadge;
+    final showBadgeInsteadOfCheckout =
+        statusLabel.isNotEmpty && (!_hasCheckOut || hideCheckout);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -563,12 +587,12 @@ class ManagerAttendanceTile extends StatelessWidget {
         if (_hasCheckIn) _timeText(data.checkIn!, forceRed: _isLate),
         // No connector on leave rows — just duration + "On Leave" badge.
         if (_hasCheckIn &&
-            (_hasCheckOut || showBadgeInsteadOfCheckout) &&
+            ((_hasCheckOut && !hideCheckout) || showBadgeInsteadOfCheckout) &&
             !_isLeave)
           _connector(),
         if (_isLeave && _hasCheckIn && showBadgeInsteadOfCheckout)
           const SizedBox(width: 10),
-        if (_hasCheckOut)
+        if (_hasCheckOut && !hideCheckout)
           _timeText(data.checkOut!)
         else if (showBadgeInsteadOfCheckout)
           _statusBadge(),
@@ -611,22 +635,28 @@ class ManagerAttendanceTile extends StatelessWidget {
                       Row(
                         children: [
                           if (_hasRole)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _roleBgColor(),
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                              child: AppText.caption(
-                                data.role!,
-                                // color: _roleTextColor(),
-                                color: kBlack,
-                                weight: FontWeight.w400,
-                              ),
-                            ),
+                            _isRoleBadge
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _roleBgColor(),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: AppText.caption(
+                                      data.role!,
+                                      color: kBlack,
+                                      weight: FontWeight.w400,
+                                    ),
+                                  )
+                                : AppText.caption(
+                                    data.role!,
+                                    color: kBlack,
+                                    weight: FontWeight.w400,
+                                    align: TextAlign.left,
+                                  ),
                         ],
                       ),
                     ],
@@ -662,17 +692,18 @@ class ManagerSearchPersonTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   String _statusLabel() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (data.status.toLowerCase().trim().replaceAll(
+      RegExp(r'[\s\-_\/]+'),
+      '',
+    )) {
       case "working":
       case "active":
         return "Working";
       case "break":
-      case "on break":
       case "onbreak":
         return "On Break";
       case "leave":
-      case "on leave":
-      case "absent":
+      case "onleave":
         return "On Leave";
       case "late":
         return "Late";
@@ -682,17 +713,18 @@ class ManagerSearchPersonTile extends StatelessWidget {
   }
 
   Color _badgeBg() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (data.status.toLowerCase().trim().replaceAll(
+      RegExp(r'[\s\-_\/]+'),
+      '',
+    )) {
       case "working":
       case "active":
         return const Color(0xFFE6F9ED);
       case "break":
-      case "on break":
       case "onbreak":
         return const Color(0xFFFFF4E0);
       case "leave":
-      case "on leave":
-      case "absent":
+      case "onleave":
         return const Color(0xFFE8F1FF);
       case "late":
         return const Color(0xFFFFEBEE);
@@ -702,17 +734,18 @@ class ManagerSearchPersonTile extends StatelessWidget {
   }
 
   Color _badgeFg() {
-    switch (data.status.toLowerCase().trim()) {
+    switch (data.status.toLowerCase().trim().replaceAll(
+      RegExp(r'[\s\-_\/]+'),
+      '',
+    )) {
       case "working":
       case "active":
         return const Color(0xFF1FA855);
       case "break":
-      case "on break":
       case "onbreak":
         return const Color(0xFFCC8B00);
       case "leave":
-      case "on leave":
-      case "absent":
+      case "onleave":
         return const Color(0xFF3B82F6);
       case "late":
         return kredColor;

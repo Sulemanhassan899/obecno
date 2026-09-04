@@ -5,7 +5,8 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
-import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
@@ -107,6 +108,16 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
         ..addAll(assigned);
       _loading = false;
     });
+    LocationPolicyLog.dump(
+      sheet: 'add_members',
+      phase: 'fetched',
+      locationId: widget.location.id,
+      success: true,
+      extra: {
+        'employees': people.map((e) => e.id).join(','),
+        'alreadyAssigned': assigned.join(','),
+      },
+    );
   }
 
   List<ManagerEmployeeModel> get _filtered {
@@ -129,10 +140,37 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
     }
 
     setState(() => _saving = true);
+    LocationPolicyLog.dump(
+      sheet: 'add_members',
+      phase: 'current',
+      locationId: widget.location.id,
+      extra: {
+        'alreadyAssigned': _employees
+            .where(
+              (e) => e.assignedToLocation(
+                id: widget.location.id,
+                name: widget.location.name,
+              ),
+            )
+            .map((e) => e.id)
+            .join(','),
+      },
+    );
+    LocationPolicyLog.dump(
+      sheet: 'add_members',
+      phase: 'changed',
+      locationId: widget.location.id,
+      extra: {'selectedIds': _selectedIds.join(',')},
+    );
     final result = await bindings.managerLocationsService.addLocationMembers(
       locationId: widget.location.id,
       employeeIds: _selectedIds.toList(),
     );
+    if (!mounted) return;
+
+    if (result.success) {
+      await _syncEmployeeLocationAssignments();
+    }
     if (!mounted) return;
     setState(() => _saving = false);
 
@@ -157,10 +195,67 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       Navigator.push(
         rootContext,
         MaterialPageRoute(
-          builder: (_) => LocationSetupScreen(location: widget.location),
+          builder: (_) => LocationOverviewScreen(location: widget.location),
         ),
       );
     });
+  }
+
+  Future<void> _syncEmployeeLocationAssignments() async {
+    for (final person in _employees) {
+      if (!_selectedIds.contains(person.id)) continue;
+      final userId = person.userId;
+      if (userId == null) {
+        LocationPolicyLog.dump(
+          sheet: 'add_members',
+          phase: 'response',
+          locationId: widget.location.id,
+          success: false,
+          message: 'Skipped location write: missing user id',
+          extra: {'employeeId': person.id},
+        );
+        continue;
+      }
+
+      final ids = <String>{
+        ...person.locationIds,
+        if ((person.locationId ?? '').trim().isNotEmpty) person.locationId!,
+        widget.location.id,
+      }.map((id) => id.trim()).where((id) => id.isNotEmpty).toList();
+      final existingDefault = person.locationId?.trim();
+      final defaultId =
+          (existingDefault != null && existingDefault.isNotEmpty)
+          ? existingDefault
+          : widget.location.id;
+
+      final write = await bindings.managerEmployeesService
+          .updateEmployeeLocations(
+            userId: userId,
+            defaultLocationId: defaultId,
+            locationIds: ids,
+          );
+      LocationPolicyLog.dump(
+        sheet: 'add_members',
+        phase: 'response',
+        locationId: widget.location.id,
+        success: write.success,
+        statusCode: write.statusCode,
+        message: write.message,
+        extra: {
+          'employeeId': person.id,
+          'userId': userId,
+          'locationIds': ids.join(','),
+          'defaultLocationId': defaultId,
+        },
+      );
+      if (!write.success) continue;
+      bindings.managerEmployeesProvider.applyEmployeeLocations(
+        userId: userId,
+        defaultLocationId: defaultId,
+        locationIds: ids,
+        locationName: widget.location.name,
+      );
+    }
   }
 
   @override

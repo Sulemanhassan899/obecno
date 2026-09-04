@@ -13,6 +13,7 @@ import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/routes/app_routes.dart';
 import 'package:obecno/shared/location/service/geofence_helper.dart';
 
@@ -62,13 +63,18 @@ class DeviceApprovalGuard {
       'action=${_actionFor(status, loginMessage: loginMessage, isRejected: isRejected)}',
     );
 
-    // Snapshot device + location + clocks whenever policy is evaluated.
-    unawaited(logDeviceInfoToConsole());
+    // Snapshot on policy *changes* (block / unregistered). Approved
+    // background polls run every 10s and must not dump GPS telemetry or
+    // rebuild routes on each tick.
+    if (status != DeviceApprovalStatus.approved) {
+      unawaited(logDeviceInfoToConsole());
+    }
 
     // Scenario 2 + 6: show unregistered toast immediately (no frame delay).
     // Retry next frames only if the root overlay is not ready yet.
     if (status == DeviceApprovalStatus.approved) {
       reset();
+      _navigateHomeIfOnBlockedScreen();
       return;
     }
     if (status == DeviceApprovalStatus.unregistered) {
@@ -76,12 +82,15 @@ class DeviceApprovalGuard {
       _alertUnregistered(context, loginMessage: loginMessage);
       return;
     }
+    if (status == DeviceApprovalStatus.blocked) {
+      _armIfNewStatus('blocked');
+      _navigateToBlockedScreen();
+      return;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       switch (status) {
         case DeviceApprovalStatus.blocked:
-          _armIfNewStatus('blocked');
-          _alertBlocked(context, isRejected: isRejected);
           _navigateToBlockedScreen();
           return;
 
@@ -461,6 +470,14 @@ class DeviceApprovalGuard {
   }
 
   static void _navigateToBlockedScreen() {
+    String location;
+    try {
+      location = router.state.matchedLocation;
+    } catch (_) {
+      location = '';
+    }
+    if (location == '/device_blocked') return;
+
     AppLogger.info(
       '[UI_EXECUTION]\n'
       'type=NAVIGATION\n'
@@ -469,8 +486,20 @@ class DeviceApprovalGuard {
       'navigatorAvailable=${rootNavigatorKey.currentState != null}\n'
       'source=DeviceApprovalGuard',
     );
-    // `router.go` is safe to call unconditionally: GoRouter no-ops if
-    // already on that route, and it never needs a BuildContext.
     router.go('/device_blocked');
+  }
+
+  static void _navigateHomeIfOnBlockedScreen() {
+    String location;
+    try {
+      location = router.state.matchedLocation;
+    } catch (_) {
+      return;
+    }
+    if (location != '/device_blocked') return;
+    final home = bindings.authProvider.homeTarget == AuthHomeTarget.manager
+        ? '/manager_nav'
+        : '/employee_nav';
+    router.go(home);
   }
 }

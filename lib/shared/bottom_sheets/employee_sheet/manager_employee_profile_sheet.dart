@@ -5,7 +5,9 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/auth/data/models/communication_options.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
@@ -13,6 +15,7 @@ import 'package:obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart'
 import 'package:obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/working_days_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/account_information_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/deactivate_account_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/employee_default_locations_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
@@ -68,17 +71,23 @@ class _ManagerEmployeeProfileSheetBodyState
   bool _uploadingPhoto = false;
   File? _localPhoto;
   int _locationsRevision = 0;
+  bool _updatingStatus = false;
 
   bool get _canEditPhoto =>
       bindings.authProvider.homeTarget == AuthHomeTarget.manager;
 
-  DateTime? _joiningDateFor(int? userId) {
+  ManagerEmployeeModel? _memberFor(int? userId) {
     if (userId == null) return null;
     for (final member in bindings.managerEmployeesProvider.members) {
-      if (member.userId == userId) return member.joiningDate;
+      if (member.userId == userId) return member;
     }
     return null;
   }
+
+  DateTime? _joiningDateFor(int? userId) => _memberFor(userId)?.joiningDate;
+
+  ManagerEmployeeStatus _statusFor(int? userId) =>
+      _memberFor(userId)?.status ?? ManagerEmployeeStatus.active;
 
   @override
   void initState() {
@@ -207,6 +216,64 @@ class _ManagerEmployeeProfileSheetBodyState
     ToastHelper.changesSaved(context);
   }
 
+  Future<void> _onToggleAccount() async {
+    if (_updatingStatus) return;
+    final userId = _data.userId;
+    if (userId == null) {
+      ToastHelper.error(context, message: 'Unable to update this account.');
+      return;
+    }
+
+    final current = _statusFor(userId);
+    if (current == ManagerEmployeeStatus.deleted) return;
+    final activate = current == ManagerEmployeeStatus.disabled;
+    final confirmed = await DeactivateAccountDialog.show(
+      context,
+      activate: activate,
+      employeeName: _data.name,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _updatingStatus = true);
+    final nextStatus = activate
+        ? ManagerEmployeeStatus.active
+        : ManagerEmployeeStatus.disabled;
+    final result = await bindings.managerEmployeesService.updateEmployeeStatus(
+      userId: userId,
+      status: nextStatus.apiValue,
+    );
+    if (!mounted) return;
+    setState(() => _updatingStatus = false);
+
+    if (!result.success) {
+      ToastHelper.error(
+        context,
+        message:
+            result.message ??
+            (activate
+                ? 'Failed to activate account.'
+                : 'Failed to deactivate account.'),
+      );
+      return;
+    }
+
+    bindings.managerEmployeesProvider.applyEmployeeStatus(
+      userId: userId,
+      status: nextStatus,
+    );
+
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    Navigator.pop(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!rootContext.mounted) return;
+      if (activate) {
+        ToastHelper.accountActivated(rootContext);
+      } else {
+        ToastHelper.accountDeactivated(rootContext);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -318,18 +385,7 @@ class _ManagerEmployeeProfileSheetBodyState
                       ),
                     ],
                     const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _contactButton(Assets.CallMP),
-                        const SizedBox(width: 12),
-                        _contactButton(Assets.MsgMP),
-                        const SizedBox(width: 12),
-                        _contactButton(Assets.WhatsappMP),
-                        const SizedBox(width: 12),
-                        _contactButton(Assets.EmailMP),
-                      ],
-                    ),
+                    _contactButtons(),
                     const SizedBox(height: 20),
                     Row(
                       children: [
@@ -473,9 +529,23 @@ class _ManagerEmployeeProfileSheetBodyState
                       children: [
                         _settingsTile(
                           iconAsset: Assets.DeactiviateUserIcon,
-                          title: "Deactivate Account",
-                          titleColor: kredColor,
+                          title:
+                              _statusFor(_data.userId) ==
+                                  ManagerEmployeeStatus.disabled
+                              ? 'Activate Account'
+                              : 'Deactivate Account',
+                          titleColor:
+                              _statusFor(_data.userId) ==
+                                  ManagerEmployeeStatus.disabled
+                              ? kPrimaryColor
+                              : kredColor,
                           showChevron: false,
+                          onTap:
+                              _statusFor(_data.userId) ==
+                                      ManagerEmployeeStatus.deleted ||
+                                  _updatingStatus
+                              ? null
+                              : _onToggleAccount,
                         ),
                       ],
                     ),
@@ -507,6 +577,28 @@ class _ManagerEmployeeProfileSheetBodyState
             ? CommonImageView(imagePath: asset, height: 18)
             : Icon(icon, size: 20, color: kBlack200),
       ),
+    );
+  }
+
+  Widget _contactButtons() {
+    final options =
+        bindings.authProvider.user?.communicationOptions ??
+        CommunicationOptions.all;
+    final buttons = <Widget>[
+      if (options.showCall) _contactButton(Assets.CallMP),
+      if (options.showMessage) _contactButton(Assets.MsgMP),
+      if (options.showWhatsapp) _contactButton(Assets.WhatsappMP),
+      if (options.showEmail) _contactButton(Assets.EmailMP),
+    ];
+    if (buttons.isEmpty) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < buttons.length; i++) ...[
+          if (i > 0) const SizedBox(width: 12),
+          buttons[i],
+        ],
+      ],
     );
   }
 
