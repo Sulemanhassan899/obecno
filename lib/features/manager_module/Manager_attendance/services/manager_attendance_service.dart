@@ -294,7 +294,6 @@ class ManagerAttendanceService {
           (item.locationName == null || item.locationName!.trim().isEmpty) &&
           (item.currentLocation == null ||
               item.currentLocation!.trim().isEmpty);
-      if (!needsPunch && !needsLocation) continue;
 
       try {
         final response = await loadEmployeeAttendance(
@@ -307,13 +306,20 @@ class ManagerAttendanceService {
           date,
         );
         final checkin = EmployeeAttendanceMapper.firstCheckIn(day);
-        final checkout = EmployeeAttendanceMapper.lastCheckOut(day);
+        final isOpen = EmployeeAttendanceMapper.isSessionOpen(day);
+        final onBreak = EmployeeAttendanceMapper.isOnBreak(day);
+        final checkout = EmployeeAttendanceMapper.liveCheckOut(day);
         final punchLocation = _locationFromDay(day);
         if ((checkin == null || checkin.trim().isEmpty) &&
             (checkout == null || checkout.trim().isEmpty) &&
-            punchLocation == null) {
+            punchLocation == null &&
+            !onBreak &&
+            !isOpen &&
+            !needsPunch &&
+            !needsLocation) {
           continue;
         }
+        final hasCheckin = (checkin ?? item.checkin)?.trim().isNotEmpty == true;
         next[i] = item.copyWith(
           userId: userId,
           attendanceId: day?.id ?? item.attendanceId,
@@ -321,12 +327,16 @@ class ManagerAttendanceService {
               ? (response.data!.employeeName ?? item.employeeName)
               : item.employeeName,
           checkin: checkin ?? item.checkin,
-          checkout: checkout ?? item.checkout,
-          isOpen:
-              day?.isOpen ??
-              ((checkout == null || checkout.trim().isEmpty) &&
-                  checkin != null &&
-                  checkin.trim().isNotEmpty),
+          checkout: isOpen || onBreak ? '' : (checkout ?? item.checkout),
+          isOnBreak: onBreak,
+          status: onBreak
+              ? 'break'
+              : (isOpen
+                    ? 'working'
+                    : (day?.isLeave == true && !hasCheckin
+                          ? 'leave'
+                          : item.status)),
+          isOpen: isOpen || onBreak,
           locationId: item.locationId ?? punchLocation?.$1,
           locationName: item.locationName ?? punchLocation?.$2,
           currentLocation:

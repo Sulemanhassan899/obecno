@@ -1,7 +1,25 @@
 import 'package:obecno/core/api/constants.dart';
 import 'package:obecno/core/generated/assets.dart';
 
-enum ManagerEmployeeStatus { active, pending, disabled, deleted }
+enum ManagerEmployeeStatus {
+  active,
+  pending,
+  disabled,
+  deleted;
+
+  String get apiValue {
+    switch (this) {
+      case ManagerEmployeeStatus.pending:
+        return 'pending';
+      case ManagerEmployeeStatus.disabled:
+        return 'disabled';
+      case ManagerEmployeeStatus.deleted:
+        return 'deleted';
+      case ManagerEmployeeStatus.active:
+        return 'active';
+    }
+  }
+}
 
 enum ManagerEmployeeBadge { none, owner, manager, you }
 

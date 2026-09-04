@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:obecno/core/services/logger.dart';
+import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 
 /// Immutable snapshot of the current device's identifying info, sent to the
 /// backend to register/list this device.
@@ -100,23 +101,35 @@ class DeviceInfoService {
 
     if (Platform.isAndroid) {
       final android = await _deviceInfo.androidInfo;
-      name = android.device;
-      model = android.model;
       manufacturer = android.manufacturer;
+      model = android.model;
       sdkVersion = android.version.sdkInt.toString();
-      // Prefer the user-facing release (e.g. "13") over the verbose
-      // Platform.operatingSystemVersion string.
       if (android.version.release.isNotEmpty) {
         osVersion = android.version.release;
       }
+      name = DeviceDisplayName.resolve(
+        name: android.device,
+        model: android.model,
+        manufacturer: android.manufacturer,
+        platform: platform,
+        os: os,
+        isEmulator: !android.isPhysicalDevice,
+      );
     } else if (Platform.isIOS) {
       final ios = await _deviceInfo.iosInfo;
-      name = ios.name;
       model = ios.model;
       manufacturer = 'Apple';
       if (ios.systemVersion.isNotEmpty) {
         osVersion = ios.systemVersion;
       }
+      name = DeviceDisplayName.resolve(
+        name: ios.name,
+        model: ios.model,
+        manufacturer: 'Apple',
+        platform: platform,
+        os: os,
+        isEmulator: !ios.isPhysicalDevice,
+      );
     }
 
     final osLabel = platform == 'ios' ? 'iOS' : 'Android';

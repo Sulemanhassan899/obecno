@@ -19,6 +19,7 @@ class AttendanceCard extends StatefulWidget {
   final List<AttendanceEvent> events;
   final ApiClient apiClient;
   final String userEmail;
+  final DateTime Function()? clockNow;
   final VoidCallback? onEditAttendance;
   final ValueChanged<List<AttendanceEvent>>? onTodayEventsLoaded;
 
@@ -28,6 +29,7 @@ class AttendanceCard extends StatefulWidget {
     required this.events,
     required this.apiClient,
     required this.userEmail,
+    this.clockNow,
     this.onEditAttendance,
     this.onTodayEventsLoaded,
   });
@@ -57,7 +59,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   void _recompute() {
     _summary = AttendanceEngine.compute(widget.events);
-    _elapsed = _summary.liveWorkingDuration();
+    _elapsed = _summary.liveWorkingDuration(now: widget.clockNow?.call());
   }
 
   void _startTimer() {
@@ -66,7 +68,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
       if (!mounted) return;
       setState(() {
         _summary = AttendanceEngine.compute(widget.events);
-        _elapsed = _summary.liveWorkingDuration();
+        _elapsed = _summary.liveWorkingDuration(now: widget.clockNow?.call());
       });
     });
   }

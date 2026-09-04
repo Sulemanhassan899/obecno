@@ -2,6 +2,8 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/presentation/widgets/overview_header.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ManagerOverviewProvider>().load();
+      context.read<ManagerLocationsProvider>().load();
+      context.read<ManagerEmployeesProvider>().load();
     });
   }
 
@@ -31,19 +35,20 @@ class _OverviewScreenState extends State<OverviewScreen> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: RefreshIndicator(
-        onRefresh: () => provider.refresh(),
+        onRefresh: () async {
+          await Future.wait([
+            provider.refresh(),
+            context.read<ManagerLocationsProvider>().refresh(),
+            context.read<ManagerEmployeesProvider>().refresh(),
+          ]);
+        },
         child: Padding(
           padding: AppSizes.DEFAULT,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
-              SliverToBoxAdapter(
-                child: OverviewHeader(
-                  date: provider.selectedDate,
-                  onDateSelected: provider.setDate,
-                ),
-              ),
+              const SliverToBoxAdapter(child: OverviewHeader()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
               if (isInitialLoad)
                 const SliverFillRemaining(

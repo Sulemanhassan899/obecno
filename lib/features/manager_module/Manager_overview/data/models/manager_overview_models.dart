@@ -113,7 +113,14 @@ class ManagerTeamAttendanceItem {
 
   bool get hasCheckIn => checkin != null && checkin!.isNotEmpty;
 
-  bool get isActive => isOpen && !isOnBreak;
+  /// Live break: API flag, status text, or an open breakout without breakin.
+  bool get isCurrentlyOnBreak {
+    if (isOnBreak) return true;
+    if (_looksBreak(status) || _looksBreak(statusLabel)) return true;
+    return _hasOpenBreak(breakout, breakin);
+  }
+
+  bool get isActive => isOpen && !isCurrentlyOnBreak;
 
   bool get isOnLeave {
     final raw = '${status ?? ''} ${statusLabel ?? ''}'.toLowerCase();
@@ -187,6 +194,26 @@ class ManagerTeamAttendanceItem {
     final liveStatus = _asNullableString(
       json['live_status'] ?? json['status'] ?? json['filter_status'],
     );
+    final statusLabel = _asNullableString(json['status_label']);
+    final breakout = _asNullableString(
+      json['breakout'] ??
+          json['break_out'] ??
+          json['break_start'] ??
+          json['break_started_at'],
+    );
+    final breakin = _asNullableString(
+      json['breakin'] ??
+          json['break_in'] ??
+          json['break_end'] ??
+          json['break_ended_at'],
+    );
+    final onBreak =
+        _asBool(json['is_on_break']) ||
+        _asBool(json['on_break']) ||
+        _asBool(json['is_break']) ||
+        _looksBreak(liveStatus) ||
+        _looksBreak(statusLabel) ||
+        _hasOpenBreak(breakout, breakin);
     return ManagerTeamAttendanceItem(
       attendanceId: _asIntOrNull(json['attendance_id'] ?? json['id']),
       userId: _asIntOrNull(
@@ -228,24 +255,25 @@ class ManagerTeamAttendanceItem {
             json['check_out_time'] ??
             json['last_check_out'],
       ),
-      breakout: _asNullableString(json['breakout']),
-      breakin: _asNullableString(json['breakin']),
-      isOpen: _asBool(json['is_open']) || _isLiveClockedIn(liveStatus),
+      breakout: breakout,
+      breakin: breakin,
+      isOpen:
+          _asBool(json['is_open']) || _isLiveClockedIn(liveStatus) || onBreak,
       currentLocation: _asNullableString(json['current_location']),
       lat: _asDoubleOrNull(json['lat']),
       lon: _asDoubleOrNull(json['lon']),
       status: liveStatus,
-      statusLabel: _asNullableString(json['status_label']),
+      statusLabel: statusLabel,
       isLate:
           _asBool(json['is_late']) ||
           _asBool(json['late_check_in']) ||
           _asBool(json['is_late_check_in']) ||
           _looksLate(liveStatus) ||
-          _looksLate(_asNullableString(json['status_label'])),
+          _looksLate(statusLabel),
       isEarlyCheckout: _asBool(json['is_early_checkout']),
       isShortHours: _asBool(json['is_short_hours']),
       isBreakExceeded: _asBool(json['is_break_exceeded']),
-      isOnBreak: _asBool(json['is_on_break']) || _looksBreak(liveStatus),
+      isOnBreak: onBreak,
       isOnTime: _asBool(json['is_on_time']),
       hoursVsExpected: _asNullableString(json['hours_vs_expected']),
     );
@@ -418,7 +446,18 @@ bool _looksLate(String? raw) {
 
 bool _looksBreak(String? raw) {
   final value = _normStatus(raw);
-  return value == 'break' || value == 'onbreak';
+  if (value.isEmpty || value.contains('exceed')) return false;
+  return value == 'break' ||
+      value == 'onbreak' ||
+      value == 'breakout' ||
+      value == 'breakstart' ||
+      value.contains('onbreak');
+}
+
+bool _hasOpenBreak(String? breakout, String? breakin) {
+  final out = (breakout ?? '').trim();
+  if (out.isEmpty) return false;
+  return (breakin ?? '').trim().isEmpty;
 }
 
 bool _isLiveClockedIn(String? raw) {

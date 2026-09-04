@@ -6,6 +6,7 @@ import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/all_locations_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/setup_location_map_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
@@ -219,7 +220,26 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     ToastHelper.locationDeleted(context);
     await _refreshList();
     if (!mounted) return;
-    Navigator.pop(context);
+    _goToAllLocations();
+  }
+
+  void _goToAllLocations() {
+    final navigator = Navigator.of(context);
+    var foundAllLocations = false;
+    navigator.popUntil((route) {
+      if (route.settings.name == AllLocationsScreen.routeName) {
+        foundAllLocations = true;
+        return true;
+      }
+      return route.isFirst;
+    });
+    if (foundAllLocations || !mounted) return;
+    navigator.push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: AllLocationsScreen.routeName),
+        builder: (_) => const AllLocationsScreen(),
+      ),
+    );
   }
 
   String get _subtitle {

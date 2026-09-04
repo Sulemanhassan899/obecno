@@ -32,6 +32,7 @@ class MyButton extends StatefulWidget {
     this.leftWidget,
     this.rightWidget,
     this.isLoadingExternally = false,
+    this.showLoadingSpinner = true,
     this.compact = false,
   });
 
@@ -62,6 +63,10 @@ class MyButton extends StatefulWidget {
   /// 🔥 allow external loading control if needed
   final bool isLoadingExternally;
 
+  /// When false, keep [buttonText] visible while the tap is in flight
+  /// instead of replacing it with a circular progress indicator.
+  final bool showLoadingSpinner;
+
   /// When true, the button hugs its label instead of expanding to the parent.
   final bool compact;
 
@@ -70,14 +75,26 @@ class MyButton extends StatefulWidget {
 }
 
 class _MyButtonState extends State<MyButton> {
+  bool _busy = false;
   bool _isLoading = false;
 
   bool get _isDisabled =>
-      !widget.isactive || _isLoading || widget.isLoadingExternally;
+      !widget.isactive || _isLoading || widget.isLoadingExternally || _busy;
+
+  Color get _loaderColor {
+    if (widget.fontColor != null && widget.fontColor != kWhite) {
+      return widget.fontColor!;
+    }
+    final bg = widget.backgroundColor;
+    if (bg == null || bg == kWhite || bg == kTransperentColor) {
+      return kPrimaryColor;
+    }
+    return kWhite;
+  }
 
   Future<void> _handleTap() async {
     if (_isDisabled) return;
-
+    _busy = true;
     setState(() => _isLoading = true);
 
     try {
@@ -86,6 +103,7 @@ class _MyButtonState extends State<MyButton> {
       debugPrint("Button Error: $e");
     }
 
+    _busy = false;
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -134,7 +152,9 @@ class _MyButtonState extends State<MyButton> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(widget.radius),
-          onTap: _isDisabled ? null : _handleTap,
+          // BouncePress already handles the tap. A second onTap here
+          // fired delete twice and aborted the first request.
+          onTap: null,
           child: widget.compact
               ? Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -163,14 +183,14 @@ class _MyButtonState extends State<MyButton> {
   }
 
   Widget _buildContent(Color textColor) {
-    /// 🔥 LOADING STATE
-    if (_isLoading || widget.isLoadingExternally) {
-      return const SizedBox(
+    if ((_isLoading || widget.isLoadingExternally) &&
+        widget.showLoadingSpinner) {
+      return SizedBox(
         height: 22,
         width: 22,
         child: CircularProgressIndicator(
           strokeWidth: 2.5,
-          valueColor: AlwaysStoppedAnimation<Color>(kWhite),
+          valueColor: AlwaysStoppedAnimation<Color>(_loaderColor),
         ),
       );
     }

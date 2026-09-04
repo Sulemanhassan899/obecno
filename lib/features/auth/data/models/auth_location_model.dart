@@ -6,6 +6,10 @@ class AuthLocationModel {
     this.address,
     this.city,
     this.country,
+    this.cityId,
+    this.countryId,
+    this.timezone,
+    this.timezoneId,
     this.image,
     this.isDefault = false,
     this.radiusMeters,
@@ -17,6 +21,10 @@ class AuthLocationModel {
   final String? address;
   final String? city;
   final String? country;
+  final Object? cityId;
+  final Object? countryId;
+  final String? timezone;
+  final Object? timezoneId;
   final String? image;
   final bool isDefault;
   final int? radiusMeters;
@@ -61,8 +69,21 @@ class AuthLocationModel {
       name: (json['name'] ?? '').toString(),
       latLon: json['lat_lon']?.toString(),
       address: json['address']?.toString(),
-      city: json['city']?.toString(),
-      country: json['country']?.toString(),
+      city: _placeName(json['city'] ?? json['city_name']),
+      country: _placeName(json['country'] ?? json['country_name']),
+      cityId: _placeId(json['city_id']) ??
+          (json['city'] is Map ? _placeId(json['city']) : null),
+      countryId: _placeId(json['country_id']) ??
+          (json['country'] is Map ? _placeId(json['country']) : null),
+      timezone: _placeName(
+        json['timezone_name'] ?? json['timezone'] ?? json['time_zone'],
+      ),
+      timezoneId: _placeId(
+        json['timezone_id'] ??
+            json['time_zone_id'] ??
+            json['timezone'] ??
+            json['time_zone'],
+      ),
       image: image,
       isDefault: isDefault,
       radiusMeters: radiusMeters,
@@ -76,6 +97,10 @@ class AuthLocationModel {
     'address': address,
     'city': city,
     'country': country,
+    'city_id': cityId,
+    'country_id': countryId,
+    'timezone': timezone,
+    'timezone_id': timezoneId,
     'photo_url': image,
     'is_default': isDefault,
     'radius_meters': radiusMeters,
@@ -109,6 +134,10 @@ class AuthLocationModel {
         other.address == address &&
         other.city == city &&
         other.country == country &&
+        other.cityId == cityId &&
+        other.countryId == countryId &&
+        other.timezone == timezone &&
+        other.timezoneId == timezoneId &&
         other.image == image &&
         other.isDefault == isDefault &&
         other.radiusMeters == radiusMeters;
@@ -123,6 +152,10 @@ class AuthLocationModel {
       address,
       city,
       country,
+      cityId,
+      countryId,
+      timezone,
+      timezoneId,
       image,
       isDefault,
       radiusMeters,
@@ -143,4 +176,24 @@ class AuthLocationModel {
 
   @override
   String toString() => 'AuthLocationModel(id: $id, name: $name)';
+}
+
+String? _placeName(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is Map) {
+    return _placeName(raw['name'] ?? raw['title'] ?? raw['label']);
+  }
+  final value = raw.toString().trim();
+  if (value.isEmpty) return null;
+  if (int.tryParse(value) != null) return null;
+  return value;
+}
+
+Object? _placeId(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is Map) return _placeId(raw['id']);
+  if (raw is num) return raw.toInt();
+  final value = raw.toString().trim();
+  if (value.isEmpty) return null;
+  return int.tryParse(value);
 }

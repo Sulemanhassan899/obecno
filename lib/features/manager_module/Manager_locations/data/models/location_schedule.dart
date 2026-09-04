@@ -247,64 +247,136 @@ class LocationSchedule {
   factory LocationSchedule.fromPermissionItems(
     List<PermissionItemModel> items, {
     bool preferEmployeeValue = false,
+    bool locationOnly = false,
+    LocationSchedule? fallback,
   }) {
     String? value(String section, String key) {
       for (final item in items) {
         if (item.section == section && item.key == key) {
-          if (preferEmployeeValue) {
-            final override = item.employeeValue?.trim();
-            if (override != null && override.isNotEmpty) return override;
-          }
-          final location = item.locationValue?.trim();
-          if (location != null && location.isNotEmpty) return location;
-          final current = item.value?.trim();
-          if (current != null && current.isNotEmpty) return current;
-          final inherited = item.inheritedValue?.trim();
-          if (inherited != null && inherited.isNotEmpty) return inherited;
-          final company = item.companyValue?.trim();
-          if (company != null && company.isNotEmpty) return company;
+          final resolved = _permissionValue(
+            item,
+            preferEmployeeValue: preferEmployeeValue,
+            locationOnly: locationOnly,
+          );
+          if (resolved != null) return resolved;
         }
       }
       for (final item in items) {
         if (item.key == key) {
-          if (preferEmployeeValue) {
-            final override = item.employeeValue?.trim();
-            if (override != null && override.isNotEmpty) return override;
-          }
-          final current = item.value?.trim();
-          if (current != null && current.isNotEmpty) return current;
+          final resolved = _permissionValue(
+            item,
+            preferEmployeeValue: preferEmployeeValue,
+            locationOnly: locationOnly,
+          );
+          if (resolved != null) return resolved;
         }
       }
       return null;
     }
 
+    String? first(String section, List<String> keys) {
+      for (final key in keys) {
+        final found = value(section, key);
+        if (found != null) return found;
+      }
+      return null;
+    }
+
     return LocationSchedule.fromJson({
-      'check_in_time': value('attendance', 'check_in_time'),
-      'check_out_time': value('attendance', 'check_out_time'),
-      'grace_period': value('attendance', 'grace_period'),
+      'check_in_time': first('attendance', const [
+        'check_in_time',
+        'check_in',
+        'start_time',
+      ]),
+      'check_out_time': first('attendance', const [
+        'check_out_time',
+        'check_out',
+        'end_time',
+      ]),
+      'grace_period': first('attendance', const [
+        'grace_period',
+        'grace_minutes',
+        'grace',
+      ]),
       'working_days':
-          value('attendance', 'working_days') ??
-          value('working_days', 'working_days'),
+          first('attendance', const ['working_days']) ??
+          first('working_days', const ['working_days']),
       'week_start_day':
-          value('attendance', 'week_start_day') ??
-          value('working_days', 'week_start_day'),
+          first('attendance', const ['week_start_day', 'workweek_start_day']) ??
+          first('working_days', const ['week_start_day', 'workweek_start_day']),
       'hours_per_day':
-          value('attendance', 'hours_per_day') ??
-          value('working_days', 'hours_per_day'),
+          first('attendance', const [
+            'hours_per_day',
+            'hours_in_a_day',
+            'hours_in_day',
+          ]) ??
+          first('working_days', const [
+            'hours_per_day',
+            'hours_in_a_day',
+            'hours_in_day',
+          ]),
       'hours_per_week':
-          value('attendance', 'hours_per_week') ??
-          value('working_days', 'hours_per_week'),
+          first('attendance', const [
+            'hours_per_week',
+            'hours_in_a_week',
+            'hours_in_week',
+          ]) ??
+          first('working_days', const [
+            'hours_per_week',
+            'hours_in_a_week',
+            'hours_in_week',
+          ]),
       'working_week_enabled':
-          value('attendance', 'working_week_enabled') ??
-          value('working_days', 'working_week_enabled'),
+          first('attendance', const [
+            'working_week_enabled',
+            'working_days_enabled',
+          ]) ??
+          first('working_days', const [
+            'working_week_enabled',
+            'working_days_enabled',
+          ]),
       'break_time':
-          value('attendance', 'break_time') ??
-          value('break_timing', 'break_time'),
+          first('attendance', const [
+            'break_time',
+            'max_break_minutes',
+            'max_break',
+            'max_break_duration',
+          ]) ??
+          first('break_timing', const [
+            'break_time',
+            'max_break_minutes',
+            'max_break',
+            'max_break_duration',
+          ]),
       'break_location_tracking':
-          value('attendance', 'break_location_tracking') ??
-          value('break_timing', 'break_location_tracking'),
-    });
+          first('attendance', const [
+            'break_location_tracking',
+            'track_location',
+          ]) ??
+          first('break_timing', const [
+            'break_location_tracking',
+            'track_location',
+          ]),
+    }, fallback: fallback);
   }
+
+  Map<String, dynamic> toDebugMap() {
+    final days = workingDays.map((day) => day.trim()).toList()..sort();
+    return {
+      'check_in': _hhmm(checkIn),
+      'check_out': _hhmm(checkOut),
+      'grace_minutes': graceMinutes,
+      'working_days': days,
+      'week_start_day': weekStartDay,
+      'hours_per_day': hoursPerDay,
+      'hours_per_week': hoursPerWeek,
+      'working_week_enabled': workingWeekEnabled,
+      'max_break_minutes': maxBreakMinutes,
+      'break_location_tracking': breakLocationTracking,
+    };
+  }
+
+  bool sameAs(LocationSchedule other) => samePolicyAs(other);
 
   Map<String, dynamic> toJson() {
     return {
@@ -329,6 +401,10 @@ class LocationSchedule {
     final body = toJson();
     final checkInLabel = _hhmm(checkIn);
     final checkOutLabel = _hhmm(checkOut);
+    final checkInAmPm = _ampm(checkIn);
+    final checkOutAmPm = _ampm(checkOut);
+    final days = (body['working_days'] as List).join(', ');
+    final tracking = breakLocationTracking ? '1' : '0';
     final attendance = {
       'check_in': body['check_in'],
       'check_out': body['check_out'],
@@ -349,6 +425,33 @@ class LocationSchedule {
       'break_time': breakLabel,
       'break_location_tracking': breakLocationTracking,
     };
+    final permissionItems = [
+      _permissionItem('attendance', 'check_in_time', checkInAmPm),
+      _permissionItem('attendance', 'check_out_time', checkOutAmPm),
+      _permissionItem('attendance', 'grace_period', '$graceMinutes'),
+      _permissionItem('attendance', 'working_days', days),
+      _permissionItem('working_days', 'working_days', days),
+      _permissionItem('attendance', 'week_start_day', weekStartDay),
+      _permissionItem('working_days', 'week_start_day', weekStartDay),
+      _permissionItem('attendance', 'hours_per_day', hoursPerDay),
+      _permissionItem('working_days', 'hours_per_day', hoursPerDay),
+      _permissionItem('attendance', 'hours_per_week', hoursPerWeek),
+      _permissionItem('working_days', 'hours_per_week', hoursPerWeek),
+      _permissionItem(
+        'attendance',
+        'working_week_enabled',
+        workingWeekEnabled ? '1' : '0',
+      ),
+      _permissionItem(
+        'working_days',
+        'working_week_enabled',
+        workingWeekEnabled ? '1' : '0',
+      ),
+      _permissionItem('attendance', 'break_time', breakLabel),
+      _permissionItem('break_timing', 'break_time', breakLabel),
+      _permissionItem('attendance', 'break_location_tracking', tracking),
+      _permissionItem('break_timing', 'break_location_tracking', tracking),
+    ];
     return {
       ...body,
       'check_in_time': checkInLabel,
@@ -357,8 +460,72 @@ class LocationSchedule {
       'schedule': body,
       'attendance': attendance,
       'working_week': working,
+      'working_days_settings': working,
       'break_timing': breaks,
+      'permissions': {
+        'attendance': attendance,
+        'working_days': working,
+        'break_timing': breaks,
+      },
+      'permission_items': permissionItems,
     };
+  }
+
+  /// Body for PUT (first write) and PATCH (edit) on
+  /// `/manager/locations/{id}/permissions`.
+  Map<String, dynamic> permissionsApiPayload({required String locationId}) {
+    final written = writePayload();
+    final checkInLabel = _hhmm(checkIn);
+    final checkOutLabel = _hhmm(checkOut);
+    final locationIdValue = int.tryParse(locationId) ?? locationId;
+    final locationSetting = {
+      'check_in_time': checkInLabel,
+      'check_out_time': checkOutLabel,
+      'grace_period': '$graceMinutes-min',
+      'break_time': breakLabel,
+      'break_location_tracking': breakLocationTracking,
+      'working_days': written['working_days'],
+      'week_start_day': written['week_start_day'],
+      'hours_per_day': hoursPerDay,
+      'hours_per_week': hoursPerWeek,
+    };
+    return {
+      'location_id': locationIdValue,
+      'section': 'attendance',
+      'permission_section': 'attendance',
+      'import_company_settings': false,
+      'field': 'check_in_time',
+      'value': checkInLabel,
+      'location_setting': locationSetting,
+      'settings': written['permissions'],
+      'permissions': written['permissions'],
+      ...written,
+    };
+  }
+
+  bool samePolicyAs(LocationSchedule other) {
+    return checkIn.hour == other.checkIn.hour &&
+        checkIn.minute == other.checkIn.minute &&
+        checkOut.hour == other.checkOut.hour &&
+        checkOut.minute == other.checkOut.minute &&
+        graceMinutes == other.graceMinutes &&
+        maxBreakMinutes == other.maxBreakMinutes &&
+        breakLocationTracking == other.breakLocationTracking &&
+        workingWeekEnabled == other.workingWeekEnabled &&
+        weekStartDay.trim().toLowerCase() ==
+            other.weekStartDay.trim().toLowerCase() &&
+        hoursPerDay.trim() == other.hoursPerDay.trim() &&
+        hoursPerWeek.trim() == other.hoursPerWeek.trim() &&
+        _sameDaySet(workingDays, other.workingDays);
+  }
+
+  static bool _sameDaySet(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    final other = {for (final day in b) day.trim().toLowerCase()};
+    for (final day in a) {
+      if (!other.contains(day.trim().toLowerCase())) return false;
+    }
+    return true;
   }
 
   LocationSchedule copyWith({
@@ -414,6 +581,7 @@ Map<String, dynamic> _flatten(Map<String, dynamic> json) {
     'policies',
     'settings',
     'permissions',
+    'location_setting',
   ]) {
     absorb(json[key]);
   }
@@ -459,6 +627,30 @@ bool _hasScheduleKeys(Map<String, dynamic> source) {
   return keys.any(source.containsKey);
 }
 
+String? _permissionValue(
+  PermissionItemModel item, {
+  required bool preferEmployeeValue,
+  required bool locationOnly,
+}) {
+  if (preferEmployeeValue) {
+    final override = item.employeeValue?.trim();
+    if (override != null && override.isNotEmpty) return override;
+  }
+  final location = item.locationValue?.trim();
+  if (location != null && location.isNotEmpty) return location;
+  final source = (item.sourceLevel ?? item.source)?.trim().toLowerCase();
+  final isLocation = source == 'location' || source == 'office';
+  if (locationOnly && !isLocation) return null;
+  final current = item.value?.trim();
+  if (current != null && current.isNotEmpty) return current;
+  if (locationOnly) return null;
+  final inherited = item.inheritedValue?.trim();
+  if (inherited != null && inherited.isNotEmpty) return inherited;
+  final company = item.companyValue?.trim();
+  if (company != null && company.isNotEmpty) return company;
+  return null;
+}
+
 dynamic _pick(Map<String, dynamic> source, List<String> keys) {
   for (final key in keys) {
     if (!source.containsKey(key)) continue;
@@ -476,6 +668,23 @@ String _hms(TimeOfDay time) {
 
 String _hhmm(TimeOfDay time) {
   return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+}
+
+String _ampm(TimeOfDay time) {
+  final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+  final min = time.minute.toString().padLeft(2, '0');
+  final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+  return '${hour.toString().padLeft(2, '0')}:$min $period';
+}
+
+Map<String, dynamic> _permissionItem(String section, String key, String value) {
+  return {
+    'section': section,
+    'key': key,
+    'value': value,
+    'location_value': value,
+    'source_level': 'location',
+  };
 }
 
 TimeOfDay? _asTime(dynamic raw) {

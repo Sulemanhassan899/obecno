@@ -4,6 +4,7 @@ import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/api/employee_api_endpoints.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
 
 /// Result of a register-device call, distinguishing "device is newly
@@ -12,10 +13,15 @@ import 'package:obecno/features/employee_module/more/data/models/device_model.da
 enum DeviceRegisterOutcome { registered, alreadyRegistered, blocked, failed }
 
 class DeviceRegisterResult {
-  const DeviceRegisterResult({required this.outcome, this.message});
+  const DeviceRegisterResult({
+    required this.outcome,
+    this.message,
+    this.device,
+  });
 
   final DeviceRegisterOutcome outcome;
   final String? message;
+  final DeviceModel? device;
 }
 
 class DeviceRepository {
@@ -64,6 +70,12 @@ class DeviceRepository {
     return normalized.contains('blocked') || normalized.contains('suspicious');
   }
 
+  DeviceModel? _deviceFromRegisterResponse(dynamic decoded) {
+    final parsed = DeviceModel.listFromEnvelope(decoded);
+    if (parsed.isEmpty) return null;
+    return parsed.firstWhere((d) => d.isCurrent, orElse: () => parsed.first);
+  }
+
   /// POST /employee/devices
   ///
   /// Scenario 2 (unregistered device): server registers it and returns
@@ -92,13 +104,23 @@ class DeviceRepository {
       final message = decoded?['message'] as String?;
 
       if (success) {
+        final device = _deviceFromRegisterResponse(decoded);
+        AppLogger.info(
+          '[DeviceRepository] POST /employee/devices succeeded '
+          '(id=${device?.id ?? "none"} deviceId=${device?.deviceId ?? "none"} '
+          'status=${device?.status ?? "none"})',
+        );
         return DeviceRegisterResult(
           outcome: DeviceRegisterOutcome.registered,
           message: message,
+          device: device,
         );
       }
 
       if (_looksBlocked(message, response.statusCode)) {
+        AppLogger.info(
+          '[DeviceRepository] POST /employee/devices blocked: $message',
+        );
         return DeviceRegisterResult(
           outcome: DeviceRegisterOutcome.blocked,
           message: message,
@@ -106,12 +128,19 @@ class DeviceRepository {
       }
 
       if (_looksAlreadyRegistered(message)) {
+        AppLogger.info(
+          '[DeviceRepository] POST /employee/devices already registered: $message',
+        );
         return DeviceRegisterResult(
           outcome: DeviceRegisterOutcome.alreadyRegistered,
           message: message,
+          device: _deviceFromRegisterResponse(decoded),
         );
       }
 
+      AppLogger.info(
+        '[DeviceRepository] POST /employee/devices failed: $message',
+      );
       return DeviceRegisterResult(
         outcome: DeviceRegisterOutcome.failed,
         message: message ?? 'Failed to register device.',
@@ -162,9 +191,15 @@ class DeviceRepository {
         );
       }
 
-      final body = decoded['data'] ?? decoded['devices'];
+      var devices = DeviceModel.listFromEnvelope(decoded);
+      if (devices.isEmpty) {
+        devices = DeviceModel.listFromEnvelope(response.data);
+      }
+      AppLogger.info(
+        '[DeviceRepository] GET /employee/devices parsed ${devices.length} device(s)',
+      );
       return ApiResponse.success(
-        DeviceListResponse.fromJson(body),
+        DeviceListResponse(devices),
         message: decoded['message'] as String?,
         statusCode: response.statusCode,
       );
@@ -177,41 +212,153 @@ class DeviceRepository {
 
   /// DELETE /employee/devices/{id}
   /// Cancels / deletes a pending device registration request.
-  Future<ApiResponse<bool>> deleteDevice(String id) async {
+  ///
+  /// Some backends reject HTTP DELETE (405 / connection reset) or return an
+  /// empty/HTML body. Try DELETE, then POST .../delete, then a collection
+  /// POST. 404 means the request is already gone.
+  Future<ApiResponse<bool>> deleteDevice(
+    String id, {
+    String? alternateId,
+  }) async {
+    final ids = <String>[];
+    void addId(String? value) {
+      final key = value?.trim() ?? '';
+      if (key.isEmpty || key == '0' || key == 'null') return;
+      if (!ids.contains(key)) ids.add(key);
+    }
+
+    addId(id);
+    addId(alternateId);
+    if (ids.isEmpty) {
+      return ApiResponse.failure('Invalid device.');
+    }
+
+    ApiResponse<bool>? lastFailure;
+    for (final key in ids) {
+      final result = await _deleteDeviceOnce(key);
+      if (result.success) return result;
+      lastFailure = result;
+    }
+    return lastFailure ?? ApiResponse.failure('Failed to delete device.');
+  }
+
+  Future<ApiResponse<bool>> _deleteDeviceOnce(String id) async {
     try {
-      final response = await _client.delete(
+      final deleted = await _client.delete(
         EmployeeApiEndpoints.deleteDevice(id),
       );
-      final decoded = _unwrapEnvelope(response.data);
-
-      if (decoded == null) {
-        final statusCode = response.statusCode;
-        if (statusCode == 200 || statusCode == 204) {
-          return ApiResponse.success(true, message: 'Device deleted.');
-        }
-        return ApiResponse.failure(
-          'Unexpected response from server. Please try again.',
-          statusCode: statusCode,
-        );
+      final first = _interpretDeleteResponse(deleted);
+      if (first.success) return first;
+      if (!_shouldTryDeleteFallback(first, deleted.statusCode)) {
+        return first;
       }
-
-      final success = decoded['success'] != false;
-      if (!success) {
-        return ApiResponse.failure(
-          (decoded['message'] as String?) ?? 'Failed to delete device.',
-          statusCode: response.statusCode,
-        );
-      }
-
-      return ApiResponse.success(
-        true,
-        message: (decoded['message'] as String?) ?? 'Device deleted.',
-        statusCode: response.statusCode,
-      );
     } on ApiError catch (e) {
+      AppLogger.info(
+        '[DeviceRepository] DELETE /employee/devices/$id failed: '
+        '${e.statusCode} ${e.message}',
+      );
+      if (!_isRetryableDeleteError(e)) {
+        return ApiResponse.failure(e.message, statusCode: e.statusCode);
+      }
+    } catch (_) {
+      // Fall through to POST fallbacks (DELETE is often blocked).
+    }
+
+    try {
+      final posted = await _client.post(
+        EmployeeApiEndpoints.deleteDeviceAction(id),
+      );
+      final result = _interpretDeleteResponse(posted);
+      if (result.success) return result;
+      if (!_shouldTryDeleteFallback(result, posted.statusCode)) {
+        return result;
+      }
+    } on ApiError catch (e) {
+      if (!_isRetryableDeleteError(e)) {
+        return ApiResponse.failure(e.message, statusCode: e.statusCode);
+      }
+    } catch (_) {}
+
+    try {
+      final posted = await _client.post(
+        EmployeeApiEndpoints.deleteDeviceCollection,
+        data: {'id': id, 'device_id': id, '_method': 'DELETE'},
+      );
+      final result = _interpretDeleteResponse(posted);
+      if (result.success) return result;
+      if (posted.statusCode == 404 || result.statusCode == 404) {
+        return ApiResponse.success(true, message: 'Device deleted.');
+      }
+      return result;
+    } on ApiError catch (e) {
+      if (e.statusCode == 404) {
+        return ApiResponse.success(true, message: 'Device deleted.');
+      }
       return ApiResponse.failure(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResponse.failure('Something went wrong. Please try again.');
     }
+  }
+
+  bool _isRetryableDeleteError(ApiError e) {
+    if (e.type == ApiErrorType.network || e.type == ApiErrorType.timeout) {
+      return true;
+    }
+    final code = e.statusCode;
+    return code == 404 || code == 405 || code == 501 || code == 415;
+  }
+
+  bool _shouldTryDeleteFallback(ApiResponse<bool> result, int? statusCode) {
+    if (result.success) return false;
+    if (statusCode == 404 || statusCode == 405 || statusCode == 501) {
+      return true;
+    }
+    final message = (result.message ?? '').toLowerCase();
+    return message.contains('unexpected') ||
+        message.contains('interrupted') ||
+        message.contains('not found');
+  }
+
+  ApiResponse<bool> _interpretDeleteResponse(RawApiResponse response) {
+    final statusCode = response.statusCode;
+    final decoded = _unwrapEnvelope(response.data);
+
+    if (statusCode == 200 || statusCode == 201 || statusCode == 204) {
+      if (decoded == null || decoded['success'] != false) {
+        return ApiResponse.success(
+          true,
+          message: (decoded?['message'] as String?) ?? 'Device deleted.',
+          statusCode: statusCode,
+        );
+      }
+    }
+
+    if (decoded != null && decoded['success'] == false) {
+      return ApiResponse.failure(
+        (decoded['message'] as String?) ?? 'Failed to delete device.',
+        statusCode: statusCode,
+      );
+    }
+
+    if (decoded != null && decoded['success'] == true) {
+      return ApiResponse.success(
+        true,
+        message: (decoded['message'] as String?) ?? 'Device deleted.',
+        statusCode: statusCode,
+      );
+    }
+
+    if (statusCode == 404 || statusCode == 405 || statusCode == 501) {
+      return ApiResponse.failure(
+        (decoded?['message'] as String?) ?? 'Device not found.',
+        statusCode: statusCode,
+      );
+    }
+
+    return ApiResponse.failure(
+      (decoded?['message'] as String?) ??
+          'Unexpected response from server. Please try again.',
+      statusCode: statusCode,
+    );
   }
 }

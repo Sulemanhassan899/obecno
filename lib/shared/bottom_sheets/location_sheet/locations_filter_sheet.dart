@@ -266,21 +266,6 @@ class _MultiLocationsSheetBodyState extends State<_MultiLocationsSheetBody> {
               ),
             ),
             const Divider(height: 1, color: kDividerColor),
-            if (widget.onCreateLocation != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: MyButton(
-                  size: MyButtonSize.normal,
-                  backgroundColor: kWhite,
-                  outlineColor: kBlack200,
-                  fontColor: kBlack,
-                  buttonText: 'Create a Location',
-                  onTap: () async {
-                    Navigator.pop(context);
-                    widget.onCreateLocation?.call();
-                  },
-                ),
-              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
               child: Row(

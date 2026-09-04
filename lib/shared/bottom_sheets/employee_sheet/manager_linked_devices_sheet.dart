@@ -35,6 +35,7 @@ class ManagerLinkedDevice {
     if (status == ManagerDeviceStatus.pending) return null;
     final by = actionedBy?.trim();
     if (by == null || by.isEmpty) return null;
+    if (int.tryParse(by) != null) return null;
     switch (status) {
       case ManagerDeviceStatus.active:
         return 'Approved by: $by';
@@ -45,6 +46,39 @@ class ManagerLinkedDevice {
       case ManagerDeviceStatus.pending:
         return null;
     }
+  }
+
+  static List<ManagerLinkedDevice> currentFirst(
+    List<ManagerLinkedDevice> devices,
+  ) {
+    if (devices.length < 2) return devices;
+    final current = <ManagerLinkedDevice>[];
+    final rest = <ManagerLinkedDevice>[];
+    for (final device in devices) {
+      if (device.isCurrent) {
+        current.add(device);
+      } else {
+        rest.add(device);
+      }
+    }
+    if (current.isEmpty) return devices;
+    return [...current, ...rest];
+  }
+
+  /// GET often omits blocked, unblocked, or pending devices. Never drop a
+  /// card the manager already has on this list.
+  static List<ManagerLinkedDevice> retainKnownDevices({
+    required List<ManagerLinkedDevice> incoming,
+    required List<ManagerLinkedDevice> previous,
+  }) {
+    if (previous.isEmpty) return incoming;
+
+    final result = [...incoming];
+    for (final device in previous) {
+      final index = result.indexWhere((item) => item.id == device.id);
+      if (index < 0) result.add(device);
+    }
+    return result;
   }
 }
 
@@ -87,6 +121,7 @@ class _ManagerLinkedDevicesSheetBodyState
   List<ManagerLinkedDevice> _devices = const [];
   bool _loading = true;
   String? _error;
+  String? _actingDeviceId;
 
   static const _months = [
     'Jan',
@@ -109,7 +144,7 @@ class _ManagerLinkedDevicesSheetBodyState
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showSpinner = true}) async {
     final userId = widget.userId;
     if (userId == null) {
       setState(() {
@@ -119,26 +154,36 @@ class _ManagerLinkedDevicesSheetBodyState
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final result = await bindings.managerEmployeesService.loadEmployeeDevices(
       userId: userId,
     );
     if (!mounted) return;
     if (!result.success) {
-      setState(() {
-        _loading = false;
-        _error = result.message ?? 'Failed to load devices.';
-      });
+      if (showSpinner) {
+        setState(() {
+          _loading = false;
+          _error = result.message ?? 'Failed to load devices.';
+        });
+      }
       return;
     }
 
     setState(() {
-      _devices = (result.data ?? const []).map(_fromApi).toList();
+      _devices = ManagerLinkedDevice.currentFirst(
+        ManagerLinkedDevice.retainKnownDevices(
+          incoming: (result.data ?? const []).map(_fromApi).toList(),
+          previous: _devices,
+        ),
+      );
       _loading = false;
+      _error = null;
     });
   }
 
@@ -150,9 +195,9 @@ class _ManagerLinkedDevicesSheetBodyState
           .toLowerCase(),
       status: _statusFrom(device),
       detail: device.isPending && !device.isApproved
-          ? _formatRequested(device.requestedAt)
-          : _formatLastUsed(device.lastActive ?? device.requestedAt),
-      actionedBy: device.actionedBy,
+          ? _formatStamp(device.cardTimestamp, prefix: 'Requested')
+          : _formatStamp(device.cardTimestamp, prefix: 'Last used'),
+      actionedBy: _actionedByName(device),
       isCurrent: device.isCurrent,
     );
   }
@@ -164,6 +209,25 @@ class _ManagerLinkedDevicesSheetBodyState
     return ManagerDeviceStatus.pending;
   }
 
+  String? _actionedByName(DeviceModel device) {
+    final named = device.actionedBy?.trim();
+    if (named != null && named.isNotEmpty && int.tryParse(named) == null) {
+      return named;
+    }
+    final id = device.actionedById;
+    if (id == null || id.isEmpty) return named;
+    final user = bindings.authProvider.user;
+    if (user != null && user.id == id && user.name.trim().isNotEmpty) {
+      return user.name.trim();
+    }
+    for (final member in bindings.managerEmployeesProvider.members) {
+      if (member.id.toString() == id && member.name.trim().isNotEmpty) {
+        return member.name.trim();
+      }
+    }
+    return named;
+  }
+
   String _formatTime(DateTime dt) {
     final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final min = dt.minute.toString().padLeft(2, '0');
@@ -171,28 +235,29 @@ class _ManagerLinkedDevicesSheetBodyState
     return '$hour:$min $period';
   }
 
-  String _formatLastUsed(DateTime? dt) {
-    if (dt == null) return 'No recent activity';
-    final now = DateTime.now();
+  String _formatStamp(DateTime dt, {required String prefix}) {
     final local = dt.toLocal();
+    final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(local.year, local.month, local.day);
-    if (day == today) return 'Last used: Today at ${_formatTime(local)}';
-    return 'Last used: ${_months[local.month - 1]} ${local.day}, ${local.year}';
-  }
-
-  String _formatRequested(DateTime? dt) {
-    if (dt == null) return 'Requested: —';
-    final local = dt.toLocal();
-    return 'Requested: ${_months[local.month - 1]} ${local.day}, ${local.year}';
+    if (day == today) return '$prefix: Today at ${_formatTime(local)}';
+    return '$prefix: ${_months[local.month - 1]} ${local.day}, ${local.year} at ${_formatTime(local)}';
   }
 
   String _iconFor(ManagerLinkedDevice device) {
     final platform = device.platform.toLowerCase();
-    if (platform.contains('ios') || platform.contains('iphone') || platform.contains('apple')) {
+    final name = device.name.toLowerCase();
+    if (platform.contains('ios') ||
+        platform.contains('iphone') ||
+        platform.contains('apple') ||
+        name.contains('iphone') ||
+        name.contains('ipad')) {
       return Assets.imagesApple;
     }
-    if (platform.contains('android')) {
+    if (platform.contains('android') ||
+        DeviceDisplayName.looksLikeEmulator(device.name) ||
+        device.name == 'Emulator' ||
+        RegExp(r'^A\d{2}$').hasMatch(device.name)) {
       return Assets.imagesAndroid;
     }
     return Assets.imagesDesktop;
@@ -204,7 +269,8 @@ class _ManagerLinkedDevicesSheetBodyState
     void Function(BuildContext) toast,
   ) async {
     final userId = widget.userId;
-    if (userId == null) return;
+    if (userId == null || _actingDeviceId != null) return;
+    setState(() => _actingDeviceId = device.id);
     final result = await bindings.managerEmployeesService.reviewEmployeeDevice(
       userId: userId,
       deviceId: device.id,
@@ -212,15 +278,38 @@ class _ManagerLinkedDevicesSheetBodyState
     );
     if (!mounted) return;
     if (!result.success) {
+      setState(() => _actingDeviceId = null);
       ToastHelper.error(
         context,
         message: result.message ?? 'Failed to update device.',
       );
       return;
     }
-    await _load();
+
+    _applyReviewLocally(device, action);
+    await _load(showSpinner: false);
     if (!mounted) return;
+    _keepReviewedDevice(device);
+    setState(() => _actingDeviceId = null);
     toast(context);
+  }
+
+  void _keepReviewedDevice(ManagerLinkedDevice reviewed) {
+    final index = _devices.indexWhere((item) => item.id == reviewed.id);
+    if (index >= 0) {
+      _devices[index].status = reviewed.status;
+      return;
+    }
+    _devices = [..._devices, reviewed];
+  }
+
+  void _applyReviewLocally(ManagerLinkedDevice device, String action) {
+    device.status = switch (action) {
+      'block' => ManagerDeviceStatus.blocked,
+      'unblock' || 'approve' => ManagerDeviceStatus.active,
+      'reject' => ManagerDeviceStatus.rejected,
+      _ => device.status,
+    };
   }
 
   void _approve(ManagerLinkedDevice device) {
@@ -315,6 +404,7 @@ class _ManagerLinkedDevicesSheetBodyState
                         return _DeviceCard(
                           device: _devices[index],
                           iconPath: _iconFor(_devices[index]),
+                          busy: _actingDeviceId == _devices[index].id,
                           onApprove: () => _approve(_devices[index]),
                           onReject: () => _reject(_devices[index]),
                           onBlock: () => _block(_devices[index]),
@@ -334,6 +424,7 @@ class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
     required this.iconPath,
+    required this.busy,
     required this.onApprove,
     required this.onReject,
     required this.onBlock,
@@ -342,6 +433,7 @@ class _DeviceCard extends StatelessWidget {
 
   final ManagerLinkedDevice device;
   final String iconPath;
+  final bool busy;
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final VoidCallback onBlock;
@@ -453,7 +545,18 @@ class _DeviceCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          if (device.status == ManagerDeviceStatus.pending)
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (device.status == ManagerDeviceStatus.pending)
             Row(
               children: [
                 MyButton(
@@ -492,6 +595,18 @@ class _DeviceCard extends StatelessWidget {
               fontColor: kRed,
               outlineColor: kRed,
               onTap: () async => onBlock(),
+            )
+          else if (device.status == ManagerDeviceStatus.blocked)
+            MyButton(
+              size: MyButtonSize.normal,
+              compact: true,
+              height: 40,
+              radius: 25,
+              buttonText: 'Unblock Device',
+              backgroundColor: kWhite,
+              fontColor: kGreyColor,
+              outlineColor: kBorderColor,
+              onTap: () async => onUnblock(),
             )
           else
             MyButton(

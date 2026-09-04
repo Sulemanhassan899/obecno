@@ -44,10 +44,10 @@ class PermissionItemModel {
 
   factory PermissionItemModel.fromJson(Map<String, dynamic> json) {
     return PermissionItemModel(
-      section: (json['section'] ?? '').toString(),
+      section: (json['section'] ?? json['permission_section'] ?? '').toString(),
       sectionLabel: (json['section_label'] ?? '').toString(),
-      key: (json['key'] ?? '').toString(),
-      label: (json['label'] ?? '').toString(),
+      key: (json['key'] ?? json['field'] ?? '').toString(),
+      label: (json['label'] ?? json['field'] ?? json['key'] ?? '').toString(),
       value: json['value']?.toString(),
       sourceLevel: json['source_level']?.toString(),
       isOverride:
@@ -101,6 +101,12 @@ class PermissionItemModel {
     if (raw is Map) {
       final map = Map<String, dynamic>.from(raw);
 
+      final inner = map['data'];
+      if (inner is Map || inner is List) {
+        final nestedData = listFromEnvelope(inner);
+        if (nestedData.isNotEmpty) return nestedData;
+      }
+
       final permissionItems = map['permission_items'];
       if (permissionItems is List && permissionItems.isNotEmpty) {
         final parsed = listFrom(permissionItems);
@@ -117,6 +123,19 @@ class PermissionItemModel {
       if (nested != null) {
         final parsed = listFromEnvelope(nested);
         if (parsed.isNotEmpty) return parsed;
+      }
+
+      final locationSetting = map['location_setting'];
+      if (locationSetting is Map && locationSetting.isNotEmpty) {
+        final parsed = _fromSettingMap(
+          Map<String, dynamic>.from(locationSetting),
+        );
+        if (parsed.isNotEmpty) return parsed;
+      }
+
+      if (map['field'] != null || map['key'] != null) {
+        final parsed = listFrom([map]);
+        if (parsed.isNotEmpty && parsed.first.key.isNotEmpty) return parsed;
       }
 
       // Nested policy map: { attendance: { check_in_time: "09:00 AM" }, ... }
@@ -189,6 +208,30 @@ class PermissionItemModel {
     return result;
   }
 
+  static List<PermissionItemModel> _fromSettingMap(Map<String, dynamic> setting) {
+    final result = <PermissionItemModel>[];
+    for (final entry in setting.entries) {
+      final value = entry.value;
+      if (value is Map) continue;
+      final asString = value is List
+          ? value.map((item) => item.toString()).join(', ')
+          : value?.toString();
+      if (asString == null || asString.trim().isEmpty) continue;
+      result.add(
+        PermissionItemModel(
+          section: 'attendance',
+          sectionLabel: 'Attendance',
+          key: entry.key.toString(),
+          label: humanizeKey(entry.key.toString()),
+          value: asString,
+          locationValue: asString,
+          sourceLevel: 'location',
+        ),
+      );
+    }
+    return result;
+  }
+
   /// Converts login-style nested maps into permission items.
   ///
   /// Example input:
@@ -208,6 +251,15 @@ class PermissionItemModel {
       'success',
       'message',
       'data',
+      'location_setting',
+      'location_id',
+      'id',
+      'field',
+      'value',
+      'section',
+      'permission_section',
+      'import_company_settings',
+      'settings',
     };
 
     final result = <PermissionItemModel>[];
@@ -223,22 +275,21 @@ class PermissionItemModel {
         continue;
       }
 
-      // Only treat as a policy map if values are scalars (String/num/bool/null).
-      final looksLikePolicy = sectionMap.values.every(
-        (v) => v == null || v is String || v is num || v is bool,
-      );
+      // Scalars, day lists, and monday:true maps all appear in location policies.
+      final looksLikePolicy = sectionMap.values.every(_isPolicyValue);
       if (!looksLikePolicy) continue;
 
       final sectionLabel = humanizeKey(sectionKey);
       for (final item in sectionMap.entries) {
         final key = item.key.toString();
+        final asString = _policyValueString(item.value);
         result.add(
           PermissionItemModel(
             section: sectionKey,
             sectionLabel: sectionLabel,
             key: key,
             label: humanizeKey(key),
-            value: item.value?.toString(),
+            value: asString,
             sourceLevel: 'company',
             isOverride: false,
           ),
@@ -270,6 +321,24 @@ class PermissionItemModel {
     return false;
   }
 
+  /// True when GET /locations/{id}/permissions already has location overrides.
+  /// Company-inherited rows (value only, source=company) do not count — those
+  /// still need a first PUT for this location.
+  static bool hasLocationLevelPermissions(List<PermissionItemModel> items) {
+    for (final item in items) {
+      final location = item.locationValue?.trim();
+      if (location != null && location.isNotEmpty) return true;
+      final source = (item.sourceLevel ?? item.source)?.trim().toLowerCase();
+      if (source == 'location' || source == 'office') return true;
+    }
+    return false;
+  }
+
+  /// First write for a location is PUT; later edits are PATCH.
+  static String locationWriteMethod({required bool hasLocationPermissions}) {
+    return hasLocationPermissions ? 'PATCH' : 'PUT';
+  }
+
   /// Employee setting writes are partial (timing, break, days, grace).
   static String writeMethod({bool hasEmployeeLevel = true}) {
     return 'PATCH';
@@ -296,4 +365,39 @@ class PermissionItemModel {
     }
     return grouped;
   }
+}
+
+bool _isPolicyValue(dynamic value) {
+  if (value == null || value is String || value is num || value is bool) {
+    return true;
+  }
+  if (value is List) {
+    return value.every(_isPolicyValue);
+  }
+  if (value is Map) {
+    return value.values.every(_isPolicyValue);
+  }
+  return false;
+}
+
+String? _policyValueString(dynamic value) {
+  if (value == null) return null;
+  if (value is List) {
+    return value.map((item) => item.toString()).join(', ');
+  }
+  if (value is Map) {
+    final enabled = <String>[];
+    value.forEach((key, item) {
+      if (item == false ||
+          item == 0 ||
+          item == '0' ||
+          item == 'false' ||
+          item == 'off') {
+        return;
+      }
+      enabled.add(key.toString());
+    });
+    return enabled.isEmpty ? value.toString() : enabled.join(', ');
+  }
+  return value.toString();
 }

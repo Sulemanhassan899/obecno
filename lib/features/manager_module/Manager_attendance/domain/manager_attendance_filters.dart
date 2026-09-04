@@ -65,7 +65,9 @@ class ManagerAttendanceFilters {
 
     if (StatusFilterOption.sameFamily(id, 'present')) return item.hasCheckIn;
     if (StatusFilterOption.sameFamily(id, 'working')) return item.isActive;
-    if (StatusFilterOption.sameFamily(id, 'break')) return item.isOnBreak;
+    if (StatusFilterOption.sameFamily(id, 'break')) {
+      return item.isCurrentlyOnBreak;
+    }
     if (StatusFilterOption.sameFamily(id, 'late')) {
       return item.isLate ||
           StatusFilterOption.sameFamily(item.status ?? '', 'late') ||

@@ -271,6 +271,7 @@ class AppGuard extends StatefulWidget {
 
 class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   Timer? _offlineDebounce;
+  Timer? _devicePollTimer;
   StreamSubscription<bool>? _connectivitySub;
   bool _dialogOpen = false;
   bool _checkInProgress = false;
@@ -279,6 +280,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   bool _internetDialogDismissedForOutage = false;
 
   AuthProvider? _authProvider;
+  DeviceProvider? _deviceProvider;
   bool? _lastAuthenticated;
 
   // Tracks whether AppGuard has run its very first `_checkAll()` yet, purely
@@ -300,9 +302,9 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
 
     ConnectivityService.start();
 
-    // No periodic timer: permission/device checks run on app start and when
-    // the app resumes (see didChangeAppLifecycleState). Connectivity is
-    // handled by the stream below.
+    _devicePollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(_refreshDeviceStatus(source: 'BACKGROUND'));
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // FIX: resolve AuthProvider *before* the first `_checkAll()` runs.
@@ -316,6 +318,8 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
       _authProvider = context.read<AuthProvider>();
       _lastAuthenticated = _authProvider?.isAuthenticated;
       _authProvider?.addListener(_onAuthChanged);
+      _deviceProvider = context.read<DeviceProvider>();
+      _deviceProvider?.addListener(_onDeviceChanged);
 
       _checkAll(trigger: 'APP_START');
     });
@@ -345,9 +349,11 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _offlineDebounce?.cancel();
+    _devicePollTimer?.cancel();
     _connectivitySub?.cancel();
     ConnectivityService.stop();
     _authProvider?.removeListener(_onAuthChanged);
+    _deviceProvider?.removeListener(_onDeviceChanged);
     AppGuard.isPrompting = false;
     super.dispose();
   }
@@ -381,6 +387,52 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     _lastAuthenticated = isAuth;
   }
 
+  void _onDeviceChanged() {
+    if (_deviceProvider?.isDeviceApproved == true) {
+      if (_currentMatchedLocation() == '/device_blocked') {
+        final home = _authProvider?.homeTarget == AuthHomeTarget.manager
+            ? '/manager_nav'
+            : '/employee_nav';
+        router.go(home);
+      }
+      return;
+    }
+    _routeIfDeviceBlocked();
+  }
+
+  bool _shouldPollDeviceStatus() {
+    if (_authProvider?.isAuthenticated != true) return false;
+    final path = _currentMatchedLocation();
+    return path == '/employee_nav' ||
+        path == '/manager_nav' ||
+        path.startsWith('/manager/') ||
+        path == '/enable_permissions';
+  }
+
+  void _routeIfDeviceBlocked() {
+    if (_deviceProvider?.isDeviceApproved == true) return;
+    if (_deviceProvider?.isDeviceBlocked != true) return;
+    if (_authProvider?.isAuthenticated != true) return;
+    if (_currentMatchedLocation() == '/device_blocked') return;
+    router.go('/device_blocked');
+  }
+
+  Future<void> _refreshDeviceStatus({required String source}) async {
+    if (!mounted || !_shouldPollDeviceStatus()) return;
+    try {
+      final deviceProvider =
+          _deviceProvider ?? context.read<DeviceProvider>();
+      await deviceProvider.checkDeviceStatus(
+        null,
+        source: source,
+        userId: _authProvider?.user?.id,
+      );
+      _routeIfDeviceBlocked();
+    } catch (e) {
+      debugPrint('[AppGuard] device status refresh failed: $e');
+    }
+  }
+
   Future<void> _checkAll({String trigger = 'BACKGROUND'}) async {
     if (!mounted || _dialogOpen || _checkInProgress) return;
     _checkInProgress = true;
@@ -389,19 +441,14 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     _firstCheckDone = true;
 
     try {
-      // 0️⃣ Device status -- runs regardless of onboarding state. A device
-      // that becomes blocked must always be routed to the blocked screen.
+      // 0️⃣ Device status -- fetch so a manager block on another phone
+      // kicks this session as soon as the next poll/resume sees it.
       if (_authProvider?.isAuthenticated == true) {
         try {
-          final deviceProvider = context.read<DeviceProvider>();
-          if (deviceProvider.isDeviceBlocked) {
+          await _refreshDeviceStatus(source: trigger);
+          if (_deviceProvider?.isDeviceApproved != true &&
+              _deviceProvider?.isDeviceBlocked == true) {
             debugPrint('[AppGuard] device blocked, routing to /device_blocked');
-            // Navigation-only, no BuildContext needed -- safe to call
-            // directly. DeviceApprovalGuard remains the single source of
-            // truth for the *alert* (toast/dialog) that accompanies a
-            // block; this is purely a defensive route guard so periodic
-            // polling can never leave a blocked device sitting on a
-            // screen it shouldn't be on.
             router.go('/device_blocked');
             return;
           }

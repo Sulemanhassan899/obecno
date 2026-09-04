@@ -18,6 +18,7 @@ import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:flutter/material.dart';
@@ -206,9 +207,21 @@ void main() {
       );
       final tile = TeamAttendanceMapper.toTile(item);
       expect(tile.checkIn, '09:02 AM');
-      expect(tile.checkOut, '05:07 PM');
+      expect(tile.checkOut, isNull);
       expect(tile.status, 'working');
       expect(tile.team, 'Head Office');
+    });
+
+    test('keeps checkout on a closed shift', () {
+      const item = ManagerTeamAttendanceItem(
+        employeeName: 'Ava',
+        checkin: '09:02:00',
+        checkout: '17:07:00',
+      );
+      final tile = TeamAttendanceMapper.toTile(item);
+      expect(tile.checkIn, '09:02 AM');
+      expect(tile.checkOut, '05:07 PM');
+      expect(tile.status, isEmpty);
     });
 
     test('leaves employees without punch data as empty status', () {
@@ -384,6 +397,78 @@ void main() {
         details.timeline.any((e) => e.timeLabel.contains('02:00')),
         isFalse,
       );
+    });
+
+    test('detects an open break from the last attendance event', () {
+      final openBreak = ManagerEmployeeAttendanceDay(
+        date: DateTime(2026, 8, 24),
+        checkin: '11:33:44',
+        isOpen: true,
+        details: const [
+          ManagerEmployeeAttendanceDetail(
+            type: 'check in',
+            attendanceTime: '11:33:44',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'break out',
+            attendanceTime: '11:35:25',
+          ),
+        ],
+      );
+      final closedBreak = ManagerEmployeeAttendanceDay(
+        date: DateTime(2026, 8, 24),
+        checkin: '11:33:44',
+        isOpen: true,
+        details: const [
+          ManagerEmployeeAttendanceDetail(
+            type: 'check in',
+            attendanceTime: '11:33:44',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'break out',
+            attendanceTime: '11:35:25',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'break in',
+            attendanceTime: '11:35:33',
+          ),
+        ],
+      );
+
+      expect(EmployeeAttendanceMapper.isOnBreak(openBreak), isTrue);
+      expect(EmployeeAttendanceMapper.isOnBreak(closedBreak), isFalse);
+    });
+
+    test('treats a later check-in as working even after a checkout', () {
+      final day = ManagerEmployeeAttendanceDay(
+        date: DateTime(2026, 9, 2),
+        checkin: '12:00:00',
+        checkout: '22:51:00',
+        isOpen: false,
+        details: const [
+          ManagerEmployeeAttendanceDetail(
+            type: 'check in',
+            attendanceTime: '12:00:00',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'break in',
+            attendanceTime: '22:51:00',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'check out',
+            attendanceTime: '22:51:00',
+          ),
+          ManagerEmployeeAttendanceDetail(
+            type: 'check in',
+            attendanceTime: '22:56:00',
+          ),
+        ],
+      );
+
+      expect(EmployeeAttendanceMapper.isSessionOpen(day), isTrue);
+      expect(EmployeeAttendanceMapper.isOnBreak(day), isFalse);
+      expect(EmployeeAttendanceMapper.liveCheckOut(day), isNull);
+      expect(EmployeeAttendanceMapper.firstCheckIn(day), '12:00:00');
     });
 
     test('keeps list photo and attendance id when day payload omits them', () {
@@ -663,6 +748,46 @@ void main() {
     });
   });
 
+  group('DateMonthYearContent calendar', () {
+    testWidgets('shows a calendar grid instead of a wheel', (tester) async {
+      final now = DateTime.now();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DateMonthYearContent(initialDate: now, onSelected: (_) {}),
+          ),
+        ),
+      );
+
+      expect(find.text('Select Date'), findsOneWidget);
+      expect(find.byType(ListWheelScrollView), findsNothing);
+      expect(find.text('${now.day}'), findsWidgets);
+      expect(find.text('Done'), findsOneWidget);
+      expect(find.text('Reset'), findsOneWidget);
+    });
+
+    testWidgets('tapping the month title opens a month and year picker', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      final title =
+          '${DateMonthYearContentState.months[now.month - 1]} ${now.year}';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DateMonthYearContent(initialDate: now, onSelected: (_) {}),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select Month & Year'), findsOneWidget);
+      expect(find.byType(ListWheelScrollView), findsWidgets);
+    });
+  });
+
   group('AttendanceDuration', () {
     test('uses checkout minus check-in for a closed shift', () {
       expect(
@@ -697,6 +822,64 @@ void main() {
       });
       expect(item.hasCheckIn, isTrue);
       expect(item.checkin, '10:50:00');
+    });
+
+    test('maps live status to working, on break, and on leave', () {
+      expect(
+        TeamAttendanceMapper.uiStatus(
+          const ManagerTeamAttendanceItem(
+            employeeName: 'Owner',
+            checkin: '12:00:00',
+            isOpen: true,
+          ),
+        ),
+        'working',
+      );
+      expect(
+        TeamAttendanceMapper.uiStatus(
+          const ManagerTeamAttendanceItem(
+            employeeName: 'Owner',
+            checkin: '12:00:00',
+            breakout: '09:25:00',
+            isOpen: true,
+          ),
+        ),
+        'break',
+      );
+      expect(
+        TeamAttendanceMapper.uiStatus(
+          const ManagerTeamAttendanceItem(
+            employeeName: 'Owner',
+            status: 'on_leave',
+          ),
+        ),
+        'leave',
+      );
+    });
+
+    test('treats an open breakout as on break even without is_on_break', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 1,
+        'employee_name': 'Owner',
+        'check_in': '12:00:00',
+        'breakout': '09:25:00',
+        'is_open': true,
+        'live_status': 'working',
+      });
+      expect(item.isCurrentlyOnBreak, isTrue);
+      expect(item.isActive, isFalse);
+      expect(TeamAttendanceMapper.uiStatus(item), 'break');
+    });
+
+    test('treats live_status on_break as on break', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 1,
+        'employee_name': 'Owner',
+        'check_in': '12:00:00',
+        'live_status': 'on_break',
+      });
+      expect(item.isCurrentlyOnBreak, isTrue);
+      expect(TeamAttendanceMapper.uiStatus(item), 'break');
     });
 
     test('treats live_status late as a late check-in', () {
@@ -747,7 +930,9 @@ void main() {
         ],
       );
 
-      final holiday = month.records.firstWhere((record) => record.date.day == 14);
+      final holiday = month.records.firstWhere(
+        (record) => record.date.day == 14,
+      );
       expect(holiday.status, AttendanceDayStatus.holiday);
       expect(holiday.weekendLabel, 'National Day');
       expect(
@@ -762,7 +947,9 @@ void main() {
         history: const [],
       );
 
-      final friday = month.records.firstWhere((record) => record.date.day == 28);
+      final friday = month.records.firstWhere(
+        (record) => record.date.day == 28,
+      );
       expect(friday.status, AttendanceDayStatus.absent);
       expect(friday.checkIn, isNull);
       expect(friday.checkOut, isNull);
@@ -780,7 +967,9 @@ void main() {
         ],
       );
 
-      final holiday = month.records.firstWhere((record) => record.date.day == 14);
+      final holiday = month.records.firstWhere(
+        (record) => record.date.day == 14,
+      );
       expect(holiday.status, AttendanceDayStatus.holiday);
       expect(holiday.weekendLabel, 'National Day');
     });

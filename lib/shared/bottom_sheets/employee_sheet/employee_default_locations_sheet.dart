@@ -217,6 +217,16 @@ class _EmployeeDefaultLocationsSheetBodyState
         );
         return;
       }
+
+      final saved = profile.data;
+      bindings.managerEmployeesProvider.applyEmployeeLocations(
+        userId: widget.userId!,
+        defaultLocationId: saved?.locationId ?? payload.defaultLocationId,
+        locationIds: saved?.locationIds.isNotEmpty == true
+            ? saved!.locationIds
+            : payload.locationIds,
+        locationName: saved?.locationName,
+      );
     }
 
     Navigator.of(context).pop();

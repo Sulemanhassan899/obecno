@@ -27,7 +27,6 @@ import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
 
-import 'package:obecno/demo/monotonic_clock/presentation/monotonic_clock_demo_entry.dart';
 import 'package:obecno/widgets/check_in_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
@@ -114,6 +113,7 @@ class ClockScreenState extends State<ClockScreen>
       companyPolicyService: bindings.companyPolicyService,
       syncService: bindings.clockSyncService,
       userId: currentUserId,
+      trustedTime: bindings.employeeTrustedTime,
     );
 
     _controller.addListener(_maybeShowLocationAlert);
@@ -550,6 +550,12 @@ class ClockScreenState extends State<ClockScreen>
       case AttendanceActionResult.outOfRange:
       case AttendanceActionResult.none:
         break;
+      case AttendanceActionResult.timeUnavailable:
+        ToastHelper.timeUnavailable(
+          context,
+          message: _controller.lastTrustedTimeError,
+        );
+        break;
     }
   }
 
@@ -663,13 +669,13 @@ class ClockScreenState extends State<ClockScreen>
   @override
   Widget build(BuildContext context) {
     if (!_clockStarted) {
-      return const MonotonicClockDemoEntry(
-        child: Scaffold(backgroundColor: kbackground1, body: SizedBox.shrink()),
+      return const Scaffold(
+        backgroundColor: kbackground1,
+        body: SizedBox.shrink(),
       );
     }
 
-    return MonotonicClockDemoEntry(
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: kbackground1,
       body: Column(
         children: [
@@ -704,27 +710,25 @@ class ClockScreenState extends State<ClockScreen>
                       const SizedBox(height: 4),
                     ],
 
-                    ButtonAnimations.press(
-                      onTap: () {},
-                      child: Row(
-                        spacing: 5,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          AppText.p3(
-                            companyLabel.isNotEmpty ? companyLabel : 'Company',
-                            color: isOnBreak ? kWhite : kBlack,
-                            weight: FontWeight.w600,
-                          ),
-                        ],
-                      ),
-                    ),
-
                     const SizedBox(height: 40),
                     ValueListenableBuilder<DateTime>(
                       valueListenable: _ticker,
-                      builder: (context, now, _) => AppText.bigNumber3(
-                        _formattedTime(now),
-                        weight: FontWeight.w400,
+                      builder: (context, now, _) => Column(
+                        children: [
+                          AppText.bigNumber3(
+                            _formattedTime(now),
+                            weight: FontWeight.w400,
+                          ),
+                          if (syncedController.rebootDetected) ...[
+                            const SizedBox(height: 8),
+                            AppText.p2(
+                              AppStrings.timeUnavailable,
+                              color: kredColor,
+                              weight: FontWeight.w500,
+                              align: TextAlign.center,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     if (!isOnBreak) ...[
@@ -796,10 +800,11 @@ class ClockScreenState extends State<ClockScreen>
                     const SizedBox(height: 30),
                     (!isOnBreak && _controller.hasAnyEventToday)
                         ? AttendanceCard(
-                            day: _ticker.value,
+                            day: syncedController.clockNow,
                             events: _controller.events,
                             apiClient: bindings.apiClient,
                             userEmail: bindings.userEmail,
+                            clockNow: () => syncedController.clockNow,
                             onEditAttendance: () {},
                             onTodayEventsLoaded: _controller.mergeTodayEvents,
                           )
@@ -818,7 +823,6 @@ class ClockScreenState extends State<ClockScreen>
             ),
           ),
         ],
-      ),
       ),
     );
   }

@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 class AllLocationsScreen extends StatefulWidget {
   const AllLocationsScreen({super.key});
 
+  static const routeName = '/manager/locations';
+
   @override
   State<AllLocationsScreen> createState() => _AllLocationsScreenState();
 }

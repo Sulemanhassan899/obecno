@@ -138,6 +138,52 @@ class ManagerEmployeesProvider extends BaseProvider {
     notifyListeners();
   }
 
+  void applyEmployeeStatus({
+    required int userId,
+    required ManagerEmployeeStatus status,
+  }) {
+    final next = <ManagerEmployeeModel>[];
+    var changed = false;
+    for (final member in members) {
+      if (member.userId == userId) {
+        next.add(member.copyWith(status: status));
+        changed = true;
+      } else {
+        next.add(member);
+      }
+    }
+    if (!changed) return;
+    members = next;
+    notifyListeners();
+  }
+
+  void applyEmployeeLocations({
+    required int userId,
+    required String defaultLocationId,
+    required List<String> locationIds,
+    String? locationName,
+  }) {
+    final next = <ManagerEmployeeModel>[];
+    var changed = false;
+    for (final member in members) {
+      if (member.userId == userId || member.id.trim() == userId.toString()) {
+        next.add(
+          member.copyWith(
+            locationId: defaultLocationId,
+            locationIds: locationIds,
+            locationName: locationName ?? member.locationName,
+          ),
+        );
+        changed = true;
+      } else {
+        next.add(member);
+      }
+    }
+    if (!changed) return;
+    members = next;
+    notifyListeners();
+  }
+
   void reset() {
     cancelAll();
     resetViewState();

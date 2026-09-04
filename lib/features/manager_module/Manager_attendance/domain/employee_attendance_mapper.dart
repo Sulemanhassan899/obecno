@@ -107,6 +107,48 @@ class EmployeeAttendanceMapper {
     return null;
   }
 
+  static bool isOnBreak(ManagerEmployeeAttendanceDay? day) {
+    if (day == null) return false;
+    var onBreak = false;
+    for (final detail in _sortedDetails(day)) {
+      switch (eventType(detail.type)) {
+        case ManagerAttendanceEventType.breakStart:
+          onBreak = true;
+        case ManagerAttendanceEventType.breakEnd:
+        case ManagerAttendanceEventType.checkIn:
+        case ManagerAttendanceEventType.checkOut:
+          onBreak = false;
+        default:
+          break;
+      }
+    }
+    return onBreak;
+  }
+
+  /// True when the latest punch left the day open — including a re-check-in
+  /// after an earlier checkout.
+  static bool isSessionOpen(ManagerEmployeeAttendanceDay? day) {
+    if (day == null) return false;
+    switch (_lastPunchType(day)) {
+      case ManagerAttendanceEventType.checkIn:
+      case ManagerAttendanceEventType.breakStart:
+      case ManagerAttendanceEventType.breakEnd:
+        return true;
+      case ManagerAttendanceEventType.checkOut:
+        return false;
+      default:
+        if (isOnBreak(day) || day.isOpen) return true;
+        return (day.checkin ?? '').trim().isNotEmpty &&
+            (day.checkout ?? '').trim().isEmpty;
+    }
+  }
+
+  /// Checkout to show on the team list. Null while the person is clocked in.
+  static String? liveCheckOut(ManagerEmployeeAttendanceDay? day) {
+    if (isSessionOpen(day)) return null;
+    return lastCheckOut(day);
+  }
+
   static String? lastCheckOut(ManagerEmployeeAttendanceDay? day) {
     if (day == null) return null;
     String? found;
@@ -233,6 +275,38 @@ class EmployeeAttendanceMapper {
       }
     }
     return found;
+  }
+
+  static DateTime _detailTime(ManagerEmployeeAttendanceDetail detail) {
+    return detail.occurredAt ??
+        _timeFrom(detail.attendanceTime) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static List<ManagerEmployeeAttendanceDetail> _sortedDetails(
+    ManagerEmployeeAttendanceDay day,
+  ) {
+    return [...day.details]
+      ..sort((a, b) => _detailTime(a).compareTo(_detailTime(b)));
+  }
+
+  static ManagerAttendanceEventType? _lastPunchType(
+    ManagerEmployeeAttendanceDay? day,
+  ) {
+    if (day == null) return null;
+    ManagerAttendanceEventType? last;
+    for (final detail in _sortedDetails(day)) {
+      switch (eventType(detail.type)) {
+        case ManagerAttendanceEventType.checkIn:
+        case ManagerAttendanceEventType.checkOut:
+        case ManagerAttendanceEventType.breakStart:
+        case ManagerAttendanceEventType.breakEnd:
+          last = eventType(detail.type);
+        default:
+          break;
+      }
+    }
+    return last;
   }
 
   static DateTime? _timeFrom(String? raw) {
