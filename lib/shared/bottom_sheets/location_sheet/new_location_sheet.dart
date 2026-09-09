@@ -4,13 +4,13 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/add_location_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 Future<void> _openCreatedLocationFlow(
@@ -35,7 +35,13 @@ class NewLocationSheet {
   NewLocationSheet._();
 
   static Future<void> show(BuildContext context) {
-    debugPrint('[AddLocation] sheet opened');
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'sheet open',
+      api: 'POST /manager/locations',
+      apiNeeds: AddLocationLog.createApiNeeds,
+      extra: {'userFields': 'Office / Location Name'},
+    );
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -64,9 +70,22 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
 
   Future<void> _onCreate() async {
     final name = _nameController.text.trim();
-    debugPrint('[AddLocation] Create tapped name="$name"');
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'user sending',
+      api: 'POST /manager/locations',
+      apiNeeds: AddLocationLog.createApiNeeds,
+      userSending: {'name': name},
+    );
     if (name.isEmpty) {
-      debugPrint('[AddLocation] blocked: empty name');
+      AddLocationLog.dump(
+        sheet: 'New Location',
+        phase: 'response',
+        api: 'POST /manager/locations',
+        success: false,
+        message: 'Enter an office / location name.',
+        userSending: {'name': name},
+      );
       ToastHelper.error(context, message: 'Enter an office / location name.');
       return;
     }
@@ -78,11 +97,18 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
     if (!mounted) return;
     setState(() => _saving = false);
 
-    debugPrint(
-      '[AddLocation] create result success=${result.success} '
-      'status=${result.statusCode} message=${result.message} '
-      'field=${result.firstFieldMessage} '
-      'id=${result.data?.id} name=${result.data?.name}',
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'response',
+      api: 'POST /manager/locations',
+      success: result.success && result.data != null,
+      statusCode: result.statusCode,
+      message: result.firstFieldMessage ?? result.message,
+      fieldErrors: result.fieldErrors,
+      extra: {
+        'id': result.data?.id,
+        'name': result.data?.name,
+      },
     );
 
     if (!result.success || result.data == null) {

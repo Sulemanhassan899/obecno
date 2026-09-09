@@ -9,6 +9,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/services/scheduled_attendance_times.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -50,11 +51,39 @@ class AddAttendanceBottomSheet {
     int? employeeUserId,
     String? employeeName,
     bool applyImmediately = false,
+    bool isCreating = false,
     bool hadInitialCheckIn = false,
     bool hadInitialCheckOut = false,
     bool hadInitialBreakStart = false,
     bool hadInitialBreakEnd = false,
-  }) {
+  }) async {
+    var resolvedCheckIn = initialCheckIn;
+    var resolvedCheckOut = initialCheckOut;
+    var resolvedBreakStart = initialBreakStart;
+    var resolvedBreakEnd = initialBreakEnd;
+    var resolvedAttendanceId = attendanceId;
+    var resolvedCheckInId = checkInDetailId;
+    var resolvedCheckOutId = checkOutDetailId;
+    var resolvedBreakStartId = breakStartDetailId;
+    var resolvedBreakEndId = breakEndDetailId;
+
+    if (isCreating) {
+      final scheduled = await ScheduledAttendanceTimes.load(
+        apiClient: apiClient,
+        day: day,
+        employeeUserId: employeeUserId,
+      );
+      resolvedCheckIn ??= scheduled.checkIn;
+      resolvedCheckOut ??= scheduled.checkOut;
+      resolvedBreakStart ??= scheduled.breakStart;
+      resolvedBreakEnd ??= scheduled.breakEnd;
+      resolvedAttendanceId ??= scheduled.attendanceId;
+      resolvedCheckInId ??= scheduled.checkInDetailId;
+      resolvedCheckOutId ??= scheduled.checkOutDetailId;
+      resolvedBreakStartId ??= scheduled.breakStartDetailId;
+      resolvedBreakEndId ??= scheduled.breakEndDetailId;
+    }
+
     final contentKey = GlobalKey<_AttendanceContentState>();
 
     return CommonBottomSheet.show<AddAttendanceSaveResult>(
@@ -73,21 +102,22 @@ class AddAttendanceBottomSheet {
           day: day,
           apiClient: apiClient,
           userEmail: userEmail,
-          initialCheckIn: initialCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
+          initialCheckIn: resolvedCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
           initialCheckOut:
-              initialCheckOut ?? const TimeOfDay(hour: 12, minute: 0),
+              resolvedCheckOut ?? const TimeOfDay(hour: 17, minute: 0),
           initialBreakStart:
-              initialBreakStart ?? const TimeOfDay(hour: 10, minute: 0),
+              resolvedBreakStart ?? const TimeOfDay(hour: 10, minute: 0),
           initialBreakEnd:
-              initialBreakEnd ?? const TimeOfDay(hour: 10, minute: 30),
-          checkInDetailId: checkInDetailId,
-          checkOutDetailId: checkOutDetailId,
-          breakStartDetailId: breakStartDetailId,
-          breakEndDetailId: breakEndDetailId,
-          attendanceId: attendanceId,
+              resolvedBreakEnd ?? const TimeOfDay(hour: 10, minute: 30),
+          checkInDetailId: resolvedCheckInId,
+          checkOutDetailId: resolvedCheckOutId,
+          breakStartDetailId: resolvedBreakStartId,
+          breakEndDetailId: resolvedBreakEndId,
+          attendanceId: resolvedAttendanceId,
           employeeUserId: employeeUserId,
           employeeName: employeeName,
           applyImmediately: applyImmediately,
+          isCreating: isCreating,
           hadInitialCheckIn: hadInitialCheckIn || initialCheckIn != null,
           hadInitialCheckOut: hadInitialCheckOut || initialCheckOut != null,
           hadInitialBreakStart:
@@ -115,6 +145,7 @@ class _AttendanceContent extends StatefulWidget {
   final int? employeeUserId;
   final String? employeeName;
   final bool applyImmediately;
+  final bool isCreating;
   final bool hadInitialCheckIn;
   final bool hadInitialCheckOut;
   final bool hadInitialBreakStart;
@@ -137,6 +168,7 @@ class _AttendanceContent extends StatefulWidget {
     this.employeeUserId,
     this.employeeName,
     this.applyImmediately = false,
+    this.isCreating = false,
     this.hadInitialCheckIn = false,
     this.hadInitialCheckOut = false,
     this.hadInitialBreakStart = false,
@@ -303,6 +335,40 @@ class _AttendanceContentState extends State<_AttendanceContent>
     return "${d.day} ${months[d.month - 1]} ${d.year}";
   }
 
+  String _yyyyMMdd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  String _apiEventType(String eventType) {
+    switch (eventType) {
+      case 'checkOut':
+        return 'check out';
+      case 'breakStart':
+        return 'break out';
+      case 'breakEnd':
+        return 'break in';
+      default:
+        return 'check in';
+    }
+  }
+
+  Future<int?> _resolveAttendanceId() async {
+    try {
+      final response = await AttendanceService(
+        widget.apiClient,
+      ).getAttendanceDetails(date: _yyyyMMdd(widget.day));
+      return response.data?.attendanceId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get _sheetTitle {
+    if (!widget.isCreating) return 'Edit Attendance';
+    return widget.applyImmediately ? 'Add Attendance' : 'Request Attendance';
+  }
+
   bool _timeChanged(TimeOfDay a, TimeOfDay b) =>
       a.hour != b.hour || a.minute != b.minute;
 
@@ -357,13 +423,24 @@ class _AttendanceContentState extends State<_AttendanceContent>
         ),
       );
 
-      if (detailId == null || detailId.isEmpty) return;
+      if (detailId == null || detailId.isEmpty) {
+        if (!widget.isCreating) return;
+        payloads.add(
+          AttendanceChangeRequestPayload(
+            oldValue: '--',
+            newValue: formatTime(updated),
+            type: _apiEventType(eventType),
+          ),
+        );
+        return;
+      }
 
       payloads.add(
         AttendanceChangeRequestPayload(
           attendanceDetailId: detailId,
           oldValue: formatTime(initial),
           newValue: formatTime(updated),
+          type: _apiEventType(eventType),
         ),
       );
     }
@@ -393,8 +470,31 @@ class _AttendanceContentState extends State<_AttendanceContent>
       updated: checkOut,
     );
 
+    if (widget.isCreating) {
+      final added = localRequests.map((e) => e.eventType).toSet();
+      if (!added.contains('checkIn')) {
+        maybeAdd(
+          eventType: 'checkIn',
+          detailId: widget.checkInDetailId,
+          initial: widget.initialCheckIn,
+          updated: checkIn,
+          force: true,
+        );
+      }
+      if (!added.contains('checkOut')) {
+        maybeAdd(
+          eventType: 'checkOut',
+          detailId: widget.checkOutDetailId,
+          initial: widget.initialCheckOut,
+          updated: checkOut,
+          force: true,
+        );
+      }
+    }
+
     // Save with no time change: still submit the field the user was editing.
-    if (payloads.isEmpty && localRequests.isEmpty) {
+    // Creating a new day always sends check-in and check-out below.
+    if (payloads.isEmpty && localRequests.isEmpty && !widget.isCreating) {
       switch (editingField ?? 'checkin') {
         case 'checkout':
           maybeAdd(
@@ -435,7 +535,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
     }
 
     try {
-      if (payloads.isEmpty && !widget.applyImmediately) {
+      if (payloads.isEmpty && !widget.applyImmediately && !widget.isCreating) {
         if (!mounted) return;
         ToastHelper.error(
           context,
@@ -449,6 +549,8 @@ class _AttendanceContentState extends State<_AttendanceContent>
       final deviceDetails =
           (await bindings.deviceInfoService.collect()).deviceDetails;
       final gps = await _currentLatLon();
+      final attendanceId =
+          widget.attendanceId ?? await _resolveAttendanceId();
 
       String clock(TimeOfDay t) =>
           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
@@ -464,10 +566,12 @@ class _AttendanceContentState extends State<_AttendanceContent>
       );
       final breakEndDirty = _timeChanged(widget.initialBreakEnd, breakEnd);
 
-      // Preserve times that already existed; never invent defaults the user
-      // did not edit (employee change-request behavior).
-      final sendCheckIn = widget.hadInitialCheckIn || checkInDirty;
-      final sendCheckOut = widget.hadInitialCheckOut || checkOutDirty;
+      // New attendance always sends in/out. Edits preserve existing punches
+      // and only include times the user actually changed.
+      final sendCheckIn =
+          widget.isCreating || widget.hadInitialCheckIn || checkInDirty;
+      final sendCheckOut =
+          widget.isCreating || widget.hadInitialCheckOut || checkOutDirty;
       final sendBreakStart = widget.hadInitialBreakStart || breakStartDirty;
       final sendBreakEnd = widget.hadInitialBreakEnd || breakEndDirty;
 
@@ -482,7 +586,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
       final result = widget.applyImmediately
           ? await bindings.managerAttendanceService.saveEmployeeAttendance(
-              attendanceId: widget.attendanceId,
+              attendanceId: attendanceId,
               userId: widget.employeeUserId,
               day: widget.day,
               deviceDetails: deviceDetails,
@@ -498,24 +602,62 @@ class _AttendanceContentState extends State<_AttendanceContent>
               breakEndDetailId: widget.breakEndDetailId,
               changes: payloads,
             )
+          : (widget.isCreating && attendanceId == null)
+          ? await AttendanceService(widget.apiClient)
+                .submitCreateAttendanceRequest(
+                  date: _yyyyMMdd(widget.day),
+                  deviceDetails: deviceDetails,
+                  lat: gps.lat,
+                  lon: gps.lon,
+                  checkIn: clockIf(checkIn, include: sendCheckIn),
+                  checkOut: clockIf(checkOut, include: sendCheckOut),
+                  breakStart: clockIf(breakStart, include: sendBreakStart),
+                  breakEnd: clockIf(breakEnd, include: sendBreakEnd),
+                  userId: int.tryParse(bindings.authProvider.user?.id ?? ''),
+                )
           : await AttendanceService(
               widget.apiClient,
             ).submitAttendanceChangeRequests(
-              attendanceId: widget.attendanceId,
+              attendanceId: attendanceId,
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
               changes: payloads,
+              date: _yyyyMMdd(widget.day),
+              checkIn: clockIf(checkIn, include: sendCheckIn),
+              checkOut: clockIf(checkOut, include: sendCheckOut),
+              breakStart: clockIf(breakStart, include: sendBreakStart),
+              breakEnd: clockIf(breakEnd, include: sendBreakEnd),
             );
 
       if (!mounted) return;
 
       final success = result.success;
 
-      if (success && !widget.applyImmediately && localRequests.isNotEmpty) {
+      if (success &&
+          !widget.applyImmediately &&
+          (localRequests.isNotEmpty || widget.isCreating)) {
+        final toStore = localRequests.isNotEmpty
+            ? localRequests
+            : [
+                AttendanceEditRequest(
+                  status: AttendanceEditRequestStatus.pending,
+                  requestedAt: now,
+                  originalTime: '--',
+                  newTime: formatTime(checkIn),
+                  eventType: 'checkIn',
+                ),
+                AttendanceEditRequest(
+                  status: AttendanceEditRequestStatus.pending,
+                  requestedAt: now,
+                  originalTime: '--',
+                  newTime: formatTime(checkOut),
+                  eventType: 'checkOut',
+                ),
+              ];
         await AttendanceEditRequestStore.instance.addMany(
           day: widget.day,
-          requests: localRequests,
+          requests: toStore,
         );
       }
 
@@ -523,8 +665,8 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
       if (success) {
         final saved = AddAttendanceSaveResult(
-          checkIn: checkInDirty ? checkIn : null,
-          checkOut: checkOutDirty ? checkOut : null,
+          checkIn: (checkInDirty || widget.isCreating) ? checkIn : null,
+          checkOut: (checkOutDirty || widget.isCreating) ? checkOut : null,
           breakStart: breakStartDirty ? breakStart : null,
           breakEnd: breakEndDirty ? breakEnd : null,
         );
@@ -587,62 +729,73 @@ class _AttendanceContentState extends State<_AttendanceContent>
       key: _itemKeys[fieldKey],
       child: Column(
         children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 12,
+                  child: Icon(Icons.circle, color: kDividerColor, size: 12),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        AppText.p2(
+                          title,
+                          color: kSubText,
+                          weight: FontWeight.w400,
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: EdgeInsets.all(isActive ? 12 : 0),
+                          decoration: BoxDecoration(
+                            color: isActive ? kbackground : kTransperentColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: AppText.p1(
+                            value,
+                            color: valueColor,
+                            weight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        CommonImageView(
+                          imagePath: Assets.imagesPen,
+                          height: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                children: [
-                  Icon(Icons.circle, color: kDividerColor, size: 12),
-                  if (!isLast)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 2,
-                      height: safeHeight,
-                      margin: const EdgeInsets.only(top: 2),
-                      color: kDividerColor,
-                    ),
-                ],
-              ),
+              if (!isLast)
+                Container(
+                  width: 12,
+                  alignment: Alignment.center,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 2,
+                    height: safeHeight,
+                    color: kDividerColor,
+                  ),
+                )
+              else
+                const SizedBox(width: 12),
               const SizedBox(width: 12),
               Expanded(
-                child: GestureDetector(
-                  onTap: onTap,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          AppText.p2(
-                            title,
-                            color: kSubText,
-                            weight: FontWeight.w400,
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: EdgeInsets.all(isActive ? 12 : 0),
-                            decoration: BoxDecoration(
-                              color: isActive ? kbackground : kTransperentColor,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: AppText.p1(
-                              value,
-                              color: valueColor,
-                              weight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          CommonImageView(
-                            imagePath: Assets.imagesPen,
-                            height: 16,
-                          ),
-                        ],
-                      ),
-                      inlinePicker(
-                        fieldKey: fieldKey,
-                        value: _getValue(fieldKey),
-                        onChanged: (v) => _setValue(fieldKey, v),
-                      ),
-                    ],
-                  ),
+                child: inlinePicker(
+                  fieldKey: fieldKey,
+                  value: _getValue(fieldKey),
+                  onChanged: (v) => _setValue(fieldKey, v),
                 ),
               ),
             ],
@@ -784,7 +937,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              AppText.h5("Edit Attendance", weight: FontWeight.w600),
+              AppText.h5(_sheetTitle, weight: FontWeight.w600),
               ButtonAnimations.press(
                 onTap: () => Navigator.pop(context),
                 child: const Icon(Icons.close),

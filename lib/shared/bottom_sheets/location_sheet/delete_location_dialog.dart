@@ -1,6 +1,7 @@
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/add_location_log.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,13 @@ class DeleteLocationDialog {
 
   /// Simple confirm: Cancel / Delete location
   static Future<bool?> showSimple(BuildContext context) {
+    AddLocationLog.dump(
+      sheet: 'Deactivate Location',
+      phase: 'sheet open',
+      api: 'PATCH /manager/locations/{id}/status',
+      apiNeeds: 'is_active',
+      userSending: {'is_active': false},
+    );
     return showDialog<bool>(
       context: context,
       useRootNavigator: true,
@@ -76,6 +84,12 @@ class DeleteLocationDialog {
 
   /// Detailed confirm: Deactivate / Delete Location / Cancel
   static Future<DeleteLocationAction?> showDetailed(BuildContext context) {
+    AddLocationLog.dump(
+      sheet: 'Delete Location',
+      phase: 'sheet open',
+      api: 'DELETE /manager/locations/{id}',
+      apiNeeds: 'location_id (path)',
+    );
     return showDialog<DeleteLocationAction>(
       context: context,
       useRootNavigator: true,

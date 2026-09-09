@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
@@ -208,7 +209,7 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                           child: SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: ShimmerProgress(strokeWidth: 2),
                           ),
                         )
                       : (_searchController.text.isEmpty
@@ -328,7 +329,7 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                         child: _locating
                             ? const Padding(
                                 padding: EdgeInsets.all(12),
-                                child: CircularProgressIndicator(
+                                child: ShimmerProgress(
                                   strokeWidth: 2,
                                 ),
                               )
@@ -382,7 +383,7 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                                   child: SizedBox(
                                     height: 16,
                                     width: 16,
-                                    child: CircularProgressIndicator(
+                                    child: ShimmerProgress(
                                       strokeWidth: 2,
                                     ),
                                   ),

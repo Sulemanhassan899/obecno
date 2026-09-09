@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/all_colors.dart';
 import '../constants/app_fonts.dart';
+import 'light_theme.dart';
 
 /// Dark [ThemeData] built from the project's existing color constants
 /// (`core/constants/all_colors.dart`).
@@ -58,4 +59,5 @@ final ThemeData darkTheme = ThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
   ),
+  switchTheme: appSwitchTheme,
 );

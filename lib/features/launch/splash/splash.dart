@@ -4,11 +4,12 @@ import 'package:obecno/core/services/permission_helper.dart';
 import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -128,6 +129,15 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     if (!loggedIn) return '/login';
+
+    final userId = authProvider.user?.id;
+    if (userId != null && userId.isNotEmpty) {
+      await bindings.employeeTrustedTime.ensureLogin(
+        userId: userId,
+        createIfMissing: false,
+      );
+      if (!authProvider.isAuthenticated) return '/login';
+    }
 
     var permissionsAllowed = false;
     try {

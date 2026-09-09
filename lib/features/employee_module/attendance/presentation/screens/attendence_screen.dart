@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     as normalized;
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
 import 'package:obecno/features/employee_module/attendance/domain/controllers/attendence_controller.dart';
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
@@ -14,11 +17,11 @@ import 'package:obecno/features/employee_module/attendance/presentation/widgets/
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/attendance_details_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/hoilday_detail_sheet.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:shimmer/shimmer.dart';
 
 class EmployeeAttendanceScreen extends StatefulWidget {
   const EmployeeAttendanceScreen({
@@ -35,10 +38,10 @@ class EmployeeAttendanceScreen extends StatefulWidget {
 
   @override
   State<EmployeeAttendanceScreen> createState() =>
-      _EmployeeAttendanceScreenState();
+      EmployeeAttendanceScreenState();
 }
 
-class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
+class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   final MonthlyAttendanceController _controller = MonthlyAttendanceController();
 
   List<AttendanceDayRecord> get processedRecords {
@@ -70,6 +73,10 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void notifyTabResumed() {
+    unawaited(_controller.reloadVisibleMonth());
   }
 
   List<HistoryAttendanceEvent> _eventsFor(normalized.AttendanceDay? day) {
@@ -132,16 +139,7 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
     return DateTime(date.year, date.month, date.day, h, m, s);
   }
 
-  void _onDayTap(AttendanceDayRecord record) {
-    // 1. Absent / On Leave -> DO NOT open any bottom sheet
-    if (record.status == AttendanceDayStatus.onLeave ||
-        record.status == AttendanceDayStatus.absent ||
-        record.checkIn == "Leave" ||
-        record.checkOut == "Leave") {
-      return;
-    }
-
-    // 2. Holiday or Weekend -> Open HolidayBottomSheet
+  Future<void> _onDayTap(AttendanceDayRecord record) async {
     if (record.status == AttendanceDayStatus.holiday ||
         record.status == AttendanceDayStatus.weekend) {
       HolidayBottomSheet.show(
@@ -156,11 +154,24 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
       return;
     }
 
-    final day = record.date;
+    // Leave days stay tappable: the details sheet loads punches when they
+    // exist, otherwise it shows the on-leave message.
+    if (!record.isOnLeave && record.isAbsent) {
+      await AddAttendanceBottomSheet.show(
+        context,
+        day: record.date,
+        apiClient: _controller.apiClient,
+        userEmail: _controller.userEmail,
+        attendanceId: _controller.dayFor(record.date)?.recordId,
+        isCreating: true,
+      );
+      if (mounted) await _controller.refresh();
+      return;
+    }
 
+    final day = record.date;
     final normalizedDay = _controller.dayFor(day);
     final dayEvents = _eventsFor(normalizedDay);
-
     final summary = HistoryAttendanceEngine.compute(dayEvents);
 
     AttendanceDetailsSheet.show(
@@ -171,6 +182,7 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
       apiClient: _controller.apiClient,
       userEmail: _controller.userEmail,
       onEditAttendance: () {},
+      onLeave: record.isOnLeave,
     );
   }
 
@@ -248,9 +260,8 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: RefreshIndicator(
+              child: ShimmerRefreshIndicator(
                 onRefresh: _controller.refresh,
-                color: kPrimaryColor,
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: widget.embeddedInSheet ? 16 : 0,
@@ -409,17 +420,11 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
     double width = double.infinity,
     BorderRadius? radius,
   }) {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey.shade300,
-      highlightColor: Colors.grey.shade100,
-      child: Container(
-        height: height,
-        width: width,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: radius ?? BorderRadius.circular(6),
-        ),
-      ),
+    return AppShimmer(
+      isLoading: true,
+      height: height,
+      width: width,
+      borderRadius: radius ?? BorderRadius.zero,
     );
   }
 }

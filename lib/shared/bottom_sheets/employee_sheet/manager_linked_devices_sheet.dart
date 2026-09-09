@@ -1,9 +1,10 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
-import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/more/data/models/device_model.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -63,6 +64,24 @@ class ManagerLinkedDevice {
     }
     if (current.isEmpty) return devices;
     return [...current, ...rest];
+  }
+
+  /// Pending requests first so a new device request is visible at the top.
+  static List<ManagerLinkedDevice> pendingFirst(
+    List<ManagerLinkedDevice> devices,
+  ) {
+    if (devices.length < 2) return devices;
+    final pending = <ManagerLinkedDevice>[];
+    final rest = <ManagerLinkedDevice>[];
+    for (final device in devices) {
+      if (device.status == ManagerDeviceStatus.pending) {
+        pending.add(device);
+      } else {
+        rest.add(device);
+      }
+    }
+    if (pending.isEmpty) return devices;
+    return [...pending, ...rest];
   }
 
   /// GET often omits blocked, unblocked, or pending devices. Never drop a
@@ -176,10 +195,12 @@ class _ManagerLinkedDevicesSheetBodyState
     }
 
     setState(() {
-      _devices = ManagerLinkedDevice.currentFirst(
-        ManagerLinkedDevice.retainKnownDevices(
-          incoming: (result.data ?? const []).map(_fromApi).toList(),
-          previous: _devices,
+      _devices = ManagerLinkedDevice.pendingFirst(
+        ManagerLinkedDevice.currentFirst(
+          ManagerLinkedDevice.retainKnownDevices(
+            incoming: (result.data ?? const []).map(_fromApi).toList(),
+            previous: _devices,
+          ),
         ),
       );
       _loading = false;
@@ -386,31 +407,60 @@ class _ManagerLinkedDevicesSheetBodyState
             ),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(child: AppText.p2(_error!, color: kGreyColor))
-                  : _devices.isEmpty
-                  ? Center(
-                      child: AppText.p2(
-                        'No linked devices yet',
-                        color: kGreyColor,
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                      itemCount: _devices.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        return _DeviceCard(
-                          device: _devices[index],
-                          iconPath: _iconFor(_devices[index]),
-                          busy: _actingDeviceId == _devices[index].id,
-                          onApprove: () => _approve(_devices[index]),
-                          onReject: () => _reject(_devices[index]),
-                          onBlock: () => _block(_devices[index]),
-                          onUnblock: () => _unblock(_devices[index]),
-                        );
-                      },
+                  ? const Center(child: ShimmerProgress())
+                  : ShimmerRefreshIndicator(
+                      onRefresh: () => _load(showSpinner: false),
+                      child: _error != null
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                60,
+                                16,
+                                20,
+                              ),
+                              children: [
+                                Center(
+                                  child: AppText.p2(_error!, color: kGreyColor),
+                                ),
+                              ],
+                            )
+                          : _devices.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                60,
+                                16,
+                                20,
+                              ),
+                              children: [
+                                Center(
+                                  child: AppText.p2(
+                                    'No linked devices yet',
+                                    color: kGreyColor,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ListView.separated(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                              itemCount: _devices.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                return _DeviceCard(
+                                  device: _devices[index],
+                                  iconPath: _iconFor(_devices[index]),
+                                  busy: _actingDeviceId == _devices[index].id,
+                                  onApprove: () => _approve(_devices[index]),
+                                  onReject: () => _reject(_devices[index]),
+                                  onBlock: () => _block(_devices[index]),
+                                  onUnblock: () => _unblock(_devices[index]),
+                                );
+                              },
+                            ),
                     ),
             ),
           ],
@@ -552,7 +602,7 @@ class _DeviceCard extends StatelessWidget {
                 child: SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: ShimmerProgress(strokeWidth: 2),
                 ),
               ),
             )

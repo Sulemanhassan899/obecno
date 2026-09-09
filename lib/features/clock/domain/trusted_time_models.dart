@@ -1,3 +1,8 @@
+/// Shown on logout after a device reboot resets the monotonic clock.
+class TrustedTimeMessages {
+  static const sessionEnded = 'Session has ended. Please login again';
+}
+
 enum TimeComparisonResult { match, mismatch }
 
 extension TimeComparisonResultLabel on TimeComparisonResult {

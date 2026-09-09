@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -22,6 +23,14 @@ class AddMembersSheet {
     String title = 'Add Member',
     bool openSetupOnAdd = true,
   }) {
+    LocationPolicyLog.dump(
+      sheet: 'Add Member',
+      phase: 'open',
+      locationId: location.id,
+      api: 'POST /manager/locations/${location.id}/members',
+      apiNeeds: 'location_id, employee_ids',
+      extra: {'title': title},
+    );
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -109,7 +118,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       _loading = false;
     });
     LocationPolicyLog.dump(
-      sheet: 'add_members',
+      sheet: 'Add Member',
       phase: 'fetched',
       locationId: widget.location.id,
       success: true,
@@ -135,13 +144,20 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
 
   Future<void> _onAdd() async {
     if (_selectedIds.isEmpty) {
+      LocationPolicyLog.dump(
+        sheet: 'Add Member',
+        phase: 'response',
+        locationId: widget.location.id,
+        success: false,
+        message: 'Select employees to add.',
+      );
       ToastHelper.error(context, message: 'Select employees to add.');
       return;
     }
 
     setState(() => _saving = true);
     LocationPolicyLog.dump(
-      sheet: 'add_members',
+      sheet: 'Add Member',
       phase: 'current',
       locationId: widget.location.id,
       extra: {
@@ -157,9 +173,15 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       },
     );
     LocationPolicyLog.dump(
-      sheet: 'add_members',
+      sheet: 'Add Member',
       phase: 'changed',
       locationId: widget.location.id,
+      api: 'POST /manager/locations/${widget.location.id}/members',
+      apiNeeds: 'location_id, employee_ids',
+      userSending: {
+        'location_id': widget.location.id,
+        'employee_ids': _selectedIds.toList(),
+      },
       extra: {'selectedIds': _selectedIds.join(',')},
     );
     final result = await bindings.managerLocationsService.addLocationMembers(
@@ -207,7 +229,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       final userId = person.userId;
       if (userId == null) {
         LocationPolicyLog.dump(
-          sheet: 'add_members',
+          sheet: 'Add Member',
           phase: 'response',
           locationId: widget.location.id,
           success: false,
@@ -235,7 +257,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
             locationIds: ids,
           );
       LocationPolicyLog.dump(
-        sheet: 'add_members',
+        sheet: 'Add Member',
         phase: 'response',
         locationId: widget.location.id,
         success: write.success,
@@ -368,7 +390,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
 
   Widget _buildList(List<ManagerEmployeeModel> people) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: ShimmerProgress());
     }
     if (_error != null) {
       return Center(

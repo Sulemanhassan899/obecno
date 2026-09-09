@@ -786,6 +786,35 @@ void main() {
       expect(find.text('Select Month & Year'), findsOneWidget);
       expect(find.byType(ListWheelScrollView), findsWidgets);
     });
+
+    testWidgets('swiping the calendar moves to the previous or next month', (
+      tester,
+    ) async {
+      final now = DateTime.now();
+      final prev = DateTime(now.year, now.month - 1);
+      final currentTitle =
+          '${DateMonthYearContentState.months[now.month - 1]} ${now.year}';
+      final prevTitle =
+          '${DateMonthYearContentState.months[prev.month - 1]} ${prev.year}';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DateMonthYearContent(initialDate: now, onSelected: (_) {}),
+          ),
+        ),
+      );
+
+      expect(find.text(currentTitle), findsOneWidget);
+
+      await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.text(prevTitle), findsOneWidget);
+
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.text(currentTitle), findsOneWidget);
+    });
   });
 
   group('AttendanceDuration', () {

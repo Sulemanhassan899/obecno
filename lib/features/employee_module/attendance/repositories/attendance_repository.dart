@@ -3,6 +3,7 @@ import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/employee_leave.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 
@@ -138,9 +139,15 @@ class HistoryAttendanceRepository {
       month: _yyyyMM(month),
       cancelToken: cancelToken,
     );
+    final leavesFuture = _service.getLeaves(
+      dateFrom: _yyyyMMdd(firstDay),
+      dateTo: _yyyyMMdd(lastDay),
+      cancelToken: cancelToken,
+    );
 
     final attendanceResponse = await attendanceFuture;
     final calendarResponse = await calendarFuture;
+    final leavesResponse = await leavesFuture;
 
     if (!attendanceResponse.success || attendanceResponse.data == null) {
       return ApiResponse.failure(
@@ -151,6 +158,11 @@ class HistoryAttendanceRepository {
 
     final history = attendanceResponse.data!;
     final calendar = calendarResponse.success ? calendarResponse.data : null;
+    final leaveDates = <DateTime>{
+      ...?calendar?.leaveDates,
+      if (leavesResponse.success && leavesResponse.data != null)
+        ...EmployeeLeaveDates.approvedDates(leavesResponse.data!),
+    };
 
     final days = List<AttendanceDay>.from(history.history)
       ..sort((a, b) => b.date.compareTo(a.date)); // latest first
@@ -166,16 +178,22 @@ class HistoryAttendanceRepository {
       joiningDate: joiningDate,
     );
 
+    final daysWithLeave = EmployeeLeaveDates.overlay(days, leaveDates);
+
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
     // latest-first so records match the original display order.
     // Days before the employee's joining date are never filled/shown.
     final displayDays = _fillMissingDays(
-      days: days,
+      days: daysWithLeave,
       month: month,
       today: today,
       joiningDate: joiningDate,
     ).reversed.toList();
-    final records = _recordsFor(displayDays, calendar);
+    final records = _recordsFor(
+      displayDays,
+      calendar,
+      extraLeaveDates: leaveDates,
+    );
 
     final monthLabel = (calendar?.monthLabel.isNotEmpty ?? false)
         ? calendar!.monthLabel
@@ -186,7 +204,7 @@ class HistoryAttendanceRepository {
         monthLabel: monthLabel,
         summary: summary,
         records: records,
-        rawDays: days,
+        rawDays: daysWithLeave,
         calendarDates: calendar?.attendanceDates ?? const [],
       ),
     );
@@ -334,7 +352,7 @@ class HistoryAttendanceRepository {
               })
               .toList(growable: false);
 
-    final workingDays = eligibleDays.length;
+    final workingDays = eligibleDays.where(_hasPunch).length;
 
     // Count only working weekdays (per policy) in the elapsed period,
     // instead of counting every calendar day.
@@ -360,6 +378,7 @@ class HistoryAttendanceRepository {
     var lateCheckOuts = 0;
 
     for (final day in eligibleDays) {
+      if (!_hasPunch(day)) continue;
       final checkIn = _parseClockTime(day.firstCheckIn);
       if (checkIn != null &&
           _isAfterThreshold(checkIn, _lateCheckInHour, _lateCheckInMinute)) {
@@ -397,13 +416,19 @@ class HistoryAttendanceRepository {
     final lastDay = DateTime(month.year, month.month + 1, 0);
     final todayOnly = DateTime(today.year, today.month, today.day);
 
-    final sameMonth = todayOnly.year == month.year && todayOnly.month == month.month;
-    var effectiveEnd =
-        sameMonth && todayOnly.isBefore(lastDay) ? todayOnly : lastDay;
+    final sameMonth =
+        todayOnly.year == month.year && todayOnly.month == month.month;
+    var effectiveEnd = sameMonth && todayOnly.isBefore(lastDay)
+        ? todayOnly
+        : lastDay;
 
     var effectiveStart = monthStart;
     if (joiningDate != null) {
-      final join = DateTime(joiningDate.year, joiningDate.month, joiningDate.day);
+      final join = DateTime(
+        joiningDate.year,
+        joiningDate.month,
+        joiningDate.day,
+      );
       final joiningMonth = DateTime(join.year, join.month);
       final thisMonth = DateTime(month.year, month.month);
 
@@ -422,10 +447,7 @@ class HistoryAttendanceRepository {
     }
 
     if (effectiveEnd.isBefore(effectiveStart)) return (effectiveStart, 0);
-    return (
-      effectiveStart,
-      effectiveEnd.difference(effectiveStart).inDays + 1,
-    );
+    return (effectiveStart, effectiveEnd.difference(effectiveStart).inDays + 1);
   }
 
   List<AttendanceDay> _fillMissingDays({
@@ -462,17 +484,21 @@ class HistoryAttendanceRepository {
 
   List<AttendanceDayRecord> _recordsFor(
     List<AttendanceDay> days,
-    AttendanceCalendarData? calendar,
-  ) {
+    AttendanceCalendarData? calendar, {
+    Set<DateTime> extraLeaveDates = const {},
+  }) {
     final holidays = _holidaysFor(days, calendar);
-    final leaveDates = _leaveDatesFor(days);
+    final leaveDates = {
+      ..._leaveDatesFor(days),
+      ...extraLeaveDates,
+      ...?calendar?.leaveDates.map(
+        (date) => DateTime(date.year, date.month, date.day),
+      ),
+    };
     return days
         .map(
-          (day) => _toDayRecord(
-            day,
-            holidays: holidays,
-            leaveDates: leaveDates,
-          ),
+          (day) =>
+              _toDayRecord(day, holidays: holidays, leaveDates: leaveDates),
         )
         .toList();
   }
@@ -583,25 +609,38 @@ class HistoryAttendanceRepository {
     };
   }
 
+  bool _hasPunch(AttendanceDay day) {
+    return day.checkIns.isNotEmpty || day.checkOuts.isNotEmpty || day.isEdited;
+  }
+
   // ---------------------------------------------------------------------
   // Time helpers
   // ---------------------------------------------------------------------
 
-  ({int hour, int minute})? _parseClockTime(String? raw) {
+  ({int hour, int minute, int second})? _parseClockTime(String? raw) {
     if (raw == null) return null;
     final parts = raw.split(':');
     if (parts.length < 2) return null;
     final h = int.tryParse(parts[0]);
     final m = int.tryParse(parts[1]);
     if (h == null || m == null) return null;
-    return (hour: h, minute: m);
+    final s = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
+    return (hour: h, minute: m, second: s);
   }
 
-  bool _isAfterThreshold(({int hour, int minute}) t, int hour, int minute) {
+  bool _isAfterThreshold(
+    ({int hour, int minute, int second}) t,
+    int hour,
+    int minute,
+  ) {
     return t.hour > hour || (t.hour == hour && t.minute > minute);
   }
 
-  bool _isBeforeThreshold(({int hour, int minute}) t, int hour, int minute) {
+  bool _isBeforeThreshold(
+    ({int hour, int minute, int second}) t,
+    int hour,
+    int minute,
+  ) {
     return t.hour < hour || (t.hour == hour && t.minute < minute);
   }
 

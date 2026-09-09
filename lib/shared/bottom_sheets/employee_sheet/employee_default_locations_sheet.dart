@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -300,7 +301,7 @@ class _EmployeeDefaultLocationsSheetBodyState
             const Divider(height: 1, color: kDividerColor),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: ShimmerProgress())
                   : _error != null
                   ? Center(child: AppText.p2(_error!, color: kGreyColor))
                   : _locations.isEmpty

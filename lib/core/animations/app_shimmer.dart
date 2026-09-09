@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+/// Neutral grey palette used by every shimmer in the app. Never green.
+abstract final class AppShimmerColors {
+  static const Color base = Color(0xFFE0E0E0);
+  static const Color highlight = Color(0xFFF5F5F5);
+  static const Duration period = Duration(milliseconds: 600);
+}
+
 /// ===============================================================
 /// 🔥 ADVANCED SHIMMER SYSTEM (PRODUCTION READY)
 /// ===============================================================
@@ -50,9 +57,9 @@ class AppShimmer extends StatelessWidget {
     this.width,
     this.shape = BoxShape.rectangle,
     this.borderRadius,
-    this.baseColor = const Color(0xFFE0E0E0),
-    this.highlightColor = const Color(0xFFF5F5F5),
-    this.period = const Duration(milliseconds: 1200),
+    this.baseColor = AppShimmerColors.base,
+    this.highlightColor = AppShimmerColors.highlight,
+    this.period = AppShimmerColors.period,
     this.direction = ShimmerDirection.ltr,
     this.loop = 0,
     this.enabled = true,
@@ -117,9 +124,9 @@ class AppShimmerOverlay extends StatelessWidget {
     super.key,
     required this.isLoading,
     required this.child,
-    this.baseColor = const Color(0xFFE0E0E0),
-    this.highlightColor = const Color(0xFFF5F5F5),
-    this.period = const Duration(milliseconds: 1200),
+    this.baseColor = AppShimmerColors.base,
+    this.highlightColor = AppShimmerColors.highlight,
+    this.period = AppShimmerColors.period,
     this.direction = ShimmerDirection.ltr,
     this.loop = 0,
     this.enabled = true,
@@ -149,6 +156,92 @@ class AppShimmerOverlay extends StatelessWidget {
 /// ===============================================================
 /// 🎯 PRESET HELPERS (OPTIONAL USAGE)
 /// ===============================================================
+
+/// Drop-in for [CircularProgressIndicator]. Same size, shimmer instead of a spinner.
+class ShimmerProgress extends StatelessWidget {
+  const ShimmerProgress({super.key, this.color, this.strokeWidth = 4.0});
+
+  // Kept so call sites can pass the same args as CircularProgressIndicator.
+  // ignore: unused_field
+  final Color? color;
+  // ignore: unused_field
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return const FittedBox(
+      child: AppShimmer(
+        isLoading: true,
+        height: 36,
+        width: 36,
+        shape: BoxShape.circle,
+        baseColor: AppShimmerColors.base,
+        highlightColor: AppShimmerColors.highlight,
+      ),
+    );
+  }
+}
+
+/// Drop-in for [RefreshIndicator]. Same pull-to-refresh, shimmer instead of the circle.
+class ShimmerRefreshIndicator extends StatefulWidget {
+  const ShimmerRefreshIndicator({
+    super.key,
+    required this.onRefresh,
+    required this.child,
+    this.color,
+    this.displacement = 40.0,
+    this.edgeOffset = 0.0,
+    this.notificationPredicate = defaultScrollNotificationPredicate,
+  });
+
+  final RefreshCallback onRefresh;
+  final Widget child;
+  // Kept so call sites can pass the same args as RefreshIndicator.
+  // ignore: unused_field
+  final Color? color;
+  // ignore: unused_field
+  final double displacement;
+  final double edgeOffset;
+  final ScrollNotificationPredicate notificationPredicate;
+
+  @override
+  State<ShimmerRefreshIndicator> createState() =>
+      _ShimmerRefreshIndicatorState();
+}
+
+class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator> {
+  bool _refreshing = false;
+
+  Future<void> _handleRefresh() async {
+    setState(() => _refreshing = true);
+    try {
+      await widget.onRefresh();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: Colors.transparent,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      strokeWidth: 0.1,
+      displacement: 0,
+      edgeOffset: widget.edgeOffset,
+      notificationPredicate: widget.notificationPredicate,
+      child: AppShimmerOverlay(
+        isLoading: _refreshing,
+        baseColor: AppShimmerColors.base,
+        highlightColor: AppShimmerColors.highlight,
+        period: AppShimmerColors.period,
+        child: widget.child,
+      ),
+    );
+  }
+}
 
 class ShimmerPresets {
   /// Avatar shimmer (circle)

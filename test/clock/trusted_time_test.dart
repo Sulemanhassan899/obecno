@@ -1,10 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/clock/clocks/clocks.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
+import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/trusted_time_session.dart';
 import 'package:obecno/features/clock/services/trusted_time_store.dart';
+import 'package:obecno/shared/location/service/attendance_payload_model.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late FakeMonotonicClock monotonic;
   late FakeWallClock wall;
   late TrustedTimeSession session;
@@ -191,7 +197,97 @@ void main() {
 
     final result = await session.issuePunch(networkOnline: true);
     expect(result.isOk, isFalse);
-    expect(result.error, contains('reboot'));
+    expect(result.error, TrustedTimeMessages.sessionEnded);
+    expect(session.sessionActive, isFalse);
+    expect(session.endedByReboot, isTrue);
+    expect(session.loginAnchor, isNull);
+  });
+
+  test('restore after reboot ends session even with no punches', () async {
+    monotonic = FakeMonotonicClock(const Duration(hours: 8));
+    wall = FakeWallClock(loginAt);
+    final store = InMemoryTrustedTimeStore();
+    final first = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await first.login();
+    monotonic.simulateReboot(elapsed: Duration.zero);
+
+    final restored = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await restored.restore();
+    expect(restored.sessionActive, isFalse);
+    expect(restored.endedByReboot, isTrue);
+    expect(restored.loginAnchor, isNull);
+    expect(restored.currentSnapshot(networkOnline: true).canIssueAuthoritativeTime,
+        isFalse);
+  });
+
+  test('restore after reboot ends session after check-in punch', () async {
+    monotonic = FakeMonotonicClock(const Duration(hours: 8));
+    wall = FakeWallClock(loginAt);
+    final store = InMemoryTrustedTimeStore();
+    final first = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await first.login();
+    monotonic.advance(const Duration(minutes: 15));
+    wall.advance(const Duration(minutes: 15));
+    expect((await first.issuePunch(networkOnline: true)).isOk, isTrue);
+
+    monotonic.simulateReboot(elapsed: const Duration(seconds: 5));
+    wall.advance(const Duration(minutes: 1));
+
+    final restored = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await restored.restore();
+    expect(restored.endedByReboot, isTrue);
+    expect(restored.sessionActive, isFalse);
+    final result = await restored.issuePunch(networkOnline: true);
+    expect(result.isOk, isFalse);
+    expect(result.error, TrustedTimeMessages.sessionEnded);
+  });
+
+  test('ensureLogin after reboot logs out and does not create a new login',
+      () async {
+    await boot();
+    await session.login(sessionId: EmployeeTrustedTime.sessionIdFor('1'));
+    monotonic.simulateReboot(elapsed: Duration.zero);
+
+    String? logoutMessage;
+    final trusted = EmployeeTrustedTime(
+      session: session,
+      monotonicClock: monotonic,
+      wallClock: wall,
+    );
+    trusted.onRebootSessionEnded = (message) async {
+      logoutMessage = message;
+    };
+    await trusted.init();
+    await trusted.ensureLogin(userId: '1');
+
+    expect(logoutMessage, TrustedTimeMessages.sessionEnded);
+    expect(session.sessionActive, isFalse);
+    expect(session.loginAnchor, isNull);
+    expect(trusted.attachedUserId, isNull);
+
+    await trusted.ensureLogin(userId: '1', createIfMissing: true);
+    expect(session.sessionActive, isFalse);
+
+    await trusted.captureAuthenticatedLogin(userId: '1');
+    expect(session.sessionActive, isTrue);
+    expect(session.loginAnchor, isNotNull);
+    trusted.dispose();
   });
 
   test('process restore keeps login and records a new app-open', () async {
@@ -339,6 +435,260 @@ void main() {
       expect(breakIn.timeSentToServer.hour, 9);
     },
   );
+
+  test(
+    'boot clock sleep is counted: 5:59 check-in then 36m elapsed → 6:35 punch',
+    () async {
+      monotonic = FakeMonotonicClock(const Duration(hours: 10, minutes: 59));
+      wall = FakeWallClock(t(17, 59));
+      session = TrustedTimeSession(
+        monotonicClock: AnchoredMonotonicClock(monotonic),
+        wallClock: wall,
+        store: InMemoryTrustedTimeStore(),
+      );
+      await session.login();
+
+      final checkIn = (await session.issuePunch(networkOnline: true)).punch!;
+      expect(checkIn.timeSentToServer, t(17, 59));
+
+      // Phone slept / app backgrounded: native boot clock keeps going.
+      // Dart Stopwatch on the wrapper must not freeze punch time.
+      monotonic.advance(const Duration(minutes: 36));
+      wall.advance(const Duration(minutes: 36));
+
+      final checkOut = (await session.issuePunch(networkOnline: true)).punch!;
+      expect(checkOut.timeSentToServer, t(18, 35));
+      expect(
+        checkOut.timeSentToServer.difference(checkIn.timeSentToServer),
+        const Duration(minutes: 36),
+      );
+    },
+  );
+
+  test(
+    'anchored wrapper follows a real boot clock, not a frozen Stopwatch',
+    () {
+      final native = FakeMonotonicClock(const Duration(hours: 8));
+      final anchored = AnchoredMonotonicClock(native);
+      final atWrap = anchored.elapsedRealtime();
+
+      native.advance(const Duration(minutes: 36));
+
+      expect(
+        anchored.elapsedRealtime() - atWrap,
+        const Duration(minutes: 36),
+      );
+    },
+  );
+
+  test('check-in 5:59 PM / check-out 6:35 PM stamps both from login+elapsed',
+      () async {
+    await boot(now: t(9), elapsed: const Duration(hours: 8));
+    await session.login();
+
+    monotonic.advance(const Duration(hours: 8, minutes: 59));
+    wall.advance(const Duration(hours: 8, minutes: 59));
+    final checkIn = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(checkIn.timeSentToServer, t(17, 59));
+
+    monotonic.advance(const Duration(minutes: 36));
+    wall.advance(const Duration(minutes: 36));
+    final checkOut = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(checkOut.timeSentToServer, t(18, 35));
+    expect(session.displayNow(), t(18, 35));
+
+    final summary = AttendanceEngine.compute([
+      AttendanceEvent(
+        id: 'in',
+        type: AttendanceEventType.checkIn,
+        time: checkIn.timeSentToServer,
+      ),
+      AttendanceEvent(
+        id: 'out',
+        type: AttendanceEventType.checkOut,
+        time: checkOut.timeSentToServer,
+      ),
+    ]);
+    expect(summary.firstCheckIn, t(17, 59));
+    expect(summary.lastCheckOut, t(18, 35));
+    expect(summary.totalWorkingDuration, const Duration(minutes: 36));
+  });
+
+  test('phone clock jump during a session does not move either punch',
+      () async {
+    await boot();
+    await session.login();
+
+    monotonic.advance(const Duration(hours: 8, minutes: 59));
+    wall.setNow(t(21));
+    final checkIn = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(checkIn.timeSentToServer, t(17, 59));
+    expect(checkIn.phoneWallClock, t(21));
+    expect(checkIn.clockChanged, isTrue);
+
+    monotonic.advance(const Duration(minutes: 36));
+    wall.setNow(t(7));
+    final checkOut = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(checkOut.timeSentToServer, t(18, 35));
+    expect(checkOut.phoneWallClock, t(7));
+  });
+
+  test('app close then open does not replace punch timeline', () async {
+    await boot(now: t(17, 59), elapsed: const Duration(hours: 10, minutes: 59));
+    await session.login();
+    final checkIn = (await session.issuePunch(networkOnline: true)).punch!;
+
+    await session.recordAppClose();
+    monotonic.advance(const Duration(minutes: 24));
+    wall.advance(const Duration(minutes: 24));
+    await session.recordAppOpen();
+    monotonic.advance(const Duration(minutes: 12));
+    wall.advance(const Duration(minutes: 12));
+
+    final checkOut = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(session.loginAnchor!.wallClockLocal, t(17, 59));
+    expect(checkIn.timeSentToServer, t(17, 59));
+    expect(checkOut.timeSentToServer, t(18, 35));
+  });
+
+  test('process restore after 36m still punches login + elapsed', () async {
+    monotonic = FakeMonotonicClock(const Duration(hours: 10, minutes: 59));
+    wall = FakeWallClock(t(17, 59));
+    final store = InMemoryTrustedTimeStore();
+    final first = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await first.login();
+    await first.issuePunch(networkOnline: true);
+
+    monotonic.advance(const Duration(minutes: 36));
+    wall.advance(const Duration(minutes: 36));
+
+    final restored = TrustedTimeSession(
+      monotonicClock: monotonic,
+      wallClock: wall,
+      store: store,
+    );
+    await restored.restore();
+    expect(restored.loginAnchor!.wallClockLocal, t(17, 59));
+
+    final checkOut = (await restored.issuePunch(networkOnline: true)).punch!;
+    expect(checkOut.timeSentToServer, t(18, 35));
+  });
+
+  test(
+    'production wrap: new AnchoredMonotonicClock after process death still '
+    'stamps 6:35 from boot elapsed, not Stopwatch zero',
+    () async {
+      monotonic = FakeMonotonicClock(const Duration(hours: 10, minutes: 59));
+      wall = FakeWallClock(t(17, 59));
+      final store = InMemoryTrustedTimeStore();
+      final first = TrustedTimeSession(
+        monotonicClock: AnchoredMonotonicClock(monotonic),
+        wallClock: wall,
+        store: store,
+      );
+      await first.login();
+      final checkIn = (await first.issuePunch(networkOnline: true)).punch!;
+      expect(checkIn.timeSentToServer, t(17, 59));
+
+      monotonic.advance(const Duration(minutes: 36));
+      wall.advance(const Duration(minutes: 36));
+
+      // App killed and restarted: EmployeeTrustedTime.init() builds a NEW
+      // AnchoredMonotonicClock around the same native boot clock.
+      final restored = TrustedTimeSession(
+        monotonicClock: AnchoredMonotonicClock(monotonic),
+        wallClock: wall,
+        store: store,
+      );
+      await restored.restore();
+      expect(restored.displayNow(), t(18, 35));
+      final checkOut = (await restored.issuePunch(networkOnline: true)).punch!;
+      expect(checkOut.timeSentToServer, t(18, 35));
+      expect(checkOut.timeSentToServer, restored.displayNow());
+    },
+  );
+
+  test('login JSON roundtrip does not shift punch time by timezone', () async {
+    await boot(now: t(17, 59), elapsed: const Duration(hours: 10, minutes: 59));
+    await session.login();
+    final raw = session.loginAnchor!.toJson();
+    final restored = TimeAnchor.fromJson(raw);
+
+    expect(restored.wallClockLocal, t(17, 59));
+    expect(restored.wallClockLocal.isUtc, isFalse);
+    expect(restored.monotonicElapsed, const Duration(hours: 10, minutes: 59));
+
+    monotonic.advance(const Duration(minutes: 36));
+    final calculated = restored.wallClockLocal.add(
+      monotonic.elapsedRealtime() - restored.monotonicElapsed,
+    );
+    expect(calculated, t(18, 35));
+  });
+
+  test('displayNow and issuePunch use the same calculated instant', () async {
+    await boot(now: t(17, 59), elapsed: const Duration(hours: 10, minutes: 59));
+    await session.login();
+    monotonic.advance(const Duration(minutes: 36));
+    wall.advance(const Duration(minutes: 36));
+
+    final shown = session.displayNow();
+    final punch = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(shown, t(18, 35));
+    expect(punch.timeSentToServer, shown);
+    expect(punch.phoneWallClock, t(18, 35));
+  });
+
+  test('API datetime is local trusted punch time, not UTC and not phone',
+      () async {
+    await boot();
+    await session.login();
+    monotonic.advance(const Duration(hours: 8, minutes: 59));
+    wall.setNow(t(7));
+
+    final punch = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(punch.timeSentToServer, t(17, 59));
+    expect(punch.phoneWallClock, t(7));
+
+    final payload = AttendancePayloadModel(
+      action: AttendanceAction.checkIn,
+      capturedAt: punch.timeSentToServer,
+    );
+    expect(payload.datetime, '2026-08-30 17:59:00');
+    expect(payload.time, '17:59:00');
+  });
+
+  test('rewind phone after sleep still sends 6:35, header matches punch',
+      () async {
+    await boot(now: t(17, 59), elapsed: const Duration(hours: 10, minutes: 59));
+    await session.login();
+    final checkIn = (await session.issuePunch(networkOnline: true)).punch!;
+
+    monotonic.advance(const Duration(minutes: 36));
+    wall.setNow(t(9, 25));
+
+    expect(session.displayNow(), t(18, 35));
+    final checkOut = (await session.issuePunch(networkOnline: true)).punch!;
+    expect(checkIn.timeSentToServer, t(17, 59));
+    expect(checkOut.timeSentToServer, t(18, 35));
+    expect(checkOut.phoneWallClock, t(9, 25));
+    expect(checkOut.clockChanged, isTrue);
+  });
+
+  test('system monotonic clock is boot-sized, not wall-epoch', () {
+    final elapsed = const SystemMonotonicClock().elapsedRealtime();
+    expect(
+      AnchoredMonotonicClock.looksLikeWallClock(elapsed),
+      isFalse,
+      reason:
+          'native=${elapsed.inMilliseconds}ms (${elapsed.inHours}h). '
+          'A wall-epoch reading would make production use Stopwatch and '
+          'lag after sleep / pick login time instead of real time.',
+    );
+  });
 }
 
 /// Behaves like the `system_clock` stub: elapsed realtime is wall-clock epoch.

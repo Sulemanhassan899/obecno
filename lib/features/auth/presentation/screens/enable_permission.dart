@@ -5,7 +5,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/widgets/back_button.dart';

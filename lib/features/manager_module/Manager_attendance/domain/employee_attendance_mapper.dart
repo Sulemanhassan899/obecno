@@ -214,7 +214,9 @@ class EmployeeAttendanceMapper {
     final time = detail.occurredAt ?? _timeFrom(detail.attendanceTime);
     final timeLabel = time != null
         ? TeamAttendanceMapper.formatTime(
-            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+            '${time.hour.toString().padLeft(2, '0')}:'
+            '${time.minute.toString().padLeft(2, '0')}:'
+            '${time.second.toString().padLeft(2, '0')}',
           )
         : TeamAttendanceMapper.formatTime(detail.attendanceTime);
 

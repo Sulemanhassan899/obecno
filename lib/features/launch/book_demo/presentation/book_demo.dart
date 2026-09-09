@@ -1,7 +1,7 @@
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
-import 'package:obecno/features/employee_module/more/presentation/screens/policy.dart';
-import 'package:obecno/features/employee_module/more/presentation/screens/terms.dart';
+import 'package:obecno/features/more/presentation/screens/policy.dart';
+import 'package:obecno/features/more/presentation/screens/terms.dart';
 import 'package:obecno/features/launch/book_demo/presentation/request_demo.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
 import 'package:obecno/widgets/back_button.dart';

@@ -83,7 +83,10 @@ class LocationSchedule {
             ]),
           ) ??
           base.graceMinutes,
-      workingDays: _asDays(source['working_days']) ?? base.workingDays,
+      workingDays:
+          _asDays(source['working_days']) ??
+          _asDays(source['working_days_flags']) ??
+          base.workingDays,
       weekStartDay: _asDayName(
         _pick(source, const ['week_start_day', 'workweek_start_day']),
         fallback: base.weekStartDay,
@@ -501,6 +504,136 @@ class LocationSchedule {
       'permissions': written['permissions'],
       ...written,
     };
+  }
+
+  /// One payload per permissions section. Attendance-only PATCH does not
+  /// persist working days or break timing on the backend.
+  ///
+  /// Each body is scoped to that web panel so PUT can create a location
+  /// override when the site still says "using company settings".
+  List<Map<String, dynamic>> permissionsSectionPayloads({
+    required String locationId,
+  }) {
+    final full = permissionsApiPayload(locationId: locationId);
+    final locationIdValue = full['location_id'];
+    final days = (toJson()['working_days'] as List)
+        .map((day) => day.toString())
+        .toList();
+    final daysText = days.join(', ');
+    final daysMap = {
+      for (final name in dayNames)
+        name.toLowerCase(): workingDays.any(
+          (day) => day.trim().toLowerCase() == name.toLowerCase(),
+        ),
+    };
+    final workingSetting = {
+      'working_days': days,
+      'working_days_flags': daysMap,
+      'week_start_day': weekStartDay.trim().toLowerCase(),
+      'hours_per_day': hoursPerDay,
+      'hours_per_week': hoursPerWeek,
+      'working_week_enabled': workingWeekEnabled,
+    };
+    final breakSetting = {
+      'break_time': breakLabel,
+      'max_break_minutes': maxBreakMinutes,
+      'max_break_duration': maxBreakMinutes,
+      'break_location_tracking': breakLocationTracking,
+    };
+
+    Map<String, dynamic> section({
+      required String name,
+      required String field,
+      required Object value,
+      required Map<String, dynamic> setting,
+    }) {
+      return {
+        'location_id': locationIdValue,
+        'section': name,
+        'permission_section': name,
+        'import_company_settings': false,
+        'is_override': true,
+        'source_level': 'location',
+        'field': field,
+        'value': value,
+        'location_setting': setting,
+        name: setting,
+        'permission_items': _permissionItemsForSection(name),
+      };
+    }
+
+    return [
+      full,
+      section(
+        name: 'working_days',
+        field: 'working_days',
+        value: daysText,
+        setting: workingSetting,
+      ),
+      section(
+        name: 'break_timing',
+        field: 'break_time',
+        value: breakLabel,
+        setting: breakSetting,
+      ),
+    ];
+  }
+
+  static const attendancePermissionKeys = {
+    'check_in_time',
+    'check_in',
+    'check_out_time',
+    'check_out',
+    'grace_period',
+    'grace_minutes',
+    'grace',
+  };
+
+  static const workingDaysPermissionKeys = {
+    'working_days',
+    'week_start_day',
+    'workweek_start_day',
+    'hours_per_day',
+    'hours_in_a_day',
+    'hours_in_day',
+    'hours_per_week',
+    'hours_in_a_week',
+    'hours_in_week',
+    'working_week_enabled',
+    'working_days_enabled',
+  };
+
+  static const breakTimingPermissionKeys = {
+    'break_time',
+    'max_break_minutes',
+    'max_break',
+    'max_break_duration',
+    'break_duration',
+    'break_location_tracking',
+    'track_location',
+  };
+
+  static Set<String> permissionKeysForSection(String section) {
+    switch (section.trim().toLowerCase()) {
+      case 'working_days':
+      case 'working_week':
+        return workingDaysPermissionKeys;
+      case 'break_timing':
+      case 'break_settings':
+        return breakTimingPermissionKeys;
+      default:
+        return attendancePermissionKeys;
+    }
+  }
+
+  List<Map<String, dynamic>> _permissionItemsForSection(String section) {
+    final raw = writePayload()['permission_items'];
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map && item['section']?.toString() == section)
+          Map<String, dynamic>.from(item),
+    ];
   }
 
   bool samePolicyAs(LocationSchedule other) {

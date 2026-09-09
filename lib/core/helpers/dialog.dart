@@ -467,7 +467,7 @@ import 'package:flutter/material.dart';
 
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/services/logger.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 
 class DialogHelper {
   /// Returns the same `Future<void>` `showDialog` returns (completing when

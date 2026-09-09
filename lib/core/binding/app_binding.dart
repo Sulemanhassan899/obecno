@@ -11,17 +11,19 @@ import 'package:obecno/features/auth/providers/permission_provider.dart';
 import 'package:obecno/features/auth/repositories/auth_repository.dart';
 import 'package:obecno/features/auth/services/auth_service.dart';
 import 'package:obecno/features/auth/services/company_policy_service.dart';
-import 'package:obecno/features/employee_module/more/repositories/privacy_provider.dart';
-import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
-import 'package:obecno/features/employee_module/more/services/terms_service.dart';
+import 'package:obecno/features/more/repositories/privacy_provider.dart';
+import 'package:obecno/features/more/repositories/terms_provider.dart';
+import 'package:obecno/features/more/services/terms_service.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
 import 'package:obecno/features/launch/book_demo/repositories/book_demo_repository.dart';
 import 'package:obecno/features/launch/book_demo/services/book_demo_service.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:obecno/features/employee_module/more/repositories/device_repository.dart';
-import 'package:obecno/features/employee_module/more/services/device_cache_service.dart';
-import 'package:obecno/features/employee_module/more/services/device_info_service.dart';
-import 'package:obecno/features/employee_module/more/services/device_service.dart';
+import 'package:obecno/features/more/data/local/reminder_dao.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/features/more/repositories/device_repository.dart';
+import 'package:obecno/features/more/services/device_cache_service.dart';
+import 'package:obecno/features/more/services/device_info_service.dart';
+import 'package:obecno/features/more/services/device_service.dart';
 import 'package:obecno/features/employee_module/attendance/data/local/attendance_cache_tracker.dart';
 import 'package:obecno/features/employee_module/attendance/data/local/attendance_db.dart';
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
@@ -30,10 +32,10 @@ import 'package:obecno/features/employee_module/attendance/services/attendance_s
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
-import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:obecno/features/employee_module/more/repositories/profile_repository.dart';
-import 'package:obecno/features/employee_module/more/services/profile_service.dart';
-import 'package:obecno/features/employee_module/more/services/privacy_service.dart';
+import 'package:obecno/features/more/providers/profile_provider.dart';
+import 'package:obecno/features/more/repositories/profile_repository.dart';
+import 'package:obecno/features/more/services/profile_service.dart';
+import 'package:obecno/features/more/services/privacy_service.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/repositories/manager_overview_repository.dart';
 import 'package:obecno/features/manager_module/Manager_overview/services/manager_overview_service.dart';
@@ -81,6 +83,8 @@ class AppBindings {
   late final DeviceCacheService deviceCacheService;
   late final DeviceService deviceService;
   late final DeviceProvider deviceProvider;
+  late final ReminderDao reminderDao;
+  late final ReminderSettingsProvider reminderSettingsProvider;
 
   late final TermsService termsService;
   late final TermsProvider termsProvider;
@@ -147,6 +151,7 @@ class AppBindings {
 
     employeeTrustedTime = EmployeeTrustedTime();
     await employeeTrustedTime.init();
+    employeeTrustedTime.onRebootSessionEnded = _logoutAfterMonotonicReboot;
 
     locationProvider = LocationProvider();
     _syncLocationProviderFromAuth();
@@ -171,6 +176,14 @@ class AppBindings {
     deviceCacheService = DeviceCacheService();
     deviceService = DeviceService(deviceRepository, deviceInfoService);
     deviceProvider = DeviceProvider(deviceService, deviceCacheService);
+
+    reminderDao = ReminderDao();
+    reminderSettingsProvider = ReminderSettingsProvider(
+      dao: reminderDao,
+      policyService: companyPolicyService,
+      userIdProvider: () => authProvider.user?.id ?? '',
+      locationNameProvider: () => authProvider.selectedLocation?.name ?? '',
+    );
 
     termsService = TermsService(ApihttpClient);
     termsProvider = TermsProvider(termsService);
@@ -236,7 +249,7 @@ class AppBindings {
       unawaited(privacyProvider.preloadOnLogin());
       final userId = authProvider.user?.id;
       if (userId != null && userId.isNotEmpty) {
-        unawaited(employeeTrustedTime.ensureLogin(userId: userId));
+        unawaited(employeeTrustedTime.captureAuthenticatedLogin(userId: userId));
       }
 
       // Device registration/status is checked in the background by
@@ -245,20 +258,25 @@ class AppBindings {
       // toast/dialog. Only silently (re-)register here so a returning
       // user's device is registered even before either widget runs.
       unawaited(deviceProvider.registerOnLogin());
+      unawaited(
+        reminderSettingsProvider.load(resumeExistingSession: true),
+      );
     }
     _authListener = () {
       final isAuthenticatedNow = authProvider.isAuthenticated;
       if (isAuthenticatedNow && !_wasAuthenticated) {
         unawaited(termsProvider.preloadOnLogin());
         unawaited(privacyProvider.preloadOnLogin());
+        unawaited(reminderSettingsProvider.load());
         final userId = authProvider.user?.id;
         if (userId != null && userId.isNotEmpty) {
-          unawaited(employeeTrustedTime.ensureLogin(userId: userId));
+          unawaited(employeeTrustedTime.captureAuthenticatedLogin(userId: userId));
         }
       } else if (!isAuthenticatedNow && _wasAuthenticated) {
         // Logged out: drop cached device state so a different user logging
         // in on this device doesn't inherit stale approval/blocked flags.
         unawaited(deviceProvider.clearLocalState());
+        unawaited(reminderSettingsProvider.cancelNotifications());
         managerOverviewProvider.reset();
         managerLocationsProvider.reset();
         managerEmployeesProvider.reset();
@@ -365,6 +383,11 @@ class AppBindings {
       });
 
       await _guardedCleanupStep(
+        'cancelReminderNotifications',
+        reminderSettingsProvider.cancelNotifications,
+      );
+
+      await _guardedCleanupStep(
         'expireTrustedTime',
         employeeTrustedTime.ensureLoggedOut,
       );
@@ -373,6 +396,14 @@ class AppBindings {
 
       await _guardedCleanupStep('clearPrivacyCache', privacyService.clearCache);
     });
+  }
+
+  Future<void> _logoutAfterMonotonicReboot(String message) async {
+    if (!authProvider.isAuthenticated) return;
+    AppLogger.info(
+      'AppBindings: monotonic reboot ended session — logging out. $message',
+    );
+    await authProvider.logout();
   }
 
   /// Runs [step] in isolation: a thrown exception is logged and swallowed

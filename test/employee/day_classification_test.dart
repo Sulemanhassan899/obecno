@@ -13,8 +13,13 @@ void main() {
   });
 
   group('DayClassificationEngine', () {
-    final working = {DateTime.monday, DateTime.tuesday, DateTime.wednesday,
-        DateTime.thursday, DateTime.friday};
+    final working = {
+      DateTime.monday,
+      DateTime.tuesday,
+      DateTime.wednesday,
+      DateTime.thursday,
+      DateTime.friday,
+    };
 
     test('marks weekend', () {
       final sat = DateTime(2026, 8, 15); // Saturday
@@ -68,6 +73,18 @@ void main() {
       );
       expect(result.type, DayCardType.onLeave);
     });
+
+    test('marks leave even when the employee punched that day', () {
+      final day = DateTime(2026, 9, 8);
+      final result = DayClassificationEngine.classifyDay(
+        date: day,
+        workingWeekdays: working,
+        attendanceDates: {DateTime(2026, 9, 8)},
+        holidays: const [],
+        leaveDates: {DateTime(2026, 9, 8)},
+      );
+      expect(result.type, DayCardType.onLeave);
+    });
   });
 
   group('AttendanceListGrouping', () {
@@ -99,6 +116,44 @@ void main() {
       expect(grouped.last.weekendLabel, 'National Day');
       expect(grouped.first.status, AttendanceDayStatus.weekend);
       expect(grouped.first.weekendLabel, 'Weekend, 15 Aug 2026 - 16 Aug 2026');
+    });
+  });
+
+  group('AttendanceDayRecord.isAbsent', () {
+    test('treats dash days as absent and leave days as leave', () {
+      final absent = AttendanceDayRecord(
+        day: 7,
+        weekday: 'Mon',
+        date: DateTime(2026, 9, 7),
+        status: AttendanceDayStatus.absent,
+      );
+      final dash = AttendanceDayRecord(
+        day: 8,
+        weekday: 'Tue',
+        date: DateTime(2026, 9, 8),
+      );
+      final leave = AttendanceDayRecord(
+        day: 9,
+        weekday: 'Wed',
+        date: DateTime(2026, 9, 9),
+        checkIn: 'Leave',
+        checkOut: 'Leave',
+        status: AttendanceDayStatus.onLeave,
+      );
+      final worked = AttendanceDayRecord(
+        day: 10,
+        weekday: 'Thu',
+        date: DateTime(2026, 9, 10),
+        checkIn: '09:00 AM',
+        checkOut: '06:00 PM',
+      );
+
+      expect(absent.isAbsent, isTrue);
+      expect(absent.isOnLeave, isFalse);
+      expect(dash.isAbsent, isTrue);
+      expect(leave.isOnLeave, isTrue);
+      expect(leave.isAbsent, isFalse);
+      expect(worked.isAbsent, isFalse);
     });
   });
 }

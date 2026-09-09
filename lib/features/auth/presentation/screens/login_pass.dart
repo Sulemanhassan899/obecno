@@ -590,7 +590,7 @@ import 'package:obecno/core/services/permission_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/presentation/screens/forgot_password.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';

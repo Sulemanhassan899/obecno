@@ -4,7 +4,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/services/logger.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 
 /// ===============================
 /// 🔥 ADVANCED TOP TOAST SYSTEM

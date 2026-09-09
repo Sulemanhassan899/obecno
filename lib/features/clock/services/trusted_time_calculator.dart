@@ -33,6 +33,21 @@ class TrustedTimeCalculator {
   /// Wall-vs-monotonic mismatch larger than this is treated as a clock change.
   final Duration clockSkewThreshold;
 
+  /// True when elapsed-realtime went backwards relative to a stored anchor.
+  /// That only happens when the device reboots (`elapsedRealtime()` restarts).
+  static bool isMonotonicReboot({
+    required Duration currentMonotonic,
+    Duration? loginMonotonic,
+    Duration? latestAppOpenMonotonic,
+    Duration? lastObservedMonotonic,
+  }) {
+    bool wentBackwards(Duration? previous) =>
+        previous != null && currentMonotonic < previous;
+    return wentBackwards(loginMonotonic) ||
+        wentBackwards(latestAppOpenMonotonic) ||
+        wentBackwards(lastObservedMonotonic);
+  }
+
   TrustedTimeSnapshot calculate({
     required DateTime phoneWallClock,
     required Duration currentMonotonic,
@@ -82,9 +97,11 @@ class TrustedTimeCalculator {
       );
     }
 
-    final rebootDetected = currentMonotonic < loginAnchor.monotonicElapsed ||
-        (latestAppOpen != null &&
-            currentMonotonic < latestAppOpen.monotonicElapsed);
+    final rebootDetected = isMonotonicReboot(
+      currentMonotonic: currentMonotonic,
+      loginMonotonic: loginAnchor.monotonicElapsed,
+      latestAppOpenMonotonic: latestAppOpen?.monotonicElapsed,
+    );
 
     if (rebootDetected) {
       return unavailable(

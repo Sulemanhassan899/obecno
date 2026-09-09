@@ -50,7 +50,7 @@ class AttendanceDetailsData {
     return AttendanceDetailsData(
       userId: parseInt(json['user_id']),
       date: parseDate(json['date']),
-      attendanceId: parseInt(json['attendance_id']),
+      attendanceId: parseInt(json['attendance_id']) ?? parseInt(json['id']),
       total: parseInt(json['total']) ?? details.length,
       details: details,
     );

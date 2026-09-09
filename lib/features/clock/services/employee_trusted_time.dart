@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/helpers/snackbar_helper.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 import 'package:obecno/features/clock/clocks/clocks.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 import 'package:obecno/features/clock/services/trusted_time_session.dart';
@@ -32,10 +35,17 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
   bool _ready = false;
   bool _skipNextResumeAppOpen = false;
   AppLifecycleState? _lifecycle;
+  bool _rebootLogoutInFlight = false;
+  bool _blockLoginCapture = false;
+
+  /// Called when a device reboot resets the monotonic clock. The host
+  /// should log the employee out of the app.
+  Future<void> Function(String message)? onRebootSessionEnded;
 
   TrustedTimeSession? get session => _session;
   bool get ready => _ready;
   String? get attachedUserId => _attachedUserId;
+  bool get sessionEndedByReboot => _session?.endedByReboot ?? false;
 
   static String sessionIdFor(String userId) => 'emp_$userId';
 
@@ -61,18 +71,34 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> ensureLogin({required String userId}) {
+  /// Fresh sign-in: allowed to create a new time-anchor even if a reboot
+  /// previously blocked capture until the employee logged in again.
+  Future<void> captureAuthenticatedLogin({required String userId}) {
+    _blockLoginCapture = false;
+    return ensureLogin(userId: userId, createIfMissing: true);
+  }
+
+  Future<void> ensureLogin({
+    required String userId,
+    bool createIfMissing = true,
+  }) {
     if (_attachedUserId == userId &&
         _session?.sessionActive == true &&
         _session?.loginAnchor != null) {
-      return Future.value();
+      return _logoutIfSessionRebooted();
     }
-    return _inFlight ??= _ensureLogin(userId).whenComplete(() {
+    return _inFlight ??= _ensureLogin(
+      userId,
+      createIfMissing: createIfMissing,
+    ).whenComplete(() {
       _inFlight = null;
     });
   }
 
-  Future<void> _ensureLogin(String userId) async {
+  Future<void> _ensureLogin(
+    String userId, {
+    required bool createIfMissing,
+  }) async {
     if (!_ready) await init();
     final session = _session;
     if (session == null) return;
@@ -80,6 +106,7 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     if (_attachedUserId == userId &&
         session.sessionActive &&
         session.loginAnchor != null) {
+      await _logoutIfSessionRebooted();
       return;
     }
 
@@ -95,6 +122,11 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
       await session.restore();
     }
 
+    if (await session.endSessionIfRebootDetected() || session.endedByReboot) {
+      await _emitRebootLogout();
+      return;
+    }
+
     final expected = sessionIdFor(userId);
     if (session.sessionActive &&
         session.sessionId == expected &&
@@ -102,6 +134,10 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
       _attachedUserId = userId;
       _skipNextResumeAppOpen = true;
       await session.recordAppOpen(reason: 'process_start');
+      if (session.endedByReboot) {
+        await _emitRebootLogout();
+        return;
+      }
       debugPrint(
         '[TRUSTED_TIME] reuse login=${session.loginAnchor!.wallClockLocal} '
         'user=$userId',
@@ -109,6 +145,8 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    if (!createIfMissing || _blockLoginCapture) return;
 
     if (session.sessionId != null && session.sessionId != expected) {
       await session.resetAll();
@@ -119,6 +157,47 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     _skipNextResumeAppOpen = true;
     debugPrint('[TRUSTED_TIME] captured login for user=$userId');
     notifyListeners();
+  }
+
+  Future<void> _logoutIfSessionRebooted() async {
+    final session = _session;
+    if (session == null) return;
+    if (await session.endSessionIfRebootDetected() || session.endedByReboot) {
+      await _emitRebootLogout();
+    }
+  }
+
+  Future<void> _emitRebootLogout() async {
+    if (_rebootLogoutInFlight) return;
+    _rebootLogoutInFlight = true;
+    _blockLoginCapture = true;
+    _attachedUserId = null;
+    final message = TrustedTimeMessages.sessionEnded;
+    try {
+      debugPrint('[TRUSTED_TIME] $message');
+      await onRebootSessionEnded?.call(message);
+      _session?.acknowledgeRebootLogout();
+      _showSessionEndedMessage(message);
+    } finally {
+      _rebootLogoutInFlight = false;
+      notifyListeners();
+    }
+  }
+
+  void _showSessionEndedMessage(String message) {
+    if (rootNavigatorKey.currentContext == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 400), () {
+        final ctx = rootNavigatorKey.currentContext;
+        if (ctx == null) return;
+        SnackbarHelper.showTopToast(
+          ctx,
+          message: message,
+          backgroundColor: kredColor,
+          textColor: kWhite,
+        );
+      });
+    });
   }
 
   Future<void> ensureLoggedOut() async {
@@ -169,7 +248,11 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
       return const RecordTimeResult.fail('Trusted time is not ready.');
     }
     final result = await session.issuePunch(networkOnline: networkOnline);
-    notifyListeners();
+    if (session.endedByReboot) {
+      await _emitRebootLogout();
+    } else {
+      notifyListeners();
+    }
     return result;
   }
 
@@ -198,7 +281,13 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
   }
 
   Future<void> _onForeground() async {
+    await _logoutIfSessionRebooted();
+    if (_session?.sessionActive != true) return;
     await _session?.recordAppOpen(reason: 'foreground');
+    if (_session?.endedByReboot == true) {
+      await _emitRebootLogout();
+      return;
+    }
     notifyListeners();
   }
 

@@ -7,6 +7,8 @@
 -keep class io.flutter.plugins.** { *; }
 -keep class * implements io.flutter.embedding.engine.plugins.FlutterPlugin { *; }
 -keep class dev.fluttercommunity.plus.** { *; }
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-dontwarn com.dexterous.flutterlocalnotifications.**
 -dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
 -dontwarn com.google.android.play.core.splitinstall.SplitInstallException
 -dontwarn com.google.android.play.core.splitinstall.SplitInstallManager

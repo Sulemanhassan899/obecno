@@ -9,10 +9,11 @@ import 'package:obecno/core/theme/light_theme.dart';
 import 'package:obecno/core/theme/theme_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/auth/providers/permission_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/profile_provider.dart';
-import 'package:obecno/features/employee_module/more/repositories/privacy_provider.dart';
-import 'package:obecno/features/employee_module/more/repositories/terms_provider.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/profile_provider.dart';
+import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/features/more/repositories/privacy_provider.dart';
+import 'package:obecno/features/more/repositories/terms_provider.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
@@ -20,7 +21,8 @@ import 'package:obecno/features/manager_module/Manager_locations/providers/manag
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/features/more/services/reminder_notification_service.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -42,6 +44,7 @@ Future<void> main() async {
 
     bindings = AppBindings();
     await bindings.init();
+    await ReminderNotificationService.instance.init();
 
     runApp(MyApp());
   }, (error, stack) => _reportError(error, stack));
@@ -71,6 +74,10 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<ProfileProvider>(
           notifier: bindings.profileProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<ReminderSettingsProvider>(
+          notifier: bindings.reminderSettingsProvider,
           child: child,
         ),
         (child) => ChangeNotifierProvider<TermsProvider>(

@@ -131,16 +131,28 @@ class AuthUserModel {
       department =
           (rawDepartment['name'] ??
                   rawDepartment['title'] ??
-                  rawDepartment['label'])
+                  rawDepartment['label'] ??
+                  rawDepartment['department_title'])
               ?.toString();
     } else if (rawDepartment != null) {
       final asString = rawDepartment.toString().trim();
-      if (asString.isNotEmpty && int.tryParse(asString) == null) {
+      if (asString.isNotEmpty &&
+          asString != '—' &&
+          asString != '--' &&
+          int.tryParse(asString) == null) {
         department = asString;
       }
     }
     department ??= (user['department_name'] ?? json['department_name'])
         ?.toString();
+    department ??= (user['department_title'] ?? json['department_title'])
+        ?.toString();
+    if (department != null) {
+      final trimmed = department.trim();
+      department = (trimmed.isEmpty || trimmed == '—' || trimmed == '--')
+          ? null
+          : trimmed;
+    }
 
     final joiningDate = parseDateOnly(
       user['joining_date'] ?? json['joining_date'],

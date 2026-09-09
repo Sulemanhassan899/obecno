@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
@@ -9,6 +8,7 @@ import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/add_location_log.dart';
 
 class ManagerLocationsRepository extends BaseRepository {
   ManagerLocationsRepository(super.apiClient);
@@ -118,18 +118,28 @@ class ManagerLocationsRepository extends BaseRepository {
     ApiCancelToken? cancelToken,
   }) async {
     final path = ManagerEmployeeApiEndpoints.addLocation;
-    debugPrint('[AddLocation] POST $path payload=$payload');
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'hitting',
+      api: 'POST $path',
+      apiNeeds: AddLocationLog.createApiNeeds,
+      userSending: payload,
+    );
     final result = await postRequest<ManagerLocationModel>(
       path,
       data: payload,
       cancelToken: cancelToken,
       parser: _parseLocation,
     );
-    debugPrint(
-      '[AddLocation] POST $path -> success=${result.success} '
-      'status=${result.statusCode} message=${result.message} '
-      'fieldErrors=${result.fieldErrors} id=${result.data?.id} '
-      'name=${result.data?.name}',
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'response',
+      api: 'POST $path',
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      fieldErrors: result.fieldErrors,
+      extra: {'id': result.data?.id, 'name': result.data?.name},
     );
     return result;
   }
@@ -138,12 +148,44 @@ class ManagerLocationsRepository extends BaseRepository {
     required String locationId,
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
-  }) {
-    return putRequest<ManagerLocationModel>(
-      ManagerEmployeeApiEndpoints.location(locationId),
-      data: payload,
+  }) async {
+    final existing = await getLocation(
+      locationId: locationId,
       cancelToken: cancelToken,
+    );
+    final preferred = existing.success ? 'PATCH' : 'PUT';
+    AddLocationLog.dump(
+      sheet: 'Set up Location',
+      phase: 'decide',
+      api:
+          'GET ${ManagerEmployeeApiEndpoints.getLocation(locationId).path} '
+          '-> $preferred ${ManagerEmployeeApiEndpoints.location(locationId)}',
+      apiNeeds: AddLocationLog.updatePinApiNeeds,
+      userSending: payload,
+      extra: {
+        'locationExists': existing.success,
+        'preferredMethod': preferred,
+      },
+    );
+
+    final routes = preferred == 'PATCH'
+        ? [
+            ManagerEmployeeApiEndpoints.patchLocation(locationId),
+            ManagerEmployeeApiEndpoints.putLocation(locationId),
+          ]
+        : [
+            ManagerEmployeeApiEndpoints.putLocation(locationId),
+            ManagerEmployeeApiEndpoints.patchLocation(locationId),
+          ];
+
+    return _tryLocationRoutes<ManagerLocationModel>(
+      sheet: 'Set up Location',
+      routes: routes,
+      payload: payload,
+      apiNeeds: AddLocationLog.updatePinApiNeeds,
+      userSending: payload,
       parser: _parseLocation,
+      cancelToken: cancelToken,
     );
   }
 
@@ -205,74 +247,162 @@ class ManagerLocationsRepository extends BaseRepository {
     bool initialize = false,
     ApiCancelToken? cancelToken,
   }) async {
-    final payload = schedule.permissionsApiPayload(locationId: locationId);
-    debugPrint(
-      '[LocationSchedule] write locationId=$locationId initialize=$initialize '
-      'changed=${schedule.toDebugMap()}',
+    final permissionPayloads = schedule.permissionsSectionPayloads(
+      locationId: locationId,
     );
+    final locationPayload = {
+      ...schedule.toJson(),
+      'schedule': schedule.toJson(),
+      ...schedule.writePayload(),
+    };
 
-    final scheduleWrite = await putRequest<LocationSchedule>(
-      ManagerEmployeeApiEndpoints.putLocationSchedule(locationId).path,
-      data: {
-        ...schedule.toJson(),
-        'schedule': schedule.toJson(),
-        ...schedule.writePayload(),
-      },
+    final locationGet = await getLocation(
+      locationId: locationId,
       cancelToken: cancelToken,
-      parser: (json) => _parseSchedule(json, fallback: schedule),
     );
-    debugPrint(
-      '[LocationSchedule] PUT schedule response=${_isHttpOk(scheduleWrite) ? 'success' : 'failed'} '
-      'status=${scheduleWrite.statusCode} message=${scheduleWrite.message}',
-    );
-
     var hasPermissions = false;
+    List<PermissionItemModel> existingPerms = const [];
     if (!initialize) {
       final existing = await getLocationPermissions(
         locationId: locationId,
         cancelToken: cancelToken,
       );
+      existingPerms = existing.data ?? const [];
       hasPermissions = existing.success &&
-          PermissionItemModel.hasLocationLevelPermissions(
-            existing.data ?? const [],
-          );
+          PermissionItemModel.hasLocationLevelPermissions(existingPerms);
     }
 
-    final method = PermissionItemModel.locationWriteMethod(
+    final locationMethod = locationGet.success ? 'PATCH' : 'PUT';
+    final permissionsMethod = PermissionItemModel.locationWriteMethod(
       hasLocationPermissions: hasPermissions,
     );
-    debugPrint(
-      '[LocationSchedule] permissions method=$method hasLocationLevel=$hasPermissions',
+    AddLocationLog.dump(
+      sheet: 'location_schedule',
+      phase: 'decide',
+      api:
+          'GET ${ManagerEmployeeApiEndpoints.getLocation(locationId).path} + '
+          'GET ${ManagerEmployeeApiEndpoints.getLocationPermissions(locationId).path}',
+      apiNeeds: AddLocationLog.scheduleApiNeeds,
+      userSending: schedule.toJson(),
+      extra: {
+        'initialize': initialize,
+        'locationExists': locationGet.success,
+        'hasLocationPermissions': hasPermissions,
+        'locationMethod': locationMethod,
+        'permissionsMethod': permissionsMethod,
+      },
     );
-    final ApiResponse<LocationSchedule> written;
-    if (method == 'PUT') {
-      written = await _putLocationPermissions(
-        locationId: locationId,
-        payload: payload,
-        fallback: schedule,
-        cancelToken: cancelToken,
-      );
-    } else {
-      written = await _patchLocationPermissions(
-        locationId: locationId,
-        payload: payload,
-        fallback: schedule,
-        cancelToken: cancelToken,
-      );
-    }
-    debugPrint(
-      '[LocationSchedule] permissions response=${written.success ? 'success' : 'failed'} '
-      'status=${written.statusCode} message=${written.message}',
+
+    final locationRoutes = locationMethod == 'PATCH'
+        ? [
+            ManagerEmployeeApiEndpoints.patchLocation(locationId),
+            ManagerEmployeeApiEndpoints.putLocation(locationId),
+          ]
+        : [
+            ManagerEmployeeApiEndpoints.putLocation(locationId),
+            ManagerEmployeeApiEndpoints.patchLocation(locationId),
+          ];
+    final locationWrite = await _tryLocationRoutes<LocationSchedule>(
+      sheet: 'location_schedule',
+      routes: locationRoutes,
+      payload: locationPayload,
+      apiNeeds: AddLocationLog.scheduleApiNeeds,
+      userSending: schedule.toJson(),
+      parser: (json) => _parseSchedule(json, fallback: schedule),
+      cancelToken: cancelToken,
     );
-    if (_isHttpOk(written)) return written;
-    if (_isHttpOk(scheduleWrite)) {
-      return ApiResponse.success(
-        scheduleWrite.data ?? schedule,
-        message: scheduleWrite.message,
-        statusCode: scheduleWrite.statusCode,
+
+    ApiResponse<LocationSchedule>? permissionsBest;
+    ApiResponse<LocationSchedule>? permissionsLast;
+    for (final payload in permissionPayloads) {
+      final section = payload['section']?.toString() ?? 'attendance';
+      final sectionHasLocation = PermissionItemModel.hasLocationLevelPermissions(
+        existingPerms,
+        section: section,
+        keys: LocationSchedule.permissionKeysForSection(section),
       );
+      final sectionMethod = initialize
+          ? 'PUT'
+          : PermissionItemModel.locationWriteMethod(
+              hasLocationPermissions: sectionHasLocation,
+            );
+      AddLocationLog.dump(
+        sheet: 'location_schedule',
+        phase: 'hitting',
+        api:
+            '$sectionMethod ${ManagerEmployeeApiEndpoints.locationPermissions(locationId)}',
+        apiNeeds: AddLocationLog.scheduleApiNeeds,
+        userSending: payload,
+        extra: {
+          'hasLocationLevel': sectionHasLocation,
+          'section': section,
+          'field': payload['field'],
+          'method': sectionMethod,
+        },
+      );
+      var written = sectionMethod == 'PUT'
+          ? await _putLocationPermissions(
+              locationId: locationId,
+              payload: payload,
+              fallback: schedule,
+              cancelToken: cancelToken,
+            )
+          : await _patchLocationPermissions(
+              locationId: locationId,
+              payload: payload,
+              fallback: schedule,
+              cancelToken: cancelToken,
+            );
+      if (!_isHttpOk(written) && _canRetryWrite(written)) {
+        written = sectionMethod == 'PUT'
+            ? await _patchLocationPermissions(
+                locationId: locationId,
+                payload: payload,
+                fallback: schedule,
+                cancelToken: cancelToken,
+              )
+            : await _putLocationPermissions(
+                locationId: locationId,
+                payload: payload,
+                fallback: schedule,
+                cancelToken: cancelToken,
+              );
+      }
+      AddLocationLog.dump(
+        sheet: 'location_schedule',
+        phase: 'response',
+        api:
+            '$sectionMethod ${ManagerEmployeeApiEndpoints.locationPermissions(locationId)}',
+        success: _isHttpOk(written),
+        statusCode: written.statusCode,
+        message: written.message,
+        extra: {'section': section, 'method': sectionMethod},
+      );
+      permissionsLast = written;
+      if (_isHttpOk(written)) permissionsBest = written;
     }
-    return written;
+
+    final scheduleWrite = await _tryLocationRoutes<LocationSchedule>(
+      sheet: 'location_schedule',
+      routes: [
+        ManagerEmployeeApiEndpoints.putLocationSchedule(locationId),
+        ManagerEmployeeApiEndpoints.patchLocationSchedule(locationId),
+      ],
+      payload: {
+        'schedule': schedule.toJson(),
+        ...schedule.toJson(),
+        ...schedule.writePayload(),
+      },
+      apiNeeds: AddLocationLog.scheduleApiNeeds,
+      userSending: schedule.toJson(),
+      parser: (json) => _parseSchedule(json, fallback: schedule),
+      cancelToken: cancelToken,
+    );
+
+    if (permissionsBest != null) return permissionsBest;
+    if (_isHttpOk(scheduleWrite)) return scheduleWrite;
+    if (_isHttpOk(locationWrite)) return locationWrite;
+    return permissionsLast ?? scheduleWrite;
   }
 
   Future<ApiResponse<LocationSchedule>> _putLocationPermissions({
@@ -424,6 +554,85 @@ class ManagerLocationsRepository extends BaseRepository {
     return code >= 200 && code < 300;
   }
 
+  bool _canRetryWrite(ApiResponse<dynamic> response) {
+    if (_isHttpOk(response)) return false;
+    final code = response.statusCode;
+    return code == null ||
+        code == 404 ||
+        code == 405 ||
+        code == 409 ||
+        code == 501 ||
+        code >= 500;
+  }
+
+  Future<ApiResponse<T>> _tryLocationRoutes<T>({
+    required String sheet,
+    required List<ManagerApiRoute> routes,
+    required Map<String, dynamic> payload,
+    required T Function(dynamic json) parser,
+    required Object apiNeeds,
+    Object? userSending,
+    ApiCancelToken? cancelToken,
+  }) async {
+    ApiResponse<T>? last;
+    for (final route in routes) {
+      AddLocationLog.dump(
+        sheet: sheet,
+        phase: 'hitting',
+        api: '$route',
+        apiNeeds: apiNeeds,
+        userSending: userSending ?? payload,
+      );
+      last = await _sendRoute<T>(
+        route: route,
+        payload: payload,
+        parser: parser,
+        cancelToken: cancelToken,
+      );
+      AddLocationLog.dump(
+        sheet: sheet,
+        phase: 'response',
+        api: '$route',
+        success: _isHttpOk(last),
+        statusCode: last.statusCode,
+        message: last.message,
+        fieldErrors: last.fieldErrors,
+      );
+      if (_isHttpOk(last) || !_canRetryWrite(last)) return last;
+    }
+    return last ?? ApiResponse.failure('Failed to save location.');
+  }
+
+  Future<ApiResponse<T>> _sendRoute<T>({
+    required ManagerApiRoute route,
+    required Map<String, dynamic> payload,
+    required T Function(dynamic json) parser,
+    ApiCancelToken? cancelToken,
+  }) {
+    switch (route.method) {
+      case 'PATCH':
+        return patchRequest<T>(
+          route.path,
+          data: payload,
+          cancelToken: cancelToken,
+          parser: parser,
+        );
+      case 'PUT':
+        return putRequest<T>(
+          route.path,
+          data: payload,
+          cancelToken: cancelToken,
+          parser: parser,
+        );
+      default:
+        return Future.value(
+          ApiResponse.failure(
+            'Location writes must use PUT or PATCH, not ${route.method}.',
+          ),
+        );
+    }
+  }
+
   Future<ApiResponse<bool>> updateLocationStatus({
     required String locationId,
     required bool isActive,
@@ -458,18 +667,25 @@ class ManagerLocationsRepository extends BaseRepository {
         int.tryParse(id.trim()) ?? id.trim(),
     ];
     final locationIdValue = int.tryParse(locationId.trim()) ?? locationId.trim();
-    debugPrint(
-      '[AddMembers] POST members locationId=$locationIdValue ids=$ids',
+    final body = {
+      'employee_ids': ids,
+      'user_ids': ids,
+      'member_ids': ids,
+      'members': ids,
+      'location_id': locationIdValue,
+    };
+    final api =
+        'POST ${ManagerEmployeeApiEndpoints.locationMembers(locationId)}';
+    AddLocationLog.dump(
+      sheet: 'Add Member',
+      phase: 'hitting',
+      api: api,
+      apiNeeds: AddLocationLog.membersApiNeeds,
+      userSending: body,
     );
     return postRequest<int>(
       ManagerEmployeeApiEndpoints.locationMembers(locationId),
-      data: {
-        'employee_ids': ids,
-        'user_ids': ids,
-        'member_ids': ids,
-        'members': ids,
-        'location_id': locationIdValue,
-      },
+      data: body,
       cancelToken: cancelToken,
       parser: (json) {
         try {

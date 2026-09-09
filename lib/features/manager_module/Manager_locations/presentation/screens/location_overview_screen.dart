@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
@@ -249,7 +250,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
               ),
               const SizedBox(height: 20),
               Expanded(
-                child: RefreshIndicator(
+                child: ShimmerRefreshIndicator(
                   onRefresh: _load,
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(
@@ -317,7 +318,7 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
                       if (isInitialLoad)
                         const SliverFillRemaining(
                           hasScrollBody: false,
-                          child: Center(child: CircularProgressIndicator()),
+                          child: Center(child: ShimmerProgress()),
                         )
                       else if (hasError)
                         SliverFillRemaining(

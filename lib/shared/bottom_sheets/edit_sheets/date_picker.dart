@@ -64,9 +64,12 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
   ];
 
   static const _weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  static const _weekRows = 6;
+  static const _weekRowExtent = 48.0;
 
   late DateTime _selected;
   late DateTime _visibleMonth;
+  late final PageController _pageController;
 
   DateTime get _now => DateTime.now();
 
@@ -92,6 +95,13 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
     );
     _visibleMonth = DateTime(_selected.year, _selected.month);
     _clampSelection();
+    _pageController = PageController(initialPage: _indexOf(_visibleMonth));
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   void _clampSelection() {
@@ -112,9 +122,53 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
     return !next.isAfter(_maxMonth);
   }
 
+  int get _monthCount {
+    return (_maxMonth.year - _minMonth.year) * 12 +
+        (_maxMonth.month - _minMonth.month) +
+        1;
+  }
+
+  int _indexOf(DateTime month) {
+    final index =
+        (month.year - _minMonth.year) * 12 + (month.month - _minMonth.month);
+    if (_monthCount <= 0) return 0;
+    return index.clamp(0, _monthCount - 1);
+  }
+
+  DateTime _monthAt(int index) =>
+      DateTime(_minMonth.year, _minMonth.month + index);
+
+  void _goToMonth(DateTime month, {bool animate = false}) {
+    if (month.isBefore(_minMonth) || month.isAfter(_maxMonth)) return;
+    final next = DateTime(month.year, month.month);
+    if (next.year != _visibleMonth.year || next.month != _visibleMonth.month) {
+      setState(() => _visibleMonth = next);
+    }
+    final index = _indexOf(next);
+    if (!_pageController.hasClients) return;
+    if (animate) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    } else if (_pageController.page?.round() != index) {
+      _pageController.jumpToPage(index);
+    }
+  }
+
   void _shiftMonth(int delta) {
-    final next = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
-    if (next.isBefore(_minMonth) || next.isAfter(_maxMonth)) return;
+    _goToMonth(
+      DateTime(_visibleMonth.year, _visibleMonth.month + delta),
+      animate: true,
+    );
+  }
+
+  void _onPageChanged(int index) {
+    final next = _monthAt(index);
+    if (next.year == _visibleMonth.year && next.month == _visibleMonth.month) {
+      return;
+    }
     setState(() => _visibleMonth = next);
   }
 
@@ -130,11 +184,7 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
               initialDate: _visibleMonth,
               minDate: _minDay,
               onSelected: (picked) {
-                final next = DateTime(picked.year, picked.month);
-                if (next.isBefore(_minMonth) || next.isAfter(_maxMonth)) {
-                  return;
-                }
-                setState(() => _visibleMonth = next);
+                _goToMonth(DateTime(picked.year, picked.month));
               },
             ),
           ],
@@ -154,18 +204,14 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
     setState(() => _selected = day);
   }
 
-  /// Sunday-first leading blanks for the visible month.
-  int get _leadingBlanks {
-    final weekday = DateTime(
-      _visibleMonth.year,
-      _visibleMonth.month,
-      1,
-    ).weekday;
+  /// Sunday-first leading blanks for [month].
+  int _leadingBlanks(DateTime month) {
+    final weekday = DateTime(month.year, month.month, 1).weekday;
     return weekday % 7;
   }
 
-  int get _daysInMonth =>
-      DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
+  int _daysInMonth(DateTime month) =>
+      DateTime(month.year, month.month + 1, 0).day;
 
   @override
   Widget build(BuildContext context) {
@@ -201,7 +247,15 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
             const SizedBox(height: 16),
             _weekdayRow(),
             const SizedBox(height: 8),
-            _dayGrid(),
+            SizedBox(
+              height: _weekRows * _weekRowExtent,
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                itemCount: _monthCount,
+                itemBuilder: (_, index) => _dayGrid(_monthAt(index)),
+              ),
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -224,6 +278,7 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
                         );
                         _clampSelection();
                       });
+                      _goToMonth(_visibleMonth);
                       Navigator.pop(context);
                     },
                   ),
@@ -301,19 +356,16 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
     );
   }
 
-  Widget _dayGrid() {
-    final cells = _leadingBlanks + _daysInMonth;
-    final rows = (cells / 7).ceil();
-
+  Widget _dayGrid(DateTime month) {
     return Column(
       children: [
-        for (var row = 0; row < rows; row++)
+        for (var row = 0; row < _weekRows; row++)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
                 for (var col = 0; col < 7; col++)
-                  Expanded(child: _dayCell(row * 7 + col)),
+                  Expanded(child: _dayCell(month, row * 7 + col)),
               ],
             ),
           ),
@@ -321,13 +373,14 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
     );
   }
 
-  Widget _dayCell(int index) {
-    final dayNumber = index - _leadingBlanks + 1;
-    if (dayNumber < 1 || dayNumber > _daysInMonth) {
+  Widget _dayCell(DateTime month, int index) {
+    final daysInMonth = _daysInMonth(month);
+    final dayNumber = index - _leadingBlanks(month) + 1;
+    if (dayNumber < 1 || dayNumber > daysInMonth) {
       return const SizedBox(height: 40);
     }
 
-    final day = DateTime(_visibleMonth.year, _visibleMonth.month, dayNumber);
+    final day = DateTime(month.year, month.month, dayNumber);
     final enabled = _isEnabled(day);
     final selected = _isSameDay(day, _selected);
     final today = _isSameDay(day, _nowDay);

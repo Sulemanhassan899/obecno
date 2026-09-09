@@ -127,28 +127,9 @@ class AttendanceDayTile extends StatelessWidget {
     return value == null || value.trim() == "--:-- PM";
   }
 
-  bool get _isOnLeave =>
-      record.status == AttendanceDayStatus.onLeave ||
-      record.checkIn == "Leave" ||
-      record.checkOut == "Leave";
+  bool get _isOnLeave => record.isOnLeave;
 
-  bool get _isAbsent =>
-      record.status == AttendanceDayStatus.absent ||
-      (!_isOnLeave &&
-          record.status != AttendanceDayStatus.holiday &&
-          record.status != AttendanceDayStatus.weekend &&
-          !_hasPunchTime(record.checkIn) &&
-          !_hasPunchTime(record.checkOut));
-
-  bool _hasPunchTime(String? raw) {
-    final value = raw?.trim() ?? '';
-    if (value.isEmpty) return false;
-    final lower = value.toLowerCase();
-    return lower != 'leave' &&
-        lower != 'holiday' &&
-        lower != '--' &&
-        !lower.startsWith('--:--');
-  }
+  bool get _isAbsent => record.isAbsent;
 
   bool _isHolidayOrLeave() {
     return _isOnLeave ||

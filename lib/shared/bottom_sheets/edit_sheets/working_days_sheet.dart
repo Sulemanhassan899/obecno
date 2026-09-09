@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -7,6 +8,7 @@ import 'package:obecno/features/manager_module/Manager_locations/data/models/loc
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/widgets/customswitch2.dart';
 import 'package:flutter/material.dart';
 
 class WorkingDaysSheet {
@@ -19,6 +21,17 @@ class WorkingDaysSheet {
     String? locationId,
     LocationSchedule? schedule,
   }) {
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'open',
+      locationId: locationId,
+      api: locationId == null || locationId.trim().isEmpty
+          ? null
+          : 'PUT /manager/locations/$locationId/schedule',
+      apiNeeds:
+          'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
+      extra: {'userId': userId, 'employeeName': employeeName},
+    );
     return showModalBottomSheet<LocationSchedule>(
       context: context,
       isScrollControlled: true,
@@ -100,9 +113,8 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     final locationId = widget.locationId?.trim();
     if (locationId != null && locationId.isNotEmpty) {
       setState(() => _loading = true);
-      final result = await bindings.managerLocationsService.loadLocationSchedule(
-        locationId: locationId,
-      );
+      final result = await bindings.managerLocationsService
+          .loadLocationSchedule(locationId: locationId);
       if (!mounted) return;
       setState(() {
         if (result.success && result.data != null) {
@@ -111,13 +123,14 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
         _loading = false;
       });
       LocationPolicyLog.dump(
-        sheet: 'working_days',
+        sheet: 'Working Days',
         phase: 'fetched',
         locationId: locationId,
         schedule: result.data ?? _baseSchedule,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
+        api: 'GET /manager/locations/$locationId/schedule',
       );
       return;
     }
@@ -173,29 +186,35 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
       final current = _baseSchedule;
       final next = _currentSchedule;
       LocationPolicyLog.dump(
-        sheet: 'working_days',
+        sheet: 'Working Days',
         phase: 'current',
         locationId: locationId,
         schedule: current,
+        apiNeeds:
+            'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
       );
       LocationPolicyLog.dump(
-        sheet: 'working_days',
+        sheet: 'Working Days',
         phase: 'changed',
         locationId: locationId,
         schedule: next,
+        api: 'PUT /manager/locations/$locationId/schedule',
+        apiNeeds:
+            'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
       );
       final result = await bindings.managerLocationsService
           .updateLocationSchedule(locationId: locationId, schedule: next);
       if (!mounted) return;
       setState(() => _saving = false);
       LocationPolicyLog.dump(
-        sheet: 'working_days',
+        sheet: 'Working Days',
         phase: 'response',
         locationId: locationId,
         schedule: result.data ?? next,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
+        api: 'PUT /manager/locations/$locationId/schedule',
       );
       if (!result.success) {
         ToastHelper.error(
@@ -217,10 +236,7 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
 
     if (widget.userId != null) {
       if (_selectedDays.isEmpty) {
-        ToastHelper.error(
-          context,
-          message: 'Select at least one working day.',
-        );
+        ToastHelper.error(context, message: 'Select at least one working day.');
         return;
       }
       setState(() => _saving = true);
@@ -416,127 +432,131 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
               child: Container(
                 color: kbackground2,
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(child: ShimmerProgress())
                     : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                  children: [
-                    SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: AppText.p1(
-                        widget.employeeName != null &&
-                                widget.employeeName!.trim().isNotEmpty
-                            ? 'Set working days for ${widget.employeeName!.trim()}.'
-                            : 'Set working days for this ${widget.userId != null ? 'employee' : 'location'}.',
-                        color: kGreyColor,
-                        align: TextAlign.left,
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: kWhite,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kBorderColor),
-                      ),
-                      child: Column(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                         children: [
-                          for (var i = 0; i < _days.length; i++) ...[
-                            if (i > 0)
-                              const Divider(height: 1, color: kDividerColor),
-                            _DayTile(
-                              label: _days[i],
-                              selected: _selectedDays.contains(_days[i]),
-                              onTap: () {
-                                setState(() {
-                                  if (_selectedDays.contains(_days[i])) {
-                                    _selectedDays.remove(_days[i]);
-                                  } else {
-                                    _selectedDays.add(_days[i]);
-                                  }
-                                });
-                              },
+                          SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: AppText.p1(
+                              widget.employeeName != null &&
+                                      widget.employeeName!.trim().isNotEmpty
+                                  ? 'Set working days for ${widget.employeeName!.trim()}.'
+                                  : 'Set working days for this ${widget.userId != null ? 'employee' : 'location'}.',
+                              color: kGreyColor,
+                              align: TextAlign.left,
                             ),
-                          ],
+                          ),
+                          SizedBox(height: 10),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: kWhite,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: kBorderColor),
+                            ),
+                            child: Column(
+                              children: [
+                                for (var i = 0; i < _days.length; i++) ...[
+                                  if (i > 0)
+                                    const Divider(
+                                      height: 1,
+                                      color: kDividerColor,
+                                    ),
+                                  _DayTile(
+                                    label: _days[i],
+                                    selected: _selectedDays.contains(_days[i]),
+                                    onTap: () {
+                                      setState(() {
+                                        if (_selectedDays.contains(_days[i])) {
+                                          _selectedDays.remove(_days[i]);
+                                        } else {
+                                          _selectedDays.add(_days[i]);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          AppText.h5('Working Week', align: TextAlign.left),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                            decoration: BoxDecoration(
+                              color: kWhite,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: kBorderColor),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _ToggleRow(
+                                  label: 'Working Days',
+                                  value: _workingWeekEnabled,
+                                  onChanged: (v) =>
+                                      setState(() => _workingWeekEnabled = v),
+                                ),
+                                const Divider(height: 1, color: kDividerColor),
+                                _DropdownRow(
+                                  label: 'Workweek Start Day',
+                                  value: _startDay,
+                                  onTap: () => _pickOption(
+                                    title: 'Workweek Start Day',
+                                    options: _days,
+                                    current: _startDay,
+                                    onSelected: (v) =>
+                                        setState(() => _startDay = v),
+                                  ),
+                                ),
+                                const Divider(height: 1, color: kDividerColor),
+                                _DropdownRow(
+                                  label: 'Hours in a Week',
+                                  value: _hoursInWeek,
+                                  onTap: () => _pickOption(
+                                    title: 'Hours in a Week',
+                                    options: const [
+                                      '35:00',
+                                      '37:30',
+                                      '40:00',
+                                      '45:00',
+                                    ],
+                                    current: _hoursInWeek,
+                                    onSelected: (v) =>
+                                        setState(() => _hoursInWeek = v),
+                                  ),
+                                ),
+                                const Divider(height: 1, color: kDividerColor),
+                                _DropdownRow(
+                                  label: 'Hours in a Day',
+                                  value: _hoursInDay,
+                                  onTap: () => _pickOption(
+                                    title: 'Hours in a Day',
+                                    options: const [
+                                      '07:00',
+                                      '07:30',
+                                      '08:00',
+                                      '09:00',
+                                    ],
+                                    current: _hoursInDay,
+                                    onSelected: (v) =>
+                                        setState(() => _hoursInDay = v),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          AppText.p1(
+                            "When enabled, this location's working week will overwrite the global working week.",
+                            color: kGreyColor,
+                            weight: FontWeight.w400,
+                            align: TextAlign.left,
+                          ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    AppText.h5('Working Week', align: TextAlign.left),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                      decoration: BoxDecoration(
-                        color: kWhite,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kBorderColor),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _ToggleRow(
-                            label: 'Working Days',
-                            value: _workingWeekEnabled,
-                            onChanged: (v) =>
-                                setState(() => _workingWeekEnabled = v),
-                          ),
-                          const Divider(height: 1, color: kDividerColor),
-                          _DropdownRow(
-                            label: 'Workweek Start Day',
-                            value: _startDay,
-                            onTap: () => _pickOption(
-                              title: 'Workweek Start Day',
-                              options: _days,
-                              current: _startDay,
-                              onSelected: (v) => setState(() => _startDay = v),
-                            ),
-                          ),
-                          const Divider(height: 1, color: kDividerColor),
-                          _DropdownRow(
-                            label: 'Hours in a Week',
-                            value: _hoursInWeek,
-                            onTap: () => _pickOption(
-                              title: 'Hours in a Week',
-                              options: const [
-                                '35:00',
-                                '37:30',
-                                '40:00',
-                                '45:00',
-                              ],
-                              current: _hoursInWeek,
-                              onSelected: (v) =>
-                                  setState(() => _hoursInWeek = v),
-                            ),
-                          ),
-                          const Divider(height: 1, color: kDividerColor),
-                          _DropdownRow(
-                            label: 'Hours in a Day',
-                            value: _hoursInDay,
-                            onTap: () => _pickOption(
-                              title: 'Hours in a Day',
-                              options: const [
-                                '07:00',
-                                '07:30',
-                                '08:00',
-                                '09:00',
-                              ],
-                              current: _hoursInDay,
-                              onSelected: (v) =>
-                                  setState(() => _hoursInDay = v),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    AppText.p1(
-                      "When enabled, this location's working week will overwrite the global working week.",
-                      color: kGreyColor,
-                      weight: FontWeight.w400,
-                      align: TextAlign.left,
-                    ),
-                  ],
-                ),
               ),
             ),
             const Divider(height: 1, color: kDividerColor),
@@ -556,16 +576,16 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                    Expanded(
-                      flex: 4,
-                      child: MyButton(
-                        buttonText: 'Save',
-                        backgroundColor: kPrimaryButtonColor,
-                        isactive: !_saving && !_loading,
-                        isLoadingExternally: _saving,
-                        onTap: _save,
-                      ),
+                  Expanded(
+                    flex: 4,
+                    child: MyButton(
+                      buttonText: 'Save',
+                      backgroundColor: kPrimaryButtonColor,
+                      isactive: !_saving && !_loading,
+                      isLoadingExternally: _saving,
+                      onTap: _save,
                     ),
+                  ),
                 ],
               ),
             ),
@@ -638,20 +658,7 @@ class _ToggleRow extends StatelessWidget {
               align: TextAlign.left,
             ),
           ),
-          SizedBox(
-            width: 55,
-            height: 40,
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: Switch.adaptive(
-                value: value,
-                activeColor: kPrimaryColor,
-                thumbColor: MaterialStateProperty.all(kWhite),
-                trackColor: MaterialStateProperty.all(kPrimaryColor),
-                onChanged: onChanged,
-              ),
-            ),
-          ),
+          CustomSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );

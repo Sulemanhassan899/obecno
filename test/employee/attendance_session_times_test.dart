@@ -62,6 +62,7 @@ void main() {
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
       expect(summary.isCheckedIn, isFalse);
+      expect(summary.totalWorkingDuration, at(17, 57).difference(at(10, 57)));
     });
 
     test('clock engine matches history engine', () {
@@ -100,6 +101,101 @@ void main() {
       final summary = AttendanceEngine.compute(events);
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
+      expect(summary.totalWorkingDuration, at(17, 57).difference(at(10, 57)));
+    });
+  });
+
+  group('Header duration matches displayed first in / last out', () {
+    test('5:59 PM to 6:35 PM is 36 minutes, not in-office leftover 12', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(17, 59),
+        ),
+        AttendanceEvent(
+          id: '2',
+          type: AttendanceEventType.checkOut,
+          time: at(18, 11),
+        ),
+        AttendanceEvent(
+          id: '3',
+          type: AttendanceEventType.checkIn,
+          time: at(18, 28),
+        ),
+        AttendanceEvent(
+          id: '4',
+          type: AttendanceEventType.checkOut,
+          time: at(18, 35),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(summary.firstCheckIn, at(17, 59));
+      expect(summary.lastCheckOut, at(18, 35));
+      expect(summary.totalWorkingDuration, const Duration(minutes: 36));
+      expect(
+        summary.liveWorkingDuration(now: at(21, 6)),
+        const Duration(minutes: 36),
+      );
+    });
+
+    test('does not sum only in-office sessions', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(17, 59),
+        ),
+        AttendanceEvent(
+          id: '2',
+          type: AttendanceEventType.checkOut,
+          time: at(18, 6),
+        ),
+        AttendanceEvent(
+          id: '3',
+          type: AttendanceEventType.checkIn,
+          time: at(18, 28),
+        ),
+        AttendanceEvent(
+          id: '4',
+          type: AttendanceEventType.checkOut,
+          time: at(18, 31),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(summary.firstCheckIn, at(17, 59));
+      expect(summary.lastCheckOut, at(18, 31));
+      expect(summary.totalWorkingDuration, const Duration(minutes: 32));
+      expect(
+        summary.liveWorkingDuration(now: at(21, 2)),
+        const Duration(minutes: 32),
+      );
+    });
+
+    test('live duration spans first check-in to now while still in', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(17, 59),
+        ),
+        AttendanceEvent(
+          id: '2',
+          type: AttendanceEventType.checkOut,
+          time: at(18, 6),
+        ),
+        AttendanceEvent(
+          id: '3',
+          type: AttendanceEventType.checkIn,
+          time: at(18, 28),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(summary.isCheckedIn, isTrue);
+      expect(
+        summary.liveWorkingDuration(now: at(21, 2)),
+        at(21, 2).difference(at(17, 59)),
+      );
     });
   });
 
@@ -143,6 +239,10 @@ void main() {
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
       expect(summary.totalBreakDuration, const Duration(hours: 1));
+      expect(
+        summary.totalWorkingDuration,
+        at(17, 57).difference(at(10, 57)) - const Duration(hours: 1),
+      );
     });
   });
 

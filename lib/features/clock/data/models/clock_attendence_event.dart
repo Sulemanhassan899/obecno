@@ -227,10 +227,8 @@ class AttendanceFormat {
     if (d.isNegative) return "0m";
     final hours = d.inHours;
     final minutes = d.inMinutes.remainder(60);
-    final seconds = d.inSeconds.remainder(60);
     final mm = minutes.toString().padLeft(2, '0');
-    final ss = seconds.toString().padLeft(2, '0');
-    return "${hours}h ${mm}m ";
+    return "${hours}h ${mm}m";
   }
 
   static const List<String> _days = [

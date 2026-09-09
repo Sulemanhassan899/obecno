@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -54,10 +55,10 @@ class _AllLocationsScreenState extends State<AllLocationsScreen> {
               ),
               const SizedBox(height: 16),
               Expanded(
-                child: RefreshIndicator(
+                child: ShimmerRefreshIndicator(
                   onRefresh: provider.refresh,
                   child: isInitialLoad
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: ShimmerProgress())
                       : provider.hasError && locations.isEmpty
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),

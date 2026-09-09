@@ -324,8 +324,31 @@ class PermissionItemModel {
   /// True when GET /locations/{id}/permissions already has location overrides.
   /// Company-inherited rows (value only, source=company) do not count — those
   /// still need a first PUT for this location.
-  static bool hasLocationLevelPermissions(List<PermissionItemModel> items) {
+  ///
+  /// Pass [section] / [keys] to decide PUT vs PATCH per settings panel.
+  /// Attendance overrides must not force PATCH for working days or break.
+  static bool hasLocationLevelPermissions(
+    List<PermissionItemModel> items, {
+    String? section,
+    Iterable<String>? keys,
+  }) {
+    final keySet = keys == null
+        ? null
+        : {
+            for (final key in keys)
+              if (key.trim().isNotEmpty) key.trim().toLowerCase(),
+          };
+    final sectionNeedle = section?.trim().toLowerCase();
     for (final item in items) {
+      if (sectionNeedle != null && sectionNeedle.isNotEmpty) {
+        final itemSection = item.section.trim().toLowerCase();
+        final itemKey = item.key.trim().toLowerCase();
+        final sectionMatch = itemSection == sectionNeedle;
+        final keyMatch = keySet != null && keySet.contains(itemKey);
+        if (!sectionMatch && !keyMatch) continue;
+      } else if (keySet != null) {
+        if (!keySet.contains(item.key.trim().toLowerCase())) continue;
+      }
       final location = item.locationValue?.trim();
       if (location != null && location.isNotEmpty) return true;
       final source = (item.sourceLevel ?? item.source)?.trim().toLowerCase();

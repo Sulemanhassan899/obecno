@@ -458,24 +458,24 @@ class _DirectoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          CommonImageView(imagePath: icon, height: 16),
-          const SizedBox(width: 12),
-          AppText.p2(label, weight: FontWeight.w600, align: TextAlign.left),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: kbackgroundBlueContainer,
-              borderRadius: BorderRadius.circular(8),
+      child: ButtonAnimations.press(
+        onTap: onViewAll,
+        child: Row(
+          children: [
+            CommonImageView(imagePath: icon, height: 16),
+            const SizedBox(width: 12),
+            AppText.p2(label, weight: FontWeight.w600, align: TextAlign.left),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: kbackgroundBlueContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: AppText.p2(count, color: kBlue2, weight: FontWeight.w600),
             ),
-            child: AppText.p2(count, color: kBlue2, weight: FontWeight.w600),
-          ),
-          const Spacer(),
-          ButtonAnimations.press(
-            onTap: onViewAll,
-            child: Container(
+            const Spacer(),
+            Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: kWhite,
@@ -485,14 +485,18 @@ class _DirectoryRow extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  AppText.p2('View All',color: kSubText, weight: FontWeight.w400),
+                  AppText.p2(
+                    'View All',
+                    color: kSubText,
+                    weight: FontWeight.w400,
+                  ),
                   const SizedBox(width: 2),
                   const Icon(Icons.chevron_right, size: 16, color: kSubText),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -2,7 +2,7 @@ import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
-import 'package:obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
 import 'package:obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';

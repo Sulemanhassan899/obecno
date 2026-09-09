@@ -42,6 +42,8 @@ class TrustedTimeSession {
   final List<TimeAnchor> _appOpens = [];
   final List<TimeAnchor> _appCloses = [];
   bool _sessionActive = false;
+  Duration? _lastObservedMonotonic;
+  bool _endedByReboot = false;
 
   TimeAnchor? get loginAnchor => _loginAnchor;
   TimeAnchor? get latestAppOpen =>
@@ -52,6 +54,11 @@ class TrustedTimeSession {
   List<TimeAnchor> get appCloses => List.unmodifiable(_appCloses);
   bool get sessionActive => _sessionActive;
   String? get sessionId => _sessionId;
+  bool get endedByReboot => _endedByReboot;
+
+  void acknowledgeRebootLogout() {
+    _endedByReboot = false;
+  }
 
   Future<void> restore() async {
     _sessionId = await _store.loadSessionId();
@@ -64,13 +71,18 @@ class TrustedTimeSession {
       ..addAll(await _store.loadAppCloses());
     _sessionActive = await _store.loadSessionActive();
 
-    final lastMono = await _store.loadLastObservedMonotonic();
+    _lastObservedMonotonic = await _store.loadLastObservedMonotonic();
     final current = _monotonicClock.elapsedRealtime();
-    if (_sessionActive && lastMono != null && current < lastMono) {
+    if (_sessionActive && _isReboot(current)) {
       _log(
         'RESTORE reboot detected: currentMonotonic=${current.inMilliseconds} '
-        '< lastObserved=${lastMono.inMilliseconds}',
+        '< lastObserved=${_lastObservedMonotonic?.inMilliseconds} '
+        'login=${_loginAnchor?.monotonicElapsed.inMilliseconds}. '
+        'Ending trusted-time session.',
       );
+      _endedByReboot = true;
+      await expireSession();
+      return;
     }
 
     _log(
@@ -80,10 +92,35 @@ class TrustedTimeSession {
     );
   }
 
+  bool _isReboot(Duration current) {
+    return TrustedTimeCalculator.isMonotonicReboot(
+      currentMonotonic: current,
+      loginMonotonic: _loginAnchor?.monotonicElapsed,
+      latestAppOpenMonotonic: latestAppOpen?.monotonicElapsed,
+      lastObservedMonotonic: _lastObservedMonotonic,
+    );
+  }
+
+  /// If the monotonic clock restarted (device reboot), expire this session.
+  /// Returns true when the session was ended for that reason.
+  Future<bool> endSessionIfRebootDetected() async {
+    if (_endedByReboot && !_sessionActive) return true;
+    if (!_sessionActive) return false;
+    if (!_isReboot(_monotonicClock.elapsedRealtime())) return false;
+    _log(
+      'SESSION_END reboot: monotonic reset to '
+      '${_monotonicClock.elapsedRealtime().inMilliseconds}ms',
+    );
+    _endedByReboot = true;
+    await expireSession();
+    return true;
+  }
+
   /// Creates a NEW login timestamp for this employee session.
   Future<TimeAnchor> login({String? sessionId}) async {
     final wall = _wallClock.now();
     final mono = _monotonicClock.elapsedRealtime();
+    _endedByReboot = false;
     _sessionId = sessionId ?? 'session_${wall.microsecondsSinceEpoch}';
     _sessionActive = true;
     _loginAnchor = TimeAnchor.capture(
@@ -106,7 +143,7 @@ class TrustedTimeSession {
 
     await _persistAnchors();
     await _store.saveSessionActive(true);
-    await _store.saveLastObservedMonotonic(mono);
+    await _rememberMonotonic(mono);
 
     _log(
       'LOGIN wall=${_loginAnchor!.wallClockLocal} '
@@ -118,6 +155,10 @@ class TrustedTimeSession {
   }
 
   Future<TimeAnchor?> recordAppOpen({String reason = 'app_open'}) async {
+    if (await endSessionIfRebootDetected()) {
+      _log('APP_OPEN skipped: session ended after reboot');
+      return null;
+    }
     if (!_sessionActive || _loginAnchor == null || _sessionId == null) {
       _log('APP_OPEN skipped: no active session');
       return null;
@@ -137,7 +178,7 @@ class TrustedTimeSession {
     }
 
     await _persistAnchors();
-    await _store.saveLastObservedMonotonic(mono);
+    await _rememberMonotonic(mono);
 
     _log(
       'APP_OPEN #$reason count=${_appOpens.length} wall=$wall '
@@ -148,6 +189,10 @@ class TrustedTimeSession {
   }
 
   Future<TimeAnchor?> recordAppClose({String reason = 'app_close'}) async {
+    if (await endSessionIfRebootDetected()) {
+      _log('APP_CLOSE skipped: session ended after reboot');
+      return null;
+    }
     if (!_sessionActive || _loginAnchor == null || _sessionId == null) {
       _log('APP_CLOSE skipped: no active session');
       return null;
@@ -167,7 +212,7 @@ class TrustedTimeSession {
     }
 
     await _persistAnchors();
-    await _store.saveLastObservedMonotonic(mono);
+    await _rememberMonotonic(mono);
 
     _log(
       'APP_CLOSE #$reason count=${_appCloses.length} wall=$wall '
@@ -184,6 +229,7 @@ class TrustedTimeSession {
     _appOpens.clear();
     _appCloses.clear();
     _sessionId = null;
+    _lastObservedMonotonic = null;
     await _store.saveSessionActive(false);
     await _store.saveLoginAnchor(null);
     await _store.saveAppOpens(const []);
@@ -198,6 +244,8 @@ class TrustedTimeSession {
     _appOpens.clear();
     _appCloses.clear();
     _sessionActive = false;
+    _lastObservedMonotonic = null;
+    _endedByReboot = false;
     await _store.clearAll();
     _log('RESET trusted-time state cleared');
   }
@@ -228,6 +276,10 @@ class TrustedTimeSession {
   }
 
   Future<RecordTimeResult> issuePunch({required bool networkOnline}) async {
+    if (await endSessionIfRebootDetected()) {
+      return const RecordTimeResult.fail(TrustedTimeMessages.sessionEnded);
+    }
+
     DateTime? trusted;
     if (networkOnline && trustedActualTimeSource != null) {
       try {
@@ -243,6 +295,11 @@ class TrustedTimeSession {
     );
 
     if (!snapshot.canIssueAuthoritativeTime) {
+      if (snapshot.rebootDetected) {
+        _endedByReboot = true;
+        await expireSession();
+        return const RecordTimeResult.fail(TrustedTimeMessages.sessionEnded);
+      }
       final error =
           snapshot.reasonUnavailable ?? 'Cannot issue authoritative time.';
       _log('PUNCH_BLOCKED reason=$error');
@@ -255,7 +312,7 @@ class TrustedTimeSession {
     // MATCH → calculated. MISMATCH → trusted actual. Never phone time.
     final sent = comparison == TimeComparisonResult.match ? calculated : actual;
 
-    await _store.saveLastObservedMonotonic(snapshot.currentMonotonic);
+    await _rememberMonotonic(snapshot.currentMonotonic);
 
     _log(
       'PUNCH result=${comparison.label} '
@@ -283,6 +340,11 @@ class TrustedTimeSession {
         networkOnline: networkOnline,
       ),
     );
+  }
+
+  Future<void> _rememberMonotonic(Duration mono) async {
+    _lastObservedMonotonic = mono;
+    await _store.saveLastObservedMonotonic(mono);
   }
 
   Future<void> _persistAnchors() async {
