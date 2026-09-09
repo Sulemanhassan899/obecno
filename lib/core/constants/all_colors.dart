@@ -142,6 +142,11 @@ const kGreyContainerGreyColor2 = Color(0xFFA6ABB4);
 const kbackgroundBlueContainer = Color(0xFFEAF5FF);
 const kbackgroundBlue2Container = Color(0xFF0B59A7);
 const kGreyContainerGreenColor = Color(0x1908AD69);
+
+//! ================== SWITCH ==================
+const kSwitchActiveTrack = kPrimaryColor;
+const kSwitchInactiveTrack = Color(0xFFB8BEC6);
+const kSwitchThumb = kWhite;
 const kContainerCyranColor = Color(0xFFE3FCFC);
 const kContainerRedColor = Color(0xFFB70F0F);
 const kContainerRedColor2 = Color(0xFFFEEEEE);

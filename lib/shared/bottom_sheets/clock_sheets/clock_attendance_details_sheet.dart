@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/more/presentation/widgets/timeline_reminder_rows.dart';
+import 'package:obecno/features/more/services/reminder_engine.dart';
 import 'package:obecno/widgets/resolved_location_text.dart';
 
 import 'package:flutter/material.dart';
@@ -83,6 +87,7 @@ class _ClockAttendanceDetailsSheetBodyState
   late Duration _workingDuration;
   bool _loadingTimeline = true;
   int? _attendanceId;
+  List<ReminderLog> _reminderLogs = const [];
 
   @override
   void initState() {
@@ -92,6 +97,7 @@ class _ClockAttendanceDetailsSheetBodyState
     _startTimer();
     unawaited(_loadFullTodayTimeline());
     unawaited(_mergeEditRequests());
+    unawaited(_syncReminders());
   }
 
   @override
@@ -145,14 +151,16 @@ class _ClockAttendanceDetailsSheetBodyState
     if (!mounted) return;
 
     final attachedTypes = <String>{};
-    final merged = _events.map((event) {
-      if (event.editRequests.isNotEmpty) return event;
-      final typeName = event.type.name;
-      if (!attachedTypes.add(typeName)) return event;
-      final stored = store.forEvent(day: widget.day, eventType: typeName);
-      if (stored.isEmpty) return event;
-      return event.copyWith(editRequests: stored);
-    }).toList(growable: false);
+    final merged = _events
+        .map((event) {
+          if (event.editRequests.isNotEmpty) return event;
+          final typeName = event.type.name;
+          if (!attachedTypes.add(typeName)) return event;
+          final stored = store.forEvent(day: widget.day, eventType: typeName);
+          if (stored.isEmpty) return event;
+          return event.copyWith(editRequests: stored);
+        })
+        .toList(growable: false);
 
     setState(() {
       _events = merged;
@@ -187,6 +195,7 @@ class _ClockAttendanceDetailsSheetBodyState
           });
           widget.onTodayEventsLoaded?.call(apiEvents);
           await _mergeEditRequests();
+          await _syncReminders();
           return;
         }
         if (mounted) {
@@ -213,6 +222,7 @@ class _ClockAttendanceDetailsSheetBodyState
           });
           widget.onTodayEventsLoaded?.call(todayEvents);
           await _mergeEditRequests();
+          await _syncReminders();
           return;
         }
       }
@@ -223,6 +233,37 @@ class _ClockAttendanceDetailsSheetBodyState
     if (!mounted) return;
     setState(() => _loadingTimeline = false);
     await _mergeEditRequests();
+    await _syncReminders();
+  }
+
+  Future<void> _syncReminders() async {
+    final punches = <ReminderPunch>[];
+    for (final event in _events) {
+      final kind = ReminderPunchKind.fromName(event.type.name);
+      if (kind == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
+    }
+    final logs = await bindings.reminderSettingsProvider.syncForDay(
+      day: widget.day,
+      punches: punches,
+      locationName: bindings.authProvider.selectedLocation?.name,
+    );
+    if (!mounted) return;
+    setState(() => _reminderLogs = logs);
+  }
+
+  ReminderPunchKind? _primaryKind(AttendanceEvent event) {
+    final kind = ReminderPunchKind.fromName(event.type.name);
+    if (kind == null) return null;
+    final ofType = AttendanceEngine.sortedOldestFirst(
+      _events,
+    ).where((e) => e.type == event.type).toList();
+    if (ofType.isEmpty) return null;
+    final primary =
+        kind == ReminderPunchKind.checkOut || kind == ReminderPunchKind.breakEnd
+        ? ofType.last
+        : ofType.first;
+    return primary.isSamePunchAs(event) ? kind : null;
   }
 
   void _recompute() {
@@ -265,9 +306,7 @@ class _ClockAttendanceDetailsSheetBodyState
   bool get _isViewingToday {
     final now = DateTime.now();
     final day = widget.day;
-    return day.year == now.year &&
-        day.month == now.month &&
-        day.day == now.day;
+    return day.year == now.year && day.month == now.month && day.day == now.day;
   }
 
   Color _colorFor(AttendanceEventType type) {
@@ -284,7 +323,7 @@ class _ClockAttendanceDetailsSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    final timeline = AttendanceEngine.sortedOldestFirst(_events);
+    final timeline = AttendanceEngine.sortedNewestFirst(_events);
     // Live timer only for today; freeze completed-session total otherwise.
     final workingDuration = _isViewingToday
         ? _workingDuration
@@ -411,9 +450,7 @@ class _ClockAttendanceDetailsSheetBodyState
                                       const SizedBox(height: 6),
                                       AppText.h3(
                                         AttendanceFormat.time(
-                                          _summary.isCheckedIn
-                                              ? null
-                                              : _summary.lastCheckOut,
+                                          _summary.lastCheckOut,
                                         ),
                                         align: TextAlign.right,
                                         color: kredColor,
@@ -443,9 +480,7 @@ class _ClockAttendanceDetailsSheetBodyState
                                         ),
                                 ),
                                 Expanded(
-                                  child:
-                                      (_summary.isCheckedIn ||
-                                          _summary.lastCheckOut == null)
+                                  child: _summary.lastCheckOut == null
                                       ? _location("--", isRight: true)
                                       : ResolvedLocationText(
                                           rawLocation: _lastCheckOutLocation,
@@ -477,7 +512,7 @@ class _ClockAttendanceDetailsSheetBodyState
                             const SizedBox(
                               width: 14,
                               height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: ShimmerProgress(strokeWidth: 2),
                             ),
                           ],
                         ],
@@ -495,10 +530,16 @@ class _ClockAttendanceDetailsSheetBodyState
                           ),
                         )
                       else
-                        ...timeline.map(
-                          (e) =>
-                              _TimelineTile(event: e, color: _colorFor(e.type)),
-                        ),
+                        ...timeline.map((e) {
+                          final kind = _primaryKind(e);
+                          return _TimelineTile(
+                            event: e,
+                            color: _colorFor(e.type),
+                            reminderLogs: kind == null
+                                ? const []
+                                : ReminderEngine.logsFor(kind, _reminderLogs),
+                          );
+                        }),
 
                       const SizedBox(height: 80),
                     ],
@@ -532,10 +573,9 @@ class _ClockAttendanceDetailsSheetBodyState
                             AttendanceEvent? checkOut;
                             AttendanceEvent? breakStart;
                             AttendanceEvent? breakEnd;
-                            for (final e
-                                in AttendanceEngine.sortedOldestFirst(
-                                  _events,
-                                )) {
+                            for (final e in AttendanceEngine.sortedOldestFirst(
+                              _events,
+                            )) {
                               switch (e.type) {
                                 case AttendanceEventType.checkIn:
                                   checkIn ??= e;
@@ -628,8 +668,13 @@ class _ClockAttendanceDetailsSheetBodyState
 class _TimelineTile extends StatelessWidget {
   final AttendanceEvent event;
   final Color color;
+  final List<ReminderLog> reminderLogs;
 
-  const _TimelineTile({required this.event, required this.color});
+  const _TimelineTile({
+    required this.event,
+    required this.color,
+    this.reminderLogs = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -638,78 +683,91 @@ class _TimelineTile extends StatelessWidget {
         .toList();
     final isEdited = event.isEdited;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: AppText.h6(
-                  AttendanceFormat.time(event.effectiveTime),
-                  weight: FontWeight.w700,
-                  align: TextAlign.left,
+              Row(
+                children: [
+                  Expanded(
+                    child: AppText.h6(
+                      AttendanceFormat.time(event.effectiveTime),
+                      weight: FontWeight.w700,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                  if (isEdited)
+                    AppText.p2(
+                      'Edited',
+                      color: kSubText,
+                      weight: FontWeight.w400,
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: 6),
+
+              Row(
+                children: [
+                  AppText.h5(
+                    event.label,
+                    color: color,
+                    weight: FontWeight.w700,
+                    align: TextAlign.left,
+                  ),
+                  if (isEdited) ...[
+                    const SizedBox(width: 10),
+                    CommonImageView(
+                      imagePath: Assets.imagesUserPen,
+                      height: 20,
+                    ),
+                  ],
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              ResolvedLocationText(
+                rawLocation: event.location,
+                knownLocations: knownLocations,
+                onlyKnownLocations: true,
+                builder: (context, text) => Row(
+                  children: [
+                    CommonImageView(
+                      imagePath: Assets.imagesLocationDot,
+                      height: 12,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: AppText.p2(
+                        text,
+                        color: kGreyColor,
+                        weight: FontWeight.w500,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        align: TextAlign.left,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (isEdited)
-                AppText.p2('Edited', color: kSubText, weight: FontWeight.w400),
+                AttendanceEditHistorySection(requests: event.editRequests),
             ],
           ),
-
-          const SizedBox(height: 6),
-
-          Row(
-            children: [
-              AppText.h5(
-                event.label,
-                color: color,
-                weight: FontWeight.w700,
-                align: TextAlign.left,
-              ),
-              if (isEdited) ...[
-                const SizedBox(width: 10),
-                CommonImageView(imagePath: Assets.imagesUserPen, height: 20),
-              ],
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          ResolvedLocationText(
-            rawLocation: event.location,
-            knownLocations: knownLocations,
-            onlyKnownLocations: true,
-            builder: (context, text) => Row(
-              children: [
-                CommonImageView(
-                  imagePath: Assets.imagesLocationDot,
-                  height: 12,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: AppText.p2(
-                    text,
-                    color: kGreyColor,
-                    weight: FontWeight.w500,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    align: TextAlign.left,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (isEdited)
-            AttendanceEditHistorySection(requests: event.editRequests),
-        ],
-      ),
+        ),
+        TimelineReminderRows(logs: reminderLogs),
+        const SizedBox(height: 14),
+      ],
     );
   }
 }

@@ -14,12 +14,17 @@ class SystemMonotonicClock implements MonotonicClock {
   Duration elapsedRealtime() => SystemClock.elapsedRealtime();
 }
 
-/// Process-local elapsed time that cannot follow the phone wall clock.
+/// Guards punch time against a wall-tracking native clock without dropping
+/// a real boot clock.
 ///
 /// `system_clock`'s non-IO stub uses `DateTime.now()` as "elapsed realtime".
-/// This wrapper freezes the native reading at construction and only adds
-/// [Stopwatch] time after that — [Stopwatch] is monotonic for the life of
-/// the isolate, so changing the emulator date/time cannot move punch time.
+/// Those epoch-sized readings follow the phone date/time, so this wrapper
+/// freezes them at construction and only adds [Stopwatch] time after that.
+///
+/// On Android/iOS the native value is time since boot (hours/days, never
+/// decades). That clock already includes sleep and must be used as-is —
+/// wrapping it in [Stopwatch] made check-out lag the header clock after
+/// the phone slept or the app was backgrounded.
 class AnchoredMonotonicClock implements MonotonicClock {
   AnchoredMonotonicClock(this._native)
       : _nativeAtStart = _native.elapsedRealtime();
@@ -28,8 +33,17 @@ class AnchoredMonotonicClock implements MonotonicClock {
   final Duration _nativeAtStart;
   final Stopwatch _watch = Stopwatch()..start();
 
+  /// Epoch-based stub readings are ~decades. Real uptime is hours to months.
+  static bool looksLikeWallClock(Duration elapsed) => elapsed.inDays > 3650;
+
   @override
-  Duration elapsedRealtime() => _nativeAtStart + _watch.elapsed;
+  Duration elapsedRealtime() {
+    final nativeNow = _native.elapsedRealtime();
+    if (!looksLikeWallClock(_nativeAtStart) && !looksLikeWallClock(nativeNow)) {
+      return nativeNow;
+    }
+    return _nativeAtStart + _watch.elapsed;
+  }
 }
 
 /// Test monotonic clock. [advance] for real elapsed time;

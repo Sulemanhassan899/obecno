@@ -4,7 +4,7 @@ import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
-import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/more/data/models/device_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';

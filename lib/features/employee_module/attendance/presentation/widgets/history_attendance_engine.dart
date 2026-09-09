@@ -68,7 +68,6 @@ class HistoryAttendanceEngine {
       }
     }
 
-    Duration working = Duration.zero;
     Duration breaks = Duration.zero;
 
     DateTime? openWorkStart;
@@ -86,20 +85,13 @@ class HistoryAttendanceEngine {
           break;
 
         case AttendanceHisotryEventType.checkOut:
-          if (openWorkStart != null) {
-            working += e.time.difference(openWorkStart);
-            openWorkStart = null;
-          }
+          openWorkStart = null;
           isCheckedIn = false;
           isOnBreak = false;
           break;
 
         case AttendanceHisotryEventType.breakStart:
-          // Pause the running work session, if any.
-          if (openWorkStart != null) {
-            working += e.time.difference(openWorkStart);
-            openWorkStart = null;
-          }
+          openWorkStart = null;
           openBreakStart = e.time;
           isOnBreak = true;
           break;
@@ -118,6 +110,20 @@ class HistoryAttendanceEngine {
     }
 
     final openSessionStart = openBreakStart ?? openWorkStart;
+
+    // The header shows first check-in and last check-out, so duration must
+    // match that span minus breaks — not the sum of in-office sessions.
+    var working = Duration.zero;
+    if (firstCheckIn != null) {
+      if (!isCheckedIn && lastCheckOut != null) {
+        working = lastCheckOut.difference(firstCheckIn) - breaks;
+      } else if (isOnBreak && openBreakStart != null) {
+        working = openBreakStart.difference(firstCheckIn) - breaks;
+      } else if (isCheckedIn && openWorkStart != null) {
+        working = openWorkStart.difference(firstCheckIn) - breaks;
+      }
+      if (working.isNegative) working = Duration.zero;
+    }
 
     return HistoryAttendanceSummary(
       firstCheckIn: firstCheckIn,

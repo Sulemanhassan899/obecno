@@ -1,6 +1,9 @@
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/services/scheduled_attendance_times.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -84,9 +87,92 @@ void main() {
         expect((body['changes'] as List), hasLength(4));
       },
     );
+
+    test('create-day request includes date and clock times', () {
+      final body = AttendanceService.editRequestBody(
+        attendanceId: null,
+        deviceDetails: 'iPhone',
+        lat: 33.57,
+        lon: 73.14,
+        changes: const [],
+        date: '2026-09-07',
+        checkIn: '08:00:00',
+        checkOut: '17:00:00',
+      );
+
+      expect(body.containsKey('id'), isFalse);
+      expect(body['date'], '2026-09-07');
+      expect(body['check_in'], '08:00:00');
+      expect(body['check_out'], '17:00:00');
+      expect(body['changes'], isEmpty);
+    });
+
+    test('create-day change requests omit id and detail ids', () {
+      final body = AttendanceService.editRequestBody(
+        attendanceId: null,
+        deviceDetails: 'iPhone',
+        lat: 33.57,
+        lon: 73.14,
+        date: '2026-09-03',
+        checkIn: '09:00:00',
+        checkOut: '18:00:00',
+        changes: const [
+          AttendanceChangeRequestPayload(
+            oldValue: '--',
+            newValue: '9:00 AM',
+            type: 'check in',
+          ),
+          AttendanceChangeRequestPayload(
+            oldValue: '--',
+            newValue: '6:00 PM',
+            type: 'check out',
+          ),
+        ],
+      );
+
+      expect(body.containsKey('id'), isFalse);
+      expect(body['date'], '2026-09-03');
+      expect(body['change_requests'], hasLength(2));
+      expect(
+        (body['changes'] as List).first.containsKey('attendancedetail_id'),
+        isFalse,
+      );
+    });
   });
 
   group('AttendanceDetailsData', () {
+    test('parses attendance id from id when attendance_id is missing', () {
+      final data = AttendanceDetailsData.fromJson({
+        'user_id': 31,
+        'date': '2026-09-03',
+        'id': 88,
+        'attendance_details': [],
+      });
+      expect(data.attendanceId, 88);
+    });
+
+    test('create-day body has no id and includes clock times', () {
+      final body = AttendanceService.createRequestBody(
+        date: '2026-09-03',
+        deviceDetails: 'iPhone',
+        lat: 33.57,
+        lon: 73.14,
+        checkIn: '09:00:00',
+        checkOut: '19:00:00',
+        userId: 31,
+      );
+
+      expect(body.containsKey('id'), isFalse);
+      expect(body['date'], '2026-09-03');
+      expect(body['user_id'], 31);
+      expect(body['check_in'], '09:00:00');
+      expect(body['check_out'], '19:00:00');
+      expect(body['events'], [
+        {'type': 'checkin', 'time': '09:00:00'},
+        {'type': 'checkout', 'time': '19:00:00'},
+      ]);
+    });
+
     test('parses detail ids used for fix requests', () {
       final data = AttendanceDetailsData.fromJson({
         'user_id': 31,
@@ -155,5 +241,22 @@ void main() {
         expect(requests.first.newTime, '07:55 AM');
       },
     );
+  });
+
+  group('ScheduledAttendanceTimes', () {
+    test('uses policy check-in, check-out and break duration', () {
+      const policy = ManagerEmployeePolicy(
+        checkInTime: '09:00 AM',
+        checkOutTime: '06:00 PM',
+        breakTime: '30 mins',
+      );
+
+      final scheduled = ScheduledAttendanceTimes.fromPolicy(policy);
+
+      expect(scheduled.checkIn, const TimeOfDay(hour: 9, minute: 0));
+      expect(scheduled.checkOut, const TimeOfDay(hour: 18, minute: 0));
+      expect(scheduled.breakEnd.hour * 60 + scheduled.breakEnd.minute,
+          scheduled.breakStart.hour * 60 + scheduled.breakStart.minute + 30);
+    });
   });
 }

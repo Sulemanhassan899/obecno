@@ -146,9 +146,9 @@ class AttendanceEditRequest {
       final s = raw.toString().trim();
       if (s.isEmpty) return '--';
 
-      // Already a friendly label.
+      // Already a friendly label — drop seconds for on-screen display.
       if (s.toLowerCase().contains('am') || s.toLowerCase().contains('pm')) {
-        return s;
+        return _hideSeconds(s);
       }
 
       final asDt = parseDt(s);
@@ -160,7 +160,8 @@ class AttendanceEditRequest {
       if (parts.length >= 2) {
         final h = int.tryParse(parts[0]) ?? 0;
         final m = int.tryParse(parts[1]) ?? 0;
-        return _formatClock(DateTime(2000, 1, 1, h, m));
+        final sec = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
+        return _formatClock(DateTime(2000, 1, 1, h, m, sec));
       }
       return s;
     }
@@ -274,6 +275,13 @@ class AttendanceEditRequest {
       map['status'],
       map['created_at'],
     ].join('|');
+  }
+
+  static String _hideSeconds(String raw) {
+    return raw.replaceFirstMapped(
+      RegExp(r'^(\d{1,2}:\d{2}):\d{2}(\s*[AaPp][Mm])?$'),
+      (match) => '${match[1]}${match[2] ?? ''}',
+    );
   }
 
   static String _formatClock(DateTime t) {

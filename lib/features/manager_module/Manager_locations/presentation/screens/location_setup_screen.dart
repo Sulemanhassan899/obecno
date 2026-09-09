@@ -1,9 +1,11 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/add_location_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/all_locations_screen.dart';
@@ -88,6 +90,17 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
   }
 
   Future<void> _onSetupLocation() async {
+    AddLocationLog.dump(
+      sheet: 'Set up Location',
+      phase: 'sheet open',
+      api: 'PUT /manager/locations/${_location.id}',
+      apiNeeds: AddLocationLog.updatePinApiNeeds,
+      extra: {
+        'address': _location.address,
+        'latitude': _location.latitude,
+        'longitude': _location.longitude,
+      },
+    );
     final selected = await SetupLocationMapScreen.open(
       context,
       initialAddress: _location.address,
@@ -265,7 +278,7 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
               AppText.p1(_subtitle, color: kGreyColor),
               const SizedBox(height: 20),
               Expanded(
-                child: RefreshIndicator(
+                child: ShimmerRefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -277,7 +290,7 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                             child: SizedBox(
                               height: 22,
                               width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                              child: ShimmerProgress(strokeWidth: 2.4),
                             ),
                           ),
                         )

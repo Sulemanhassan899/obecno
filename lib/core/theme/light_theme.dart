@@ -3,6 +3,16 @@ import 'package:flutter/material.dart';
 import '../constants/all_colors.dart';
 import '../constants/app_fonts.dart';
 
+SwitchThemeData get appSwitchTheme => SwitchThemeData(
+  thumbColor: WidgetStateProperty.all(kSwitchThumb),
+  trackColor: WidgetStateProperty.resolveWith((states) {
+    if (states.contains(WidgetState.selected)) return kSwitchActiveTrack;
+    return kSwitchInactiveTrack;
+  }),
+  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+  overlayColor: WidgetStateProperty.all(Colors.transparent),
+);
+
 /// Light [ThemeData] built from the project's existing color constants
 /// (`core/constants/all_colors.dart`) — no new colors introduced, so
 /// existing screens keep their current look.
@@ -64,4 +74,5 @@ final ThemeData lightTheme = ThemeData(
       backgroundColor: kWhite,
     ),
   ),
+  switchTheme: appSwitchTheme,
 );

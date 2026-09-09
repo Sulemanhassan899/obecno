@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     hide MonthSummary, AttendanceDayRecord;
@@ -9,6 +11,7 @@ import 'package:obecno/features/employee_module/attendance/services/day_classifi
 
 import 'package:obecno/main.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MonthlyAttendanceController extends ChangeNotifier {
   MonthlyAttendanceController({
@@ -334,5 +337,148 @@ class MonthlyAttendanceController extends ChangeNotifier {
     isLoading = false;
     isPaginating = false;
     notifyListeners();
+  }
+
+  /// Re-reads today's clock punches and the current month from the server.
+  /// Used when the Attendance tab becomes visible so today's check-in
+  /// shows without a pull-to-refresh.
+  Future<void> reloadVisibleMonth() async {
+    await _mergeTodayFromClock();
+    await _loadMonth(preferCache: false, silent: true);
+    await _mergeTodayFromClock();
+  }
+
+  Future<void> _mergeTodayFromClock() async {
+    final today = DateTime.now();
+    if (selectedMonth.year != today.year ||
+        selectedMonth.month != today.month) {
+      return;
+    }
+    final userId = bindings.authProvider.user?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key =
+          'clock_events_${userId}_${today.year}-${today.month}-${today.day}';
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List || decoded.isEmpty) return;
+
+      final checkIns = <String>[];
+      final checkOuts = <String>[];
+      final checkInLocations = <String?>[];
+      final checkOutLocations = <String?>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final type = item['type']?.toString() ?? '';
+        final time = DateTime.tryParse(item['time']?.toString() ?? '');
+        if (time == null) continue;
+        final stamp = _hhmmss(time);
+        final location = item['location']?.toString();
+        if (type == 'checkIn') {
+          checkIns.add(stamp);
+          checkInLocations.add(location);
+        } else if (type == 'checkOut') {
+          checkOuts.add(stamp);
+          checkOutLocations.add(location);
+        }
+      }
+      if (checkIns.isEmpty && checkOuts.isEmpty) return;
+
+      final dateOnly = DateTime(today.year, today.month, today.day);
+      AttendanceDay? existing;
+      for (final day in rawDays) {
+        if (day.date.year == dateOnly.year &&
+            day.date.month == dateOnly.month &&
+            day.date.day == dateOnly.day) {
+          existing = day;
+          break;
+        }
+      }
+      if (existing != null && existing.checkIns.isNotEmpty) return;
+
+      final merged = AttendanceDay(
+        date: dateOnly,
+        recordId: existing?.recordId,
+        checkIns: checkIns.isNotEmpty
+            ? checkIns
+            : (existing?.checkIns ?? const []),
+        checkOuts: checkOuts.isNotEmpty
+            ? checkOuts
+            : (existing?.checkOuts ?? const []),
+        checkInLocations: checkInLocations.isNotEmpty
+            ? checkInLocations
+            : (existing?.checkInLocations ?? const []),
+        checkOutLocations: checkOutLocations.isNotEmpty
+            ? checkOutLocations
+            : (existing?.checkOutLocations ?? const []),
+        breaks: existing?.breaks ?? const [],
+        isEdited: existing?.isEdited ?? false,
+        isHoliday: existing?.isHoliday ?? false,
+        isLeave: existing?.isLeave ?? false,
+        holidayName: existing?.holidayName,
+      );
+
+      rawDays = [
+        for (final day in rawDays)
+          if (day.date.year == dateOnly.year &&
+              day.date.month == dateOnly.month &&
+              day.date.day == dateOnly.day)
+            merged
+          else
+            day,
+      ];
+      if (!rawDays.any(
+        (day) =>
+            day.date.year == dateOnly.year &&
+            day.date.month == dateOnly.month &&
+            day.date.day == dateOnly.day,
+      )) {
+        rawDays = [...rawDays, merged];
+      }
+
+      if (!(existing?.isLeave ?? false)) {
+        records = [
+          for (final record in records)
+            if (record.date.year == dateOnly.year &&
+                record.date.month == dateOnly.month &&
+                record.date.day == dateOnly.day)
+              AttendanceDayRecord(
+                day: record.day,
+                weekday: record.weekday,
+                date: record.date,
+                checkIn: _format12h(merged.firstCheckIn),
+                checkOut: _format12h(merged.lastCheckOut),
+                status: merged.lastCheckOut == null
+                    ? AttendanceDayStatus.missingCheckOut
+                    : AttendanceDayStatus.normal,
+              )
+            else
+              record,
+        ];
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  static String _hhmmss(DateTime time) =>
+      '${time.hour.toString().padLeft(2, '0')}:'
+      '${time.minute.toString().padLeft(2, '0')}:'
+      '${time.second.toString().padLeft(2, '0')}';
+
+  static String? _format12h(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parts = raw.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    var hour12 = hour % 12;
+    if (hour12 == 0) hour12 = 12;
+    return '${hour12.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')} $period';
   }
 }

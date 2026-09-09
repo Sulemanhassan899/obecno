@@ -1,4 +1,3 @@
-
 import 'package:sqflite/sqflite.dart';
 
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
@@ -64,8 +63,8 @@ class AttendanceDao {
       (sum, b) => sum + _diff(day.date, from: b.breakOut, to: b.breakIn),
     );
 
-    // Session-aware work duration: sum each check-in→check-out segment,
-    // then subtract breaks (matches AttendanceEngine behaviour).
+    // Header duration is first check-in → last check-out minus breaks
+    // (matches AttendanceEngine / HistoryAttendanceEngine).
     final totalWork = _computeWorkDuration(day) - totalBreak;
 
     await txn.insert(AttendanceDb.daysTable, {
@@ -78,6 +77,9 @@ class AttendanceDao {
       'total_work_duration': totalWork.isNegative ? 0 : totalWork.inSeconds,
       'total_break_duration': totalBreak.inSeconds,
       'is_edited': day.isEdited ? 1 : 0,
+      'is_leave': day.isLeave ? 1 : 0,
+      'is_holiday': day.isHoliday ? 1 : 0,
+      'holiday_name': day.holidayName,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     await txn.delete(
@@ -249,6 +251,9 @@ class AttendanceDao {
           checkOutLocations: checkOutLocations,
           breaks: breaks,
           isEdited: (row['is_edited'] as int? ?? 0) == 1,
+          isLeave: (row['is_leave'] as int? ?? 0) == 1,
+          isHoliday: (row['is_holiday'] as int? ?? 0) == 1,
+          holidayName: row['holiday_name'] as String?,
         ),
       );
     }
@@ -279,24 +284,13 @@ class AttendanceDao {
     return _combine(date, to).difference(_combine(date, from));
   }
 
-  /// Sums closed check-in → check-out segments for [day], ignoring open
-  /// sessions and the time between sessions (when the user is checked out).
+  /// Wall-clock span from first check-in to last check-out. Gaps between
+  /// sessions are included so the stored total matches the header times.
   Duration _computeWorkDuration(AttendanceDay day) {
-    final stamps = <({DateTime time, bool isIn})>[
-      for (final t in day.checkIns) (time: _combine(day.date, t), isIn: true),
-      for (final t in day.checkOuts) (time: _combine(day.date, t), isIn: false),
-    ]..sort((a, b) => a.time.compareTo(b.time));
-
-    Duration working = Duration.zero;
-    DateTime? openStart;
-    for (final stamp in stamps) {
-      if (stamp.isIn) {
-        openStart = stamp.time;
-      } else if (openStart != null) {
-        working += stamp.time.difference(openStart);
-        openStart = null;
-      }
-    }
+    final first = day.firstCheckIn;
+    final last = day.lastCheckOut;
+    if (first == null || last == null) return Duration.zero;
+    final working = _diff(day.date, from: first, to: last);
     return working.isNegative ? Duration.zero : working;
   }
 

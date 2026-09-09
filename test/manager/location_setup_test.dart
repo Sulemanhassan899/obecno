@@ -276,6 +276,34 @@ void main() {
         ]),
         isTrue,
       );
+      expect(
+        PermissionItemModel.hasLocationLevelPermissions(const [
+          PermissionItemModel(
+            section: 'attendance',
+            sectionLabel: 'Attendance',
+            key: 'check_in_time',
+            label: 'Check in',
+            value: '09:00',
+            locationValue: '09:00',
+            sourceLevel: 'location',
+          ),
+        ], section: 'working_days', keys: LocationSchedule.workingDaysPermissionKeys),
+        isFalse,
+      );
+      expect(
+        PermissionItemModel.hasLocationLevelPermissions(const [
+          PermissionItemModel(
+            section: 'working_days',
+            sectionLabel: 'Working days',
+            key: 'working_days',
+            label: 'Working days',
+            value: 'monday, tuesday',
+            locationValue: 'monday, tuesday',
+            sourceLevel: 'location',
+          ),
+        ], section: 'working_days', keys: LocationSchedule.workingDaysPermissionKeys),
+        isTrue,
+      );
     });
 
     test('location permission items overlay a schedule fallback', () {

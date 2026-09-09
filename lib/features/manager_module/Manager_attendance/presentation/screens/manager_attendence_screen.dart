@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
@@ -70,7 +71,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
 
     return Scaffold(
       backgroundColor: kbackground1,
-      body: RefreshIndicator(
+      body: ShimmerRefreshIndicator(
         onRefresh: provider.refresh,
         child: Padding(
           padding: AppSizes.DEFAULT,
@@ -129,7 +130,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
                 if (isInitialLoad)
                   const SliverFillRemaining(
                     hasScrollBody: false,
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(child: ShimmerProgress()),
                   )
                 else if (provider.hasError && provider.items.isEmpty)
                   SliverFillRemaining(

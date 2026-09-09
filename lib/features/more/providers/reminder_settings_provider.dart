@@ -1,0 +1,635 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:obecno/features/auth/services/company_policy_service.dart';
+import 'package:obecno/features/more/data/local/reminder_dao.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/more/data/models/reminder_type.dart';
+import 'package:obecno/features/more/services/reminder_engine.dart';
+import 'package:obecno/features/more/services/reminder_notification_plan.dart';
+import 'package:obecno/features/more/services/reminder_notification_service.dart';
+
+class ReminderSettingsProvider extends ChangeNotifier {
+  ReminderSettingsProvider({
+    required ReminderDao dao,
+    required CompanyPolicyService policyService,
+    required String Function() userIdProvider,
+    String Function()? locationNameProvider,
+  }) : _dao = dao,
+       _policyService = policyService,
+       _userIdProvider = userIdProvider,
+       _locationNameProvider = locationNameProvider;
+
+  final ReminderDao _dao;
+  final CompanyPolicyService _policyService;
+  final String Function() _userIdProvider;
+  final String Function()? _locationNameProvider;
+
+  static const defaultCheckInLabel = '09:00 AM';
+  static const defaultCheckOutLabel = '06:00 PM';
+  static const defaultGraceLabel = '5 mins';
+  static const defaultBreakLabel = '60 mins';
+  static const defaultLongerBreakLabel = '1 hour';
+  static const defaultLongAttendanceLabel = '12 hours';
+
+  Map<ReminderType, bool> _enabled = {
+    for (final type in ReminderType.values)
+      type:
+          type != ReminderType.enterLocation &&
+          type != ReminderType.leaveLocation,
+  };
+
+  TimeOfDay checkInTime = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay checkOutTime = const TimeOfDay(hour: 18, minute: 0);
+  TimeOfDay policyCheckInTime = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay policyCheckOutTime = const TimeOfDay(hour: 18, minute: 0);
+  TimeOfDay breakReminderTime = const TimeOfDay(hour: 13, minute: 25);
+  TimeOfDay breakEndedReminderTime = const TimeOfDay(hour: 14, minute: 30);
+  TimeOfDay policyBreakReminderTime = const TimeOfDay(hour: 13, minute: 25);
+  TimeOfDay policyBreakEndedReminderTime = const TimeOfDay(
+    hour: 14,
+    minute: 30,
+  );
+  int graceMinutes = 5;
+  int breakMinutes = 60;
+  int longAttendanceHours = 12;
+  Set<int> workingWeekdays = ReminderNotificationPlan.defaultWorkingWeekdays;
+
+  List<ReminderPunch> _punches = const [];
+  Map<ReminderType, int> _customMinutes = {};
+  Timer? _watch;
+  DateTime _lastWall = DateTime.now();
+  bool _clockActivated = false;
+
+  String checkInTimeLabel = defaultCheckInLabel;
+  String checkOutTimeLabel = defaultCheckOutLabel;
+  String breakTimeLabel = '01:25 PM';
+  String breakEndedTimeLabel = '02:30 PM';
+  String graceLabel = defaultGraceLabel;
+  String breakDurationLabel = defaultBreakLabel;
+  String longerBreakLabel = defaultLongerBreakLabel;
+  String longAttendanceLabel = defaultLongAttendanceLabel;
+
+  bool _loading = false;
+  bool get isLoading => _loading;
+
+  bool isEnabled(ReminderType type) => _enabled[type] ?? false;
+
+  String _armedKey() => 'reminder_clock_armed_${_userIdProvider()}';
+
+  /// App reopen with a saved session, or a previous Clock visit, should
+  /// keep scheduling. A first-time login waits until Clock.
+  static bool shouldScheduleOnLoad({
+    required bool resumeExistingSession,
+    required bool clockArmed,
+  }) => resumeExistingSession || clockArmed;
+
+  Future<void> load({bool resumeExistingSession = false}) async {
+    _loading = true;
+    notifyListeners();
+    try {
+      await Future.wait([_loadSettings(), _loadPolicyTimes()]);
+      _enabled[ReminderType.enterLocation] = false;
+      _enabled[ReminderType.leaveLocation] = false;
+      _applyCustomTimes();
+      final userId = _userIdProvider();
+      if (userId.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      final flagged = prefs.getBool(_armedKey()) ?? false;
+      final scheduleNow = shouldScheduleOnLoad(
+        resumeExistingSession: resumeExistingSession,
+        clockArmed: flagged,
+      );
+      if (scheduleNow && !flagged) {
+        await prefs.setBool(_armedKey(), true);
+      }
+      _clockActivated = scheduleNow;
+      if (_clockActivated) {
+        await _rescheduleNotifications();
+        _startWatch();
+      }
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  /// First-time users wait until Clock. Returning users are already armed.
+  Future<void> activateFromClock() async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyArmed = prefs.getBool(_armedKey()) ?? false;
+    await prefs.setBool(_armedKey(), true);
+    _clockActivated = true;
+    if (!alreadyArmed) {
+      await Future.wait([_loadSettings(), _loadPolicyTimes()]);
+      _applyCustomTimes();
+    }
+    // OS notifications follow the phone clock, not trusted punch time.
+    await _rescheduleNotifications(now: DateTime.now());
+    _startWatch();
+  }
+
+  Future<void> setEnabled(ReminderType type, bool value) async {
+    _enabled[type] = value;
+    notifyListeners();
+    await _dao.setEnabled(
+      userId: _userIdProvider(),
+      type: type,
+      enabled: value,
+    );
+    if (value) await _clearOsFired(DateTime.now(), type);
+    await _persistSettingsSnapshot();
+    await _rescheduleNotifications();
+  }
+
+  Future<void> setReminderTime(ReminderType type, TimeOfDay value) async {
+    if (!type.canPickEarlierTime) return;
+    final latest = latestTimeFor(type);
+    final clamped = clampToLatest(value, latest);
+    _customMinutes[type] = clamped.hour * 60 + clamped.minute;
+    _applyCustomTimes();
+    notifyListeners();
+    await _dao.setRemindMinutes(
+      userId: _userIdProvider(),
+      type: type,
+      minutes: clamped.hour * 60 + clamped.minute,
+    );
+    await _clearOsFired(DateTime.now(), type);
+    await _persistSettingsSnapshot();
+    await _rescheduleNotifications();
+  }
+
+  static TimeOfDay clampToLatest(TimeOfDay value, TimeOfDay latest) {
+    if (value.hour > latest.hour ||
+        (value.hour == latest.hour && value.minute > latest.minute)) {
+      return latest;
+    }
+    return value;
+  }
+
+  TimeOfDay latestTimeFor(ReminderType type) {
+    switch (type) {
+      case ReminderType.checkIn:
+        return policyCheckInTime;
+      case ReminderType.checkOut:
+        return policyCheckOutTime;
+      case ReminderType.breakTime:
+        return policyBreakReminderTime;
+      case ReminderType.breakTimeEnded:
+        return policyBreakEndedReminderTime;
+      default:
+        return const TimeOfDay(hour: 23, minute: 59);
+    }
+  }
+
+  TimeOfDay reminderTimeFor(ReminderType type) {
+    switch (type) {
+      case ReminderType.checkIn:
+        return checkInTime;
+      case ReminderType.checkOut:
+        return checkOutTime;
+      case ReminderType.breakTime:
+        return breakReminderTime;
+      case ReminderType.breakTimeEnded:
+        return breakEndedReminderTime;
+      default:
+        return latestTimeFor(type);
+    }
+  }
+
+  String reminderTimeLabelFor(ReminderType type) {
+    switch (type) {
+      case ReminderType.checkIn:
+        return checkInTimeLabel;
+      case ReminderType.checkOut:
+        return checkOutTimeLabel;
+      case ReminderType.breakTime:
+        return breakTimeLabel;
+      case ReminderType.breakTimeEnded:
+        return breakEndedTimeLabel;
+      default:
+        return '';
+    }
+  }
+
+  Future<void> cancelNotifications() {
+    _watch?.cancel();
+    _watch = null;
+    _clockActivated = false;
+    return ReminderNotificationService.instance.cancelAll();
+  }
+
+  Future<void> resync({DateTime? now}) {
+    if (!_clockActivated) return Future.value();
+    return _rescheduleNotifications(now: now ?? DateTime.now());
+  }
+
+  Future<void> notifyGeofenceTransition({
+    required bool entered,
+    required DateTime now,
+    required List<ReminderPunch> punches,
+    String? locationName,
+  }) async {
+    return;
+  }
+
+  Future<List<ReminderLog>> syncForDay({
+    required DateTime day,
+    required List<ReminderPunch> punches,
+    DateTime? now,
+    String? locationName,
+  }) async {
+    _punches = List.of(punches);
+    await Future.wait([_loadSettings(), _loadPolicyTimes()]);
+    _applyCustomTimes();
+    await _persistClockState(day, punches);
+    final logs = await ReminderEngine.syncDay(
+      dao: _dao,
+      userId: _userIdProvider(),
+      day: day,
+      now: now ?? DateTime.now(),
+      enabled: _enabled,
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
+      policyCheckInTime: policyCheckInTime,
+      policyCheckOutTime: policyCheckOutTime,
+      breakReminderTime: breakReminderTime,
+      breakEndedReminderTime: breakEndedReminderTime,
+      graceMinutes: graceMinutes,
+      breakMinutes: breakMinutes,
+      longAttendanceHours: longAttendanceHours,
+      punches: punches,
+      locationName: _locationName(locationName),
+    );
+    await _rescheduleNotifications(
+      now: DateTime.now(),
+      reloadPunches: false,
+    );
+    return logs;
+  }
+
+  void _startWatch() {
+    _watch?.cancel();
+    _lastWall = DateTime.now();
+    _watch = Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(_onWatchTick());
+    });
+  }
+
+  Future<void> _onWatchTick() async {
+    final now = DateTime.now();
+    final gap = now.difference(_lastWall);
+    _lastWall = now;
+    if (gap.abs() > const Duration(seconds: 45)) {
+      await _rescheduleNotifications(now: now);
+      return;
+    }
+    await _rescheduleNotifications(now: now, rebuildSchedule: false);
+  }
+
+  Future<void> _rescheduleNotifications({
+    DateTime? now,
+    bool rebuildSchedule = true,
+    bool reloadPunches = true,
+  }) async {
+    if (!_clockActivated) return;
+    final when = now ?? DateTime.now();
+    if (reloadPunches) {
+      _punches = await _loadTodayPunches(when);
+    }
+    await _persistClockState(when, _punches);
+    final alreadyFired = await _loadOsFired(when);
+    final place = _locationName(null);
+    final status = ReminderClockStatus.fromPunches(_punches);
+    final result = await ReminderNotificationService.instance.sync(
+      now: when,
+      enabled: _enabled,
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
+      policyCheckInTime: policyCheckInTime,
+      policyCheckOutTime: policyCheckOutTime,
+      breakReminderTime: breakReminderTime,
+      breakEndedReminderTime: breakEndedReminderTime,
+      graceMinutes: graceMinutes,
+      breakMinutes: breakMinutes,
+      longAttendanceHours: longAttendanceHours,
+      punches: _punches,
+      workingWeekdays: workingWeekdays,
+      alreadyFired: alreadyFired,
+      locationName: place,
+      rebuildSchedule: rebuildSchedule,
+      requestPermission: rebuildSchedule,
+    );
+    for (final type in result.seenTypes) {
+      await _markOsFired(when, type);
+    }
+    for (final item in result.planned) {
+      if (!item.deliverImmediately) continue;
+      if (!result.seenTypes.contains(item.type)) continue;
+      final log = ReminderLog(
+        type: item.type,
+        firedAt: item.fireAt,
+        title: item.title,
+        message: item.body,
+        clockStatus: status.storageValue,
+        deliveredAt: when,
+      );
+      await _dao.insertLogIfAbsent(
+        userId: _userIdProvider(),
+        date: when,
+        log: log,
+      );
+      await _dao.markDelivered(
+        userId: _userIdProvider(),
+        date: when,
+        log: log,
+        deliveredAt: when,
+      );
+    }
+  }
+
+  String _osFiredKey(DateTime date) {
+    final userId = _userIdProvider();
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return 'reminder_os_fired_${userId}_$y-$m-$d';
+  }
+
+  Future<Set<ReminderType>> _loadOsFired(DateTime date) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return {};
+    final fromDb = await _dao.loadDeliveredTypes(userId: userId, date: date);
+    if (fromDb.isNotEmpty) return fromDb;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_osFiredKey(date)) ?? const [];
+      return {
+        for (final key in raw)
+          if (ReminderType.fromStorageKey(key) != null)
+            ReminderType.fromStorageKey(key)!,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _markOsFired(DateTime date, ReminderType type) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    await _dao.markDelivered(
+      userId: userId,
+      date: date,
+      log: ReminderLog(
+        type: type,
+        firedAt: date,
+        title: ReminderCopy.title(type),
+        message: ReminderCopy.message(type),
+        clockStatus: ReminderClockStatus.fromPunches(_punches).storageValue,
+        deliveredAt: date,
+      ),
+      deliveredAt: date,
+    );
+  }
+
+  Future<void> _clearOsFired(DateTime date, ReminderType type) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    await _dao.clearDelivered(userId: userId, date: date, type: type);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _osFiredKey(date);
+      final next = <String>{
+        ...(prefs.getStringList(key) ?? const <String>[]),
+      }..remove(type.storageKey);
+      await prefs.setStringList(key, next.toList());
+    } catch (_) {}
+  }
+
+  Future<List<ReminderPunch>> _loadTodayPunches(DateTime now) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return const [];
+    final saved = await _dao.loadSavedPunches(userId: userId, date: now);
+    if (saved != null) return saved;
+    final fromClock = await _loadClockPunches(userId, now);
+    if (fromClock != null) {
+      await _persistClockState(now, fromClock);
+      return fromClock;
+    }
+    return const [];
+  }
+
+  /// `null` means the clock has not stored today yet. An empty list means
+  /// the Check In button is showing — do not fall back to attendance cache.
+  Future<List<ReminderPunch>?> _loadClockPunches(
+    String userId,
+    DateTime now,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'clock_events_${userId}_${now.year}-${now.month}-${now.day}';
+      if (!prefs.containsKey(key)) return null;
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return const [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final punches = <ReminderPunch>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final kind = ReminderPunchKind.fromName(item['type']?.toString() ?? '');
+        if (kind == null) continue;
+        final time = DateTime.tryParse(item['time']?.toString() ?? '');
+        if (time == null) continue;
+        punches.add(ReminderPunch(kind: kind, time: time));
+      }
+      return punches;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _persistClockState(
+    DateTime day,
+    List<ReminderPunch> punches,
+  ) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    final status = ReminderClockStatus.fromPunches(punches);
+    await _dao.replacePunches(userId: userId, date: day, punches: punches);
+    await _dao.saveDayState(
+      userId: userId,
+      date: day,
+      status: status,
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
+      breakReminderTime: breakReminderTime,
+      breakEndedReminderTime: breakEndedReminderTime,
+      policyCheckInTime: policyCheckInTime,
+      policyCheckOutTime: policyCheckOutTime,
+      graceMinutes: graceMinutes,
+      breakMinutes: breakMinutes,
+      longAttendanceHours: longAttendanceHours,
+    );
+  }
+
+  Future<void> _persistSettingsSnapshot() async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    await _dao.persistMissingSettings(
+      userId: userId,
+      enabled: _enabled,
+      remindMinutes: _customMinutes,
+    );
+  }
+
+  String _locationName(String? locationName) {
+    final explicit = locationName?.trim() ?? '';
+    if (explicit.isNotEmpty) return explicit;
+    final fromAuth = _locationNameProvider?.call().trim() ?? '';
+    return fromAuth.isNotEmpty ? fromAuth : 'work';
+  }
+
+  Future<void> _loadSettings() async {
+    final userId = _userIdProvider();
+    _enabled = await _dao.loadSettings(userId);
+    _customMinutes = await _dao.loadRemindMinutes(userId);
+    await _dao.persistMissingSettings(
+      userId: userId,
+      enabled: _enabled,
+      remindMinutes: _customMinutes,
+    );
+  }
+
+  Future<void> _loadPolicyTimes() async {
+    final checkIn = await _policyService.valueFor(
+      'attendance',
+      'check_in_time',
+    );
+    final checkOut = await _policyService.valueFor(
+      'attendance',
+      'check_out_time',
+    );
+    final grace = await _policyService.valueFor('attendance', 'grace_period');
+    final breakTime =
+        await _policyService.valueFor('attendance', 'break_time') ??
+        await _policyService.valueFor('break_timing', 'break_time');
+
+    final workingDaysRaw = await _policyService.valueFor(
+      'attendance',
+      'working_days',
+    );
+
+    policyCheckInTime = _parseTimeOfDay(checkIn) ?? policyCheckInTime;
+    policyCheckOutTime = _parseTimeOfDay(checkOut) ?? policyCheckOutTime;
+    graceMinutes = _parseLeadingMinutes(grace) ?? graceMinutes;
+    breakMinutes = _parseLeadingMinutes(breakTime) ?? breakMinutes;
+    workingWeekdays = _parseWorkingDays(workingDaysRaw) ?? workingWeekdays;
+
+    policyBreakReminderTime = ReminderNotificationPlan.defaultBreakReminderTime(
+      checkInTime: policyCheckInTime,
+      checkOutTime: policyCheckOutTime,
+    );
+    policyBreakEndedReminderTime =
+        ReminderNotificationPlan.defaultBreakEndedReminderTime(
+          checkInTime: policyCheckInTime,
+          checkOutTime: policyCheckOutTime,
+          breakMinutes: breakMinutes,
+        );
+
+    graceLabel = '$graceMinutes mins';
+    breakDurationLabel = breakMinutes >= 60 && breakMinutes % 60 == 0
+        ? '${breakMinutes ~/ 60} ${breakMinutes == 60 ? 'hour' : 'hours'}'
+        : '$breakMinutes mins';
+  }
+
+  void _applyCustomTimes() {
+    checkInTime = _resolvedTime(ReminderType.checkIn, policyCheckInTime);
+    checkOutTime = _resolvedTime(ReminderType.checkOut, policyCheckOutTime);
+    breakReminderTime = _resolvedTime(
+      ReminderType.breakTime,
+      policyBreakReminderTime,
+    );
+    breakEndedReminderTime = _resolvedTime(
+      ReminderType.breakTimeEnded,
+      policyBreakEndedReminderTime,
+    );
+    checkInTimeLabel = _formatTime(checkInTime);
+    checkOutTimeLabel = _formatTime(checkOutTime);
+    breakTimeLabel = _formatTime(breakReminderTime);
+    breakEndedTimeLabel = _formatTime(breakEndedReminderTime);
+  }
+
+  TimeOfDay _resolvedTime(ReminderType type, TimeOfDay latest) {
+    final custom = _customMinutes[type];
+    if (custom == null) return latest;
+    return clampToLatest(_minutesToTime(custom), latest);
+  }
+
+  static TimeOfDay _minutesToTime(int minutes) {
+    final wrapped = minutes.clamp(0, 23 * 60 + 59);
+    return TimeOfDay(hour: wrapped ~/ 60, minute: wrapped % 60);
+  }
+
+  static TimeOfDay? _parseTimeOfDay(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final value = raw.trim();
+    final ampm = RegExp(
+      r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$',
+    ).firstMatch(value);
+    if (ampm != null) {
+      var hour = int.tryParse(ampm.group(1)!);
+      final minute = int.tryParse(ampm.group(2)!);
+      if (hour == null || minute == null) return null;
+      final isPm = ampm.group(3)!.toUpperCase() == 'PM';
+      hour = hour == 12 ? (isPm ? 12 : 0) : (isPm ? hour + 12 : hour);
+      return TimeOfDay(hour: hour, minute: minute);
+    }
+
+    final match = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(value);
+    if (match == null) return null;
+    final hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null) return null;
+    if (hour > 23 || minute > 59) return null;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  static int? _parseLeadingMinutes(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final match = RegExp(r'(\d+)').firstMatch(raw);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
+  }
+
+  static Set<int>? _parseWorkingDays(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    const names = {
+      'monday': 1,
+      'tuesday': 2,
+      'wednesday': 3,
+      'thursday': 4,
+      'friday': 5,
+      'saturday': 6,
+      'sunday': 7,
+    };
+    final days = <int>{};
+    for (final part in raw.split(',')) {
+      final key = part.trim().toLowerCase();
+      final weekday = names[key];
+      if (weekday != null) days.add(weekday);
+    }
+    return days.isEmpty ? null : days;
+  }
+
+  static String _formatTime(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final ampm = time.period == DayPeriod.pm ? 'PM' : 'AM';
+    return '${hour.toString().padLeft(2, '0')}:$minute $ampm';
+  }
+}

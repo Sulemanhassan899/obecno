@@ -77,7 +77,7 @@ class ManagerEmployeeApiEndpoints {
   static const getPayments = ManagerApiRoute.get('$_base/payments');
 
   // =====================================================================
-  // Locations — GET list, POST add, GET/PUT detail, schedule, members
+  // Locations — GET list, POST add, GET/PUT/PATCH detail, schedule, members
   // =====================================================================
   static const getLocations = ManagerApiRoute.get(_locations);
   static const postLocations = ManagerApiRoute.post(_locations);
@@ -88,8 +88,14 @@ class ManagerEmployeeApiEndpoints {
   static ManagerApiRoute putLocation(Object locationId) =>
       ManagerApiRoute.put('$_locations/$locationId');
 
+  static ManagerApiRoute patchLocation(Object locationId) =>
+      ManagerApiRoute.patch('$_locations/$locationId');
+
   static ManagerApiRoute putLocationSchedule(Object locationId) =>
       ManagerApiRoute.put('$_locations/$locationId/schedule');
+
+  static ManagerApiRoute patchLocationSchedule(Object locationId) =>
+      ManagerApiRoute.patch('$_locations/$locationId/schedule');
 
   static ManagerApiRoute getLocationSchedule(Object locationId) =>
       ManagerApiRoute.get('$_locations/$locationId/schedule');

@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -34,7 +35,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
     return Scaffold(
       backgroundColor: kbackground1,
-      body: RefreshIndicator(
+      body: ShimmerRefreshIndicator(
         onRefresh: () async {
           await Future.wait([
             provider.refresh(),
@@ -53,7 +54,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
               if (isInitialLoad)
                 const SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(child: ShimmerProgress()),
                 )
               else if (provider.hasError && summary == null)
                 SliverFillRemaining(

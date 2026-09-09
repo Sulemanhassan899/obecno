@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -179,7 +180,7 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: SafeArea(
-        child: RefreshIndicator(
+        child: ShimmerRefreshIndicator(
           onRefresh: () async {
             await Future.wait([
               employeesProvider.load(
@@ -309,7 +310,7 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
               if (isInitialLoad)
                 const SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(child: ShimmerProgress()),
                 )
               else if (employeesProvider.hasError &&
                   employeesProvider.members.isEmpty)

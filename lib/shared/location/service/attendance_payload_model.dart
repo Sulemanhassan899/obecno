@@ -58,11 +58,11 @@ class AttendancePayloadModel {
 
   String get time =>
       '${capturedAt.hour.toString().padLeft(2, '0')}:'
-      '${capturedAt.minute.toString().padLeft(2, '0')}';
+      '${capturedAt.minute.toString().padLeft(2, '0')}:'
+      '${capturedAt.second.toString().padLeft(2, '0')}';
 
-  /// Wall-clock timestamp the API expects: `2026-08-10 03:00:00`.
-  String get datetime =>
-      '$date ${time}:${capturedAt.second.toString().padLeft(2, '0')}';
+  /// Wall-clock timestamp the API expects: `2026-08-10 03:00:10`.
+  String get datetime => '$date $time';
 
   Map<String, dynamic> toApiJson() => {
     'action': action,

@@ -85,6 +85,9 @@ class ClockScreenController extends ChangeNotifier {
 
   bool get rebootDetected => trustedTime?.rebootDetected ?? false;
 
+  bool get sessionEndedByReboot =>
+      trustedTime?.sessionEndedByReboot ?? false;
+
   bool get canIssueTrustedPunch =>
       trustedTime != null && trustedTime!.canPunch;
 

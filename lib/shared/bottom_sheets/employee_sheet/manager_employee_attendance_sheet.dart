@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
@@ -291,11 +292,16 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       bindings.authProvider.homeTarget == AuthHomeTarget.manager;
 
   Future<void> _openDetails(AttendanceDayRecord record) async {
-    final isOnLeave = record.status == AttendanceDayStatus.onLeave;
-    final isDash =
-        record.status == AttendanceDayStatus.absent || _isDashDay(record);
+    final isOnLeave = record.isOnLeave;
+    final isDash = record.isAbsent;
 
-    if ((isOnLeave || isDash) && !_isManagerViewer) return;
+    if (isOnLeave && !_isManagerViewer) return;
+
+    if (isDash) {
+      if (!_isManagerViewer) return;
+      await _addTimeForAbsentDay(record);
+      return;
+    }
 
     final userId = widget.userId;
     final employee = ManagerAttendanceModel(
@@ -326,6 +332,24 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     await _load(silent: true);
   }
 
+  Future<void> _addTimeForAbsentDay(AttendanceDayRecord record) async {
+    final saved = await AddAttendanceBottomSheet.show(
+      context,
+      day: record.date,
+      apiClient: bindings.apiClient,
+      userEmail: bindings.userEmail,
+      employeeUserId: widget.userId,
+      employeeName: widget.employeeName,
+      applyImmediately: true,
+      isCreating: true,
+    );
+    if (!mounted) return;
+    if (saved != null) {
+      _applyOptimisticAttendance(record.date, saved);
+    }
+    await _load(silent: true);
+  }
+
   bool _isDashDay(AttendanceDayRecord record) {
     if (record.status == AttendanceDayStatus.weekend ||
         record.status == AttendanceDayStatus.holiday) {
@@ -334,15 +358,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     return !_hasPunchTime(record.checkIn) && !_hasPunchTime(record.checkOut);
   }
 
-  bool _hasPunchTime(String? raw) {
-    final value = raw?.trim() ?? '';
-    if (value.isEmpty) return false;
-    final lower = value.toLowerCase();
-    return lower != 'leave' &&
-        lower != 'holiday' &&
-        lower != '--' &&
-        !lower.startsWith('--:--');
-  }
+  bool _hasPunchTime(String? raw) => AttendanceDayRecord.hasPunchTime(raw);
 
   void _applyOptimisticAttendance(DateTime day, AddAttendanceSaveResult saved) {
     AttendanceDayRecord? previous;
@@ -478,7 +494,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           const SizedBox(height: 20),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: ShimmerProgress())
                 : _error != null
                 ? Center(
                     child: Padding(
@@ -486,7 +502,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                       child: AppText.p2(_error!, color: kGreyColor),
                     ),
                   )
-                : RefreshIndicator(
+                : ShimmerRefreshIndicator(
                     onRefresh: _load,
                     child: ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -809,7 +825,7 @@ class _LocationAttendanceSheetBodyState
           const SizedBox(height: 20),
           Expanded(
             child: isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: ShimmerProgress())
                 : hasError
                 ? Center(
                     child: Padding(

@@ -25,6 +25,7 @@ import 'package:obecno/shared/location/service/attendance_permission_service.dar
 import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
+import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
 
 import 'package:obecno/widgets/check_in_button.dart';
@@ -124,6 +125,10 @@ class ClockScreenState extends State<ClockScreen>
 
     unawaited(_controller.loadPolicyFrom(bindings.companyPolicyService));
 
+    // Header must show the same trusted clock that stamps punches —
+    // DateTime.now() is the phone wall clock and can disagree after sleep
+    // or a user changing the device time.
+    _ticker.now = () => _controller.clockNow;
     _ticker.start();
 
     _previousSyncStateHandler = bindings.clockSyncService.onStateChanged;
@@ -131,6 +136,9 @@ class ClockScreenState extends State<ClockScreen>
 
     _startMonitoring();
     _entranceController.forward();
+    if (!AppGuard.permissionOnboardingPending) {
+      unawaited(bindings.reminderSettingsProvider.activateFromClock());
+    }
     if (mounted) setState(() {});
   }
 
@@ -239,6 +247,9 @@ class ClockScreenState extends State<ClockScreen>
     if (!mounted || !_clockStarted) return;
     _isActive = true;
     _checkPermissions();
+    if (!AppGuard.permissionOnboardingPending) {
+      unawaited(bindings.reminderSettingsProvider.activateFromClock());
+    }
     final controller = _controller;
     if (controller is SyncedClockScreenController) {
       if (!_isOffline) {
@@ -710,6 +721,21 @@ class ClockScreenState extends State<ClockScreen>
                       const SizedBox(height: 4),
                     ],
 
+                    ButtonAnimations.press(
+                      onTap: () {},
+                      child: Row(
+                        spacing: 5,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AppText.p3(
+                            companyLabel.isNotEmpty ? companyLabel : 'Company',
+                            color: kBlack,
+                            weight: FontWeight.w600,
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 40),
                     ValueListenableBuilder<DateTime>(
                       valueListenable: _ticker,
@@ -719,10 +745,11 @@ class ClockScreenState extends State<ClockScreen>
                             _formattedTime(now),
                             weight: FontWeight.w400,
                           ),
-                          if (syncedController.rebootDetected) ...[
+                          if (syncedController.rebootDetected ||
+                              syncedController.sessionEndedByReboot) ...[
                             const SizedBox(height: 8),
                             AppText.p2(
-                              AppStrings.timeUnavailable,
+                              TrustedTimeMessages.sessionEnded,
                               color: kredColor,
                               weight: FontWeight.w500,
                               align: TextAlign.center,

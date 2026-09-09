@@ -238,8 +238,9 @@ import 'package:obecno/core/services/notification_helper.dart';
 import 'package:obecno/core/services/permission_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/more/providers/device_provider.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
+import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -364,6 +365,9 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
       _checkAll(trigger: 'LIFECYCLE_RESUME');
 
       _revalidateSession();
+      if (mounted) {
+        unawaited(context.read<ReminderSettingsProvider>().resync());
+      }
     }
   }
 

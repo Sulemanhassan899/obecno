@@ -119,8 +119,41 @@ class _FakeLocationApi extends http.BaseClient {
       return (status: 200, body: {'success': true, 'data': location});
     }
 
+    if ((method == 'PUT' || method == 'PATCH') && locationMatch != null) {
+      final id = locationMatch.group(1)!;
+      final existing = locations[id];
+      if (existing == null) {
+        return (status: 404, body: {'success': false, 'message': 'Not found'});
+      }
+      final next = Map<String, dynamic>.from(existing);
+      if (body != null) {
+        next.addAll(body);
+        final schedule = body['schedule'];
+        if (schedule is Map) {
+          next['schedule'] = Map<String, dynamic>.from(schedule);
+        }
+      }
+      locations[id] = next;
+      return (status: 200, body: {'success': true, 'data': next});
+    }
+
     if (method == 'GET' && scheduleMatch != null) {
       return (status: 404, body: {'success': false, 'message': 'No schedule'});
+    }
+
+    if ((method == 'PUT' || method == 'PATCH') && scheduleMatch != null) {
+      final id = scheduleMatch.group(1)!;
+      final existing = locations[id];
+      if (existing == null) {
+        return (status: 404, body: {'success': false, 'message': 'Not found'});
+      }
+      final next = Map<String, dynamic>.from(existing);
+      final schedule = body?['schedule'] ?? body;
+      if (schedule is Map) {
+        next['schedule'] = Map<String, dynamic>.from(schedule);
+      }
+      locations[id] = next;
+      return (status: 200, body: {'success': true, 'data': next});
     }
 
     if (permissionsMatch != null) {
@@ -135,14 +168,7 @@ class _FakeLocationApi extends http.BaseClient {
         }
         return (status: 200, body: {'success': true, 'data': stored});
       }
-      if (method == 'PUT') {
-        permissions[id] = {
-          'location_id': int.tryParse(id) ?? id,
-          ...?body,
-        };
-        return (status: 200, body: {'success': true, 'data': permissions[id]});
-      }
-      if (method == 'PATCH') {
+      if (method == 'PUT' || method == 'PATCH') {
         final current = Map<String, dynamic>.from(permissions[id] ?? {});
         final currentSetting = Map<String, dynamic>.from(
           current['location_setting'] as Map? ?? const {},
@@ -151,11 +177,19 @@ class _FakeLocationApi extends http.BaseClient {
         if (incoming is Map) {
           currentSetting.addAll(Map<String, dynamic>.from(incoming));
         }
+        final currentItems = [
+          ...?(current['permission_items'] as List?),
+        ];
+        final incomingItems = body?['permission_items'];
+        if (incomingItems is List) {
+          currentItems.addAll(incomingItems);
+        }
         permissions[id] = {
           ...current,
           ...?body,
           'location_id': int.tryParse(id) ?? id,
           'location_setting': currentSetting,
+          if (currentItems.isNotEmpty) 'permission_items': currentItems,
         };
         return (status: 200, body: {'success': true, 'data': permissions[id]});
       }
@@ -319,6 +353,10 @@ void main() {
       expect(api.of('PUT', '/permissions'), isEmpty);
       final patches = api.of('PATCH', '/permissions');
       expect(patches, isNotEmpty);
+      expect(
+        patches.map((call) => call.body?['section']).toSet(),
+        containsAll({'attendance', 'working_days', 'break_timing'}),
+      );
       final setting = patches.first.body!['location_setting'] as Map;
       expect(setting['check_in_time'], '08:30');
       expect(setting['check_out_time'], '17:15');
@@ -338,6 +376,90 @@ void main() {
       );
       expect(loaded.data!.breakLocationTracking, isFalse);
       expect(loaded.data!.weekStartDay, 'Wednesday');
+    });
+  });
+
+  group('Test 2b — first working days / break override uses PUT', () {
+    test('attendance location override does not PATCH working days or break', () async {
+      final api = _FakeLocationApi();
+      final service = _service(api);
+      final created = await service.createLocation(name: 'Branch');
+      final locationId = created.data!.id;
+      api.permissions[locationId] = {
+        'location_id': int.tryParse(locationId) ?? locationId,
+        'permission_items': [
+          {
+            'section': 'attendance',
+            'key': 'check_in_time',
+            'value': '10:00',
+            'location_value': '10:00',
+            'source_level': 'location',
+          },
+          {
+            'section': 'attendance',
+            'key': 'check_out_time',
+            'value': '15:00',
+            'location_value': '15:00',
+            'source_level': 'location',
+          },
+          {
+            'section': 'working_days',
+            'key': 'working_days',
+            'value': 'monday, tuesday, wednesday, thursday, friday',
+            'source_level': 'company',
+          },
+          {
+            'section': 'break_timing',
+            'key': 'break_time',
+            'value': '60:00 mins',
+            'source_level': 'company',
+          },
+        ],
+      };
+      api.calls.clear();
+
+      const next = LocationSchedule(
+        checkIn: TimeOfDay(hour: 10, minute: 0),
+        checkOut: TimeOfDay(hour: 15, minute: 0),
+        graceMinutes: 30,
+        workingDays: {'Monday', 'Tuesday', 'Wednesday', 'Thursday'},
+        weekStartDay: 'Monday',
+        hoursPerDay: '08:00',
+        hoursPerWeek: '40:00',
+        workingWeekEnabled: true,
+        maxBreakMinutes: 30,
+        breakLocationTracking: true,
+      );
+
+      final updated = await service.updateLocationSchedule(
+        locationId: locationId,
+        schedule: next,
+      );
+      expect(updated.success, isTrue, reason: updated.message);
+
+      final puts = api.of('PUT', '/permissions');
+      expect(
+        puts.map((call) => call.body?['section']).toSet(),
+        containsAll({'working_days', 'break_timing'}),
+      );
+      final workingPut = puts.firstWhere(
+        (call) => call.body?['section'] == 'working_days',
+      );
+      expect(workingPut.body!['value'], 'monday, tuesday, wednesday, thursday');
+      expect(workingPut.body!['is_override'], isTrue);
+      expect(
+        (workingPut.body!['location_setting'] as Map)['working_days'],
+        unorderedEquals(['monday', 'tuesday', 'wednesday', 'thursday']),
+      );
+
+      final breakPut = puts.firstWhere(
+        (call) => call.body?['section'] == 'break_timing',
+      );
+      expect(breakPut.body!['value'], '30:00 mins');
+      expect(
+        (breakPut.body!['location_setting'] as Map)['max_break_minutes'],
+        30,
+      );
     });
   });
 

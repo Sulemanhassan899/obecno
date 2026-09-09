@@ -252,7 +252,7 @@ void main() {
 
       final restored = AttendancePayloadModel.fromQueueMap(row);
       expect(restored.date, '2026-08-21');
-      expect(restored.time, '09:00');
+      expect(restored.time, '09:00:45');
       expect(restored.datetime, '2026-08-21 09:00:45');
       expect(restored.toApiJson()['datetime'], '2026-08-21 09:00:45');
     });

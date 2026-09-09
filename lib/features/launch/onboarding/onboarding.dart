@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:obecno/features/employee_module/more/presentation/screens/policy.dart';
-import 'package:obecno/features/employee_module/more/presentation/screens/terms.dart';
+import 'package:obecno/features/more/presentation/screens/policy.dart';
+import 'package:obecno/features/more/presentation/screens/terms.dart';
 
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/text_styles.dart';

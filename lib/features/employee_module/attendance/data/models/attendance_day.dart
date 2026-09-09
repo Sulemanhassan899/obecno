@@ -91,6 +91,34 @@ class AttendanceDay {
 
   bool get hasMissingData => !hasCheckIn || !hasCheckOut;
 
+  AttendanceDay copyWith({
+    DateTime? date,
+    int? recordId,
+    List<String>? checkIns,
+    List<String>? checkOuts,
+    List<String?>? checkInLocations,
+    List<String?>? checkOutLocations,
+    List<BreakSession>? breaks,
+    bool? isEdited,
+    bool? isHoliday,
+    bool? isLeave,
+    String? holidayName,
+  }) {
+    return AttendanceDay(
+      date: date ?? this.date,
+      recordId: recordId ?? this.recordId,
+      checkIns: checkIns ?? this.checkIns,
+      checkOuts: checkOuts ?? this.checkOuts,
+      checkInLocations: checkInLocations ?? this.checkInLocations,
+      checkOutLocations: checkOutLocations ?? this.checkOutLocations,
+      breaks: breaks ?? this.breaks,
+      isEdited: isEdited ?? this.isEdited,
+      isHoliday: isHoliday ?? this.isHoliday,
+      isLeave: isLeave ?? this.isLeave,
+      holidayName: holidayName ?? this.holidayName,
+    );
+  }
+
   factory AttendanceDay.fromApiHistoryItem(Map<String, dynamic> json) {
     final date = _parseDate(json['date']) ?? DateTime.now();
 
@@ -304,17 +332,20 @@ class AttendanceCalendarData {
     this.monthLabel = '',
     this.attendanceDates = const [],
     this.holidays = const [],
+    this.leaveDates = const [],
   });
 
   final String monthLabel;
   final List<DateTime> attendanceDates;
   final List<({DateTime date, String name})> holidays;
+  final List<DateTime> leaveDates;
 
   factory AttendanceCalendarData.fromJson(Map<String, dynamic> json) {
     final label = (json['month_label'] ?? json['month'] ?? '').toString();
 
     final dates = <DateTime>[];
     final holidays = <({DateTime date, String name})>[];
+    final leaveDates = <DateTime>{};
     final rawDates = json['attendance_dates'] ?? json['dates'] ?? json['days'];
     if (rawDates is List) {
       for (final d in rawDates) {
@@ -326,10 +357,11 @@ class AttendanceCalendarData {
           if (parsed == null) continue;
           final dateOnly = DateTime(parsed.year, parsed.month, parsed.day);
           dates.add(dateOnly);
-          final status = (map['day_status'] ?? map['status'] ?? map['type'] ?? '')
-              .toString()
-              .trim()
-              .toLowerCase();
+          final status =
+              (map['day_status'] ?? map['status'] ?? map['type'] ?? '')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
           final isHoliday =
               map['is_holiday'] == true ||
               map['is_holiday'] == 1 ||
@@ -349,6 +381,9 @@ class AttendanceCalendarData {
               name: name.isEmpty ? 'Public Holiday' : name,
             ));
           }
+          if (_isLeaveStatus(status, map['is_leave'])) {
+            leaveDates.add(dateOnly);
+          }
         } else {
           final parsed = AttendanceDay._parseDate(d);
           if (parsed != null) {
@@ -358,10 +393,42 @@ class AttendanceCalendarData {
       }
     }
 
+    void addLeaveRaw(dynamic raw) {
+      if (raw is! List) return;
+      for (final item in raw) {
+        if (item is Map) {
+          final map = Map<String, dynamic>.from(item);
+          final parsed = AttendanceDay._parseDate(
+            map['date'] ?? map['day'] ?? map['from_date'] ?? map['date_from'],
+          );
+          if (parsed == null) continue;
+          leaveDates.add(DateTime(parsed.year, parsed.month, parsed.day));
+        } else {
+          final parsed = AttendanceDay._parseDate(item);
+          if (parsed != null) {
+            leaveDates.add(DateTime(parsed.year, parsed.month, parsed.day));
+          }
+        }
+      }
+    }
+
+    addLeaveRaw(json['leave_dates'] ?? json['leaves']);
+
     return AttendanceCalendarData(
       monthLabel: label,
       attendanceDates: dates,
       holidays: holidays,
+      leaveDates: leaveDates.toList(growable: false),
     );
+  }
+
+  static bool _isLeaveStatus(String status, dynamic isLeave) {
+    return isLeave == true ||
+        isLeave == 1 ||
+        isLeave == '1' ||
+        isLeave == 'true' ||
+        status == 'leave' ||
+        status == 'on_leave' ||
+        status == 'onleave';
   }
 }

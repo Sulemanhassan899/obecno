@@ -1,8 +1,8 @@
-
 // attendance_details_sheet.dart
 import 'package:flutter/material.dart';
 
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
@@ -16,6 +16,9 @@ import 'package:obecno/features/clock/data/models/clock_attendence_event.dart'
 import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/more/presentation/widgets/timeline_reminder_rows.dart';
+import 'package:obecno/features/more/services/reminder_engine.dart';
 
 import 'package:obecno/core/generated/assets.dart';
 
@@ -38,6 +41,7 @@ class AttendanceDetailsSheet {
     required ApiClient apiClient,
     required String userEmail,
     VoidCallback? onEditAttendance,
+    bool onLeave = false,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -52,6 +56,7 @@ class AttendanceDetailsSheet {
           apiClient: apiClient,
           userEmail: userEmail,
           onEditAttendance: onEditAttendance,
+          onLeave: onLeave,
         );
       },
     );
@@ -66,6 +71,7 @@ class _AttendanceDetailsSheetBody extends StatefulWidget {
   final ApiClient apiClient;
   final String userEmail;
   final VoidCallback? onEditAttendance;
+  final bool onLeave;
 
   const _AttendanceDetailsSheetBody({
     required this.pageContext,
@@ -75,6 +81,7 @@ class _AttendanceDetailsSheetBody extends StatefulWidget {
     required this.apiClient,
     required this.userEmail,
     required this.onEditAttendance,
+    this.onLeave = false,
   });
 
   @override
@@ -88,6 +95,7 @@ class _AttendanceDetailsSheetBodyState
   late HistoryAttendanceSummary _summary;
   bool _loadingDetails = true;
   int? _attendanceId;
+  List<ReminderLog> _reminderLogs = const [];
 
   String _yyyyMMdd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -129,8 +137,9 @@ class _AttendanceDetailsSheetBodyState
     setState(() => _loadingDetails = true);
 
     try {
-      final response = await AttendanceService(widget.apiClient)
-          .getAttendanceDetails(date: _yyyyMMdd(widget.day));
+      final response = await AttendanceService(
+        widget.apiClient,
+      ).getAttendanceDetails(date: _yyyyMMdd(widget.day));
 
       if (!mounted) return;
 
@@ -146,6 +155,7 @@ class _AttendanceDetailsSheetBodyState
             _attendanceId = data.attendanceId;
             _loadingDetails = false;
           });
+          await _syncReminders();
           return;
         }
         if (mounted) {
@@ -164,6 +174,40 @@ class _AttendanceDetailsSheetBodyState
       _summary = HistoryAttendanceEngine.compute(withLocal);
       _loadingDetails = false;
     });
+    await _syncReminders();
+  }
+
+  Future<void> _syncReminders() async {
+    final punches = <ReminderPunch>[];
+    for (final event in _events) {
+      final kind = ReminderPunchKind.fromName(event.type.name);
+      if (kind == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: event.time));
+    }
+    final logs = await bindings.reminderSettingsProvider.syncForDay(
+      day: widget.day,
+      punches: punches,
+      locationName: bindings.authProvider.selectedLocation?.name,
+    );
+    if (!mounted) return;
+    setState(() => _reminderLogs = logs);
+  }
+
+  ReminderPunchKind? _primaryKind(HistoryAttendanceEvent event) {
+    final kind = ReminderPunchKind.fromName(event.type.name);
+    if (kind == null) return null;
+    final ofType = HistoryAttendanceEngine.sortedOldestFirst(
+      _events,
+    ).where((e) => e.type == event.type).toList();
+    if (ofType.isEmpty) return null;
+    final primary =
+        kind == ReminderPunchKind.checkOut || kind == ReminderPunchKind.breakEnd
+        ? ofType.last
+        : ofType.first;
+    final same =
+        (primary.id != null && event.id != null && primary.id == event.id) ||
+        primary.time == event.time;
+    return same ? kind : null;
   }
 
   /// Prefer API `change_requests` / `changes`. If a card has none, attach
@@ -175,14 +219,16 @@ class _AttendanceDetailsSheetBodyState
     await store.ensureLoaded();
 
     final attachedTypes = <String>{};
-    return events.map((event) {
-      if (event.editRequests.isNotEmpty) return event;
-      final typeName = event.type.name;
-      if (!attachedTypes.add(typeName)) return event;
-      final stored = store.forEvent(day: widget.day, eventType: typeName);
-      if (stored.isEmpty) return event;
-      return event.copyWith(editRequests: stored);
-    }).toList(growable: false);
+    return events
+        .map((event) {
+          if (event.editRequests.isNotEmpty) return event;
+          final typeName = event.type.name;
+          if (!attachedTypes.add(typeName)) return event;
+          final stored = store.forEvent(day: widget.day, eventType: typeName);
+          if (stored.isEmpty) return event;
+          return event.copyWith(editRequests: stored);
+        })
+        .toList(growable: false);
   }
 
   Color _colorFor(AttendanceHisotryEventType type) {
@@ -240,8 +286,8 @@ class _AttendanceDetailsSheetBodyState
       }
     }
 
-    // Full chronological timeline — never collapse to one-of-each-type.
-    final timeline = HistoryAttendanceEngine.sortedOldestFirst(_events);
+    // Newest activity first — never collapse to one-of-each-type.
+    final timeline = HistoryAttendanceEngine.sortedNewestFirst(_events);
     final day = widget.day;
     final summary = _summary;
     final apiClient = widget.apiClient;
@@ -299,13 +345,31 @@ class _AttendanceDetailsSheetBodyState
                 child: Container(
                   color: kbackground2,
                   child: _loadingDetails
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: kPrimaryColor,
+                      ? const Center(child: ShimmerProgress())
+                      : timeline.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AppText.p2(
+                                  widget.onLeave
+                                      ? 'You are on leave'
+                                      : 'No attendance records',
+                                  weight: FontWeight.w600,
+                                ),
+                                if (widget.onLeave) ...[
+                                  const SizedBox(height: 6),
+                                  AppText.p2(
+                                    'No attendance recorded for this day',
+                                    color: kGreyColor,
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         )
-                      : timeline.isEmpty
-                      ? Center(child: AppText.p2("No attendance records"))
                       : ListView(
                           controller: scrollController,
                           padding: const EdgeInsets.symmetric(
@@ -340,7 +404,8 @@ class _AttendanceDetailsSheetBodyState
                                             AppText.h3(
                                               AttendanceFormat.time(
                                                 summary.firstCheckIn,
-                                              ),align: TextAlign.left,
+                                              ),
+                                              align: TextAlign.left,
                                               color: kPrimaryColor,
                                               weight: FontWeight.w700,
                                             ),
@@ -376,7 +441,8 @@ class _AttendanceDetailsSheetBodyState
                                             AppText.h3(
                                               AttendanceFormat.time(
                                                 summary.lastCheckOut,
-                                              ),align: TextAlign.right,
+                                              ),
+                                              align: TextAlign.right,
                                               color: kredColor,
                                               weight: FontWeight.w700,
                                             ),
@@ -422,7 +488,7 @@ class _AttendanceDetailsSheetBodyState
                                 ],
                               ),
                             ),
-           const SizedBox(height: 32),
+                            const SizedBox(height: 32),
 
                             /// ================= TIMELINE HEADER =================
                             Row(
@@ -438,12 +504,19 @@ class _AttendanceDetailsSheetBodyState
 
                             const SizedBox(height: 14),
 
-                            ...timeline.map(
-                              (e) => _TimelineTile(
+                            ...timeline.map((e) {
+                              final kind = _primaryKind(e);
+                              return _TimelineTile(
                                 event: e,
                                 color: _colorFor(e.type),
-                              ),
-                            ),
+                                reminderLogs: kind == null
+                                    ? const []
+                                    : ReminderEngine.logsFor(
+                                        kind,
+                                        _reminderLogs,
+                                      ),
+                              );
+                            }),
                           ],
                         ),
                 ),
@@ -545,8 +618,13 @@ class _AttendanceDetailsSheetBodyState
 class _TimelineTile extends StatefulWidget {
   final HistoryAttendanceEvent event;
   final Color color;
+  final List<ReminderLog> reminderLogs;
 
-  const _TimelineTile({required this.event, required this.color});
+  const _TimelineTile({
+    required this.event,
+    required this.color,
+    this.reminderLogs = const [],
+  });
 
   @override
   State<_TimelineTile> createState() => _TimelineTileState();
@@ -639,65 +717,83 @@ class _TimelineTileState extends State<_TimelineTile> {
         : _resolvedText!;
     final isEdited = widget.event.isEdited;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: AppText.h6(
-                  AttendanceFormat.time(widget.event.time),
-                  weight: FontWeight.w700,
-                  align: TextAlign.left,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppText.h6(
+                      AttendanceFormat.time(widget.event.time),
+                      weight: FontWeight.w700,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                  if (isEdited)
+                    AppText.p2(
+                      'Edited',
+                      color: kSubText,
+                      weight: FontWeight.w400,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  AppText.h5(
+                    widget.event.label,
+                    color: widget.color,
+                    weight: FontWeight.w700,
+                    align: TextAlign.left,
+                  ),
+                  if (isEdited) ...[
+                    const SizedBox(width: 10),
+                    CommonImageView(
+                      imagePath: Assets.imagesUserPen,
+                      height: 20,
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  CommonImageView(
+                    imagePath: Assets.imagesLocationDot,
+                    height: 12,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: AppText.p2(
+                      displayLocation,
+                      color: kGreyColor,
+                      weight: FontWeight.w500,
+                      overflow: TextOverflow.ellipsis,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                ],
               ),
               if (isEdited)
-                AppText.p2('Edited', color: kSubText, weight: FontWeight.w400),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              AppText.h5(
-                widget.event.label,
-                color: widget.color,
-                weight: FontWeight.w700,
-                align: TextAlign.left,
-              ),
-              if (isEdited) ...[
-                const SizedBox(width: 10),
-                CommonImageView(imagePath: Assets.imagesUserPen, height: 20),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
-              const SizedBox(width: 6),
-              Expanded(
-                child: AppText.p2(
-                  displayLocation,
-                  color: kGreyColor,
-                  weight: FontWeight.w500,
-                  overflow: TextOverflow.ellipsis,
-                  align: TextAlign.left,
+                AttendanceEditHistorySection(
+                  requests: widget.event.editRequests,
                 ),
-              ),
             ],
           ),
-          if (isEdited)
-            AttendanceEditHistorySection(requests: widget.event.editRequests),
-        ],
-      ),
+        ),
+        TimelineReminderRows(logs: widget.reminderLogs),
+        const SizedBox(height: 14),
+      ],
     );
   }
 }

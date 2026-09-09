@@ -1,3 +1,4 @@
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -25,6 +26,16 @@ class CheckInOutTimingSheet {
     TimeOfDay? checkOut,
     int? graceMinutes,
   }) {
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'open',
+      locationId: locationId,
+      api: locationId == null || locationId.trim().isEmpty
+          ? null
+          : 'PUT /manager/locations/$locationId/schedule',
+      apiNeeds: 'check_in, check_out, grace_minutes',
+      extra: {'userId': userId, 'employeeName': employeeName},
+    );
     return showModalBottomSheet<LocationSchedule>(
       context: context,
       isScrollControlled: true,
@@ -119,13 +130,14 @@ class _CheckInOutTimingSheetBodyState
         _loading = false;
       });
       LocationPolicyLog.dump(
-        sheet: 'check_in_out',
+        sheet: 'Check In / Out Timing',
         phase: 'fetched',
         locationId: locationId,
         schedule: result.data ?? _baseSchedule,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
+        api: 'GET /manager/locations/$locationId/schedule',
       );
       return;
     }
@@ -200,29 +212,33 @@ class _CheckInOutTimingSheetBodyState
       final current = _baseSchedule;
       final next = _currentSchedule;
       LocationPolicyLog.dump(
-        sheet: 'check_in_out',
+        sheet: 'Check In / Out Timing',
         phase: 'current',
         locationId: locationId,
         schedule: current,
+        apiNeeds: 'check_in, check_out, grace_minutes',
       );
       LocationPolicyLog.dump(
-        sheet: 'check_in_out',
+        sheet: 'Check In / Out Timing',
         phase: 'changed',
         locationId: locationId,
         schedule: next,
+        api: 'PUT /manager/locations/$locationId/schedule',
+        apiNeeds: 'check_in, check_out, grace_minutes',
       );
       final result = await bindings.managerLocationsService
           .updateLocationSchedule(locationId: locationId, schedule: next);
       if (!mounted) return;
       setState(() => _saving = false);
       LocationPolicyLog.dump(
-        sheet: 'check_in_out',
+        sheet: 'Check In / Out Timing',
         phase: 'response',
         locationId: locationId,
         schedule: result.data ?? next,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
+        api: 'PUT /manager/locations/$locationId/schedule',
       );
       if (!result.success) {
         ToastHelper.error(
@@ -347,7 +363,7 @@ class _CheckInOutTimingSheetBodyState
               child: Container(
                 color: kbackground2,
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(child: ShimmerProgress())
                     : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   children: [

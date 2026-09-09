@@ -14,7 +14,7 @@ import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/routes/app_routes.dart';
+import 'package:obecno/core/routes/app_routes.dart';
 import 'package:obecno/shared/location/service/geofence_helper.dart';
 
 enum DeviceApprovalStatus { approved, unregistered, blocked, permissionDenied }
@@ -437,7 +437,8 @@ class DeviceApprovalGuard {
       return;
     }
 
-    // Scenario 2 + 6: ALWAYS toast while not approved (pending counts too).
+    // Once per app open / login. Later device checks must not re-toast.
+    if (_toastShown) return;
     ToastHelper.unregisteredDevice(safeContext);
     _toastShown = true;
   }

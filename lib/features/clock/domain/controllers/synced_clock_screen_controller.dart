@@ -17,6 +17,7 @@ import '../../repositories/clock_attendance_repository.dart';
 import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';
 import '../../services/employee_trusted_time.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/main.dart';
 
 class SyncedClockScreenController extends ClockScreenController {
@@ -60,7 +61,14 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   Future<void> _bootstrap() async {
-    await trustedTime?.ensureLogin(userId: userId);
+    await trustedTime?.ensureLogin(userId: userId, createIfMissing: false);
+    if (_isStale) return;
+    if (trustedTime?.sessionEndedByReboot == true ||
+        trustedTime?.rebootDetected == true) {
+      isProcessing = false;
+      if (!_isStale) notifyListeners();
+      return;
+    }
     await _loadBreakDurationPolicy();
     await reconcileWithServer().whenComplete(() {
       if (!_isStale) {
@@ -132,6 +140,7 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   GpsReading? _lastGpsReading;
+  bool _geofenceSampled = false;
 
   void _captureRealLocationIfOutOfRange(AttendanceActionResult result) {
     if (isInRange ||
@@ -164,8 +173,7 @@ class SyncedClockScreenController extends ClockScreenController {
   DateTime? get breakStartedAt =>
       _summary.isOnBreak ? _summary.openSessionStart : null;
 
-  Duration get liveBreakDuration =>
-      _summary.liveBreakDuration(now: clockNow);
+  Duration get liveBreakDuration => _summary.liveBreakDuration(now: clockNow);
 
   int get breakDurationMinutes => liveBreakDuration.inMinutes;
 
@@ -310,6 +318,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
       // Keep loader active during server sync
       isProcessing = true;
+      unawaited(_syncReminderLogs());
       return await _syncIfNeeded(result, previousEvents);
     } finally {
       isProcessing = false;
@@ -359,12 +368,34 @@ class SyncedClockScreenController extends ClockScreenController {
 
       // Keep loader active during server sync
       isProcessing = true;
+      unawaited(_syncReminderLogs());
       return await _syncIfNeeded(result, previousEvents);
     } finally {
       isProcessing = false;
       _isHandlingTap = false;
       if (!_isStale) notifyListeners();
     }
+  }
+
+  Future<void> _syncReminderLogs() async {
+    final punches = <ReminderPunch>[];
+    for (final event in events) {
+      final kind = ReminderPunchKind.fromName(event.type.name);
+      if (kind == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
+    }
+    await bindings.reminderSettingsProvider.syncForDay(
+      day: clockNow,
+      punches: punches,
+      now: clockNow,
+      locationName: selectedLocationName,
+    );
+  }
+
+  @override
+  void restoreEvents(List<AttendanceEvent> snapshot) {
+    super.restoreEvents(snapshot);
+    unawaited(_syncReminderLogs());
   }
 
   Future<bool> _validateGeofence() async {
@@ -425,10 +456,35 @@ class SyncedClockScreenController extends ClockScreenController {
       locationName: locName,
     );
 
+    final wasInside = isInRange;
     isInRange = result.isInside;
     _lastGpsReading = reading;
     unawaited(persistGeofenceState());
+    if (_geofenceSampled && wasInside != isInRange) {
+      unawaited(
+        _notifyGeofenceTransition(entered: isInRange, locationName: locName),
+      );
+    }
+    _geofenceSampled = true;
     return true;
+  }
+
+  Future<void> _notifyGeofenceTransition({
+    required bool entered,
+    required String locationName,
+  }) async {
+    final punches = <ReminderPunch>[];
+    for (final event in events) {
+      final kind = ReminderPunchKind.fromName(event.type.name);
+      if (kind == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
+    }
+    await bindings.reminderSettingsProvider.notifyGeofenceTransition(
+      entered: entered,
+      now: clockNow,
+      punches: punches,
+      locationName: locationName,
+    );
   }
 
   Future<void> refreshGeofenceStatus() async {

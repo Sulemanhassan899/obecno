@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -525,6 +526,7 @@ class _ManagerAttendanceDetailsSheetBodyState
       employeeName: _data.name,
       applyImmediately:
           bindings.authProvider.homeTarget == AuthHomeTarget.manager,
+      isCreating: isAdd && !_data.hasAttendance,
       initialCheckIn: _timeOfDay(checkIn),
       initialCheckOut: _timeOfDay(checkOut),
       initialBreakStart: _timeOfDay(breakStart),
@@ -719,7 +721,7 @@ class _ManagerAttendanceDetailsSheetBodyState
                               child: SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(
+                                child: ShimmerProgress(
                                   strokeWidth: 2,
                                 ),
                               ),

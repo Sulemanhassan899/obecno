@@ -74,6 +74,14 @@ class Assets {
   /// assets/images/bell.png
   static const String imagesBell = "assets/images/bell.png";
 
+  /// Assets for imagesReminderClock
+  /// assets/images/reminder_clock.png
+  static const String imagesReminderClock = "assets/images/reminder_clock.png";
+
+  /// Assets for imagesSparkle
+  /// assets/images/sparkle.png
+  static const String imagesSparkle = "assets/images/sparkle.png";
+
   /// Assets for imagesCalendarDay
   /// assets/images/calendar_day.png
   static const String imagesCalendarDay = "assets/images/calendar_day.png";

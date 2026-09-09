@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
-import 'package:obecno/features/employee_module/more/data/models/device_model.dart';
+import 'package:obecno/features/more/data/models/device_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
@@ -175,6 +175,34 @@ void main() {
       expect(devices.first.isCurrent, isTrue);
     });
 
+    test('keeps a pending request that only has id and approval_status', () {
+      final devices = DeviceModel.listFromEnvelope({
+        'devices': [
+          {'id': '55', 'name': 'A36', 'approval_status': 'approved'},
+          {'id': '99', 'approval_status': 'pending'},
+        ],
+      });
+      expect(devices.map((d) => d.id), containsAll(['55', '99']));
+      expect(devices.firstWhere((d) => d.id == '99').isPending, isTrue);
+    });
+
+    test('pins pending requests before active devices', () {
+      final devices = DeviceModel.pendingFirst([
+        DeviceModel.fromJson({
+          'id': '1',
+          'name': 'A36',
+          'approval_status': 'approved',
+        }),
+        DeviceModel.fromJson({
+          'id': '2',
+          'name': 'Device',
+          'approval_status': 'pending',
+        }),
+      ]);
+      expect(devices.first.id, '2');
+      expect(devices.first.isPending, isTrue);
+    });
+
     test(
       'DeviceListResponse keeps nested current_device and pending groups',
       () {
@@ -297,11 +325,7 @@ void main() {
     test('keeps a blocked device on the list when GET omits it', () {
       final previous = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
-        device(
-          id: '2',
-          name: 'Emulator',
-          status: ManagerDeviceStatus.blocked,
-        ),
+        device(id: '2', name: 'Emulator', status: ManagerDeviceStatus.blocked),
       ];
       final incoming = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
@@ -321,11 +345,7 @@ void main() {
     test('keeps an unblocked device on the list when GET omits it', () {
       final previous = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
-        device(
-          id: '2',
-          name: 'Emulator',
-          status: ManagerDeviceStatus.active,
-        ),
+        device(id: '2', name: 'Emulator', status: ManagerDeviceStatus.active),
       ];
       final incoming = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
@@ -345,11 +365,7 @@ void main() {
     test('keeps a pending device request on the list when GET omits it', () {
       final previous = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
-        device(
-          id: '3',
-          name: 'Pixel',
-          status: ManagerDeviceStatus.pending,
-        ),
+        device(id: '3', name: 'Pixel', status: ManagerDeviceStatus.pending),
       ];
       final incoming = [
         device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
@@ -378,6 +394,15 @@ void main() {
       ]);
       expect(ordered.first.id, '2');
       expect(ordered.first.isCurrent, isTrue);
+    });
+
+    test('pins a new pending request before active devices', () {
+      final ordered = ManagerLinkedDevice.pendingFirst([
+        device(id: '1', name: 'A36', status: ManagerDeviceStatus.active),
+        device(id: '99', name: 'Device', status: ManagerDeviceStatus.pending),
+      ]);
+      expect(ordered.first.id, '99');
+      expect(ordered.first.status, ManagerDeviceStatus.pending);
     });
   });
 

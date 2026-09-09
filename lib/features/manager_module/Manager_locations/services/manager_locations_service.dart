@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/api/manager_api_endpoints.dart';
 import 'package:obecno/features/auth/data/models/auth_company_model.dart';
 import 'package:obecno/features/auth/data/models/auth_location_model.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
@@ -8,6 +8,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/services/manag
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/domain/add_location_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/repositories/manager_locations_repository.dart';
@@ -142,13 +143,6 @@ class ManagerLocationsService {
       city: resolvedCity,
       country: resolvedCountry,
     );
-    debugPrint(
-      '[AddLocation] createLocation name="$name" '
-      'seed=${seed?.id}/${seed?.name} city=${seed?.city} '
-      'company=${company?.name} companyCity=${company?.cityName} '
-      'resolvedCity=$resolvedCity resolvedCountry=$resolvedCountry '
-      'resolvedTimezone=$resolvedTimezone',
-    );
     final resolvedTimezoneId = await _resolveTimezoneId(
       explicit: timezoneId,
       seed: seed,
@@ -171,17 +165,35 @@ class ManagerLocationsService {
       timezone: resolvedTimezone,
       timezoneId: resolvedTimezoneId,
     );
-    debugPrint(
-      '[AddLocation] timezoneId=$resolvedTimezoneId payload=$payload',
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'user sending',
+      api: 'POST ${ManagerEmployeeApiEndpoints.addLocation}',
+      apiNeeds: AddLocationLog.createApiNeeds,
+      userSending: payload,
+      extra: {
+        'typedName': name,
+        'seed': '${seed?.id}/${seed?.name}',
+        'company': company?.name,
+        'resolvedCity': resolvedCity,
+        'resolvedCountry': resolvedCountry,
+        'resolvedTimezone': resolvedTimezone,
+        'timezoneId': resolvedTimezoneId,
+      },
     );
     final result = await _repository.createLocation(
       payload: payload,
       cancelToken: cancelToken,
     );
-    debugPrint(
-      '[AddLocation] service result success=${result.success} '
-      'status=${result.statusCode} message=${result.message} '
-      'fieldErrors=${result.fieldErrors} data=${result.data?.id}',
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'response',
+      api: 'POST ${ManagerEmployeeApiEndpoints.addLocation}',
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      fieldErrors: result.fieldErrors,
+      extra: {'id': result.data?.id, 'name': result.data?.name},
     );
     if (result.success && result.data != null) {
       LocationSchedule? company;
@@ -217,7 +229,11 @@ class ManagerLocationsService {
         ManagerLocationModel.timezoneIdFrom(company?.timezoneId) ??
         ManagerLocationModel.timezoneIdFrom(company?.timezone);
     if (fromKnown != null) {
-      debugPrint('[AddLocation] timezoneId from known seed/company=$fromKnown');
+      AddLocationLog.dump(
+        sheet: 'New Location',
+        phase: 'timezone',
+        extra: {'timezoneId': fromKnown, 'source': 'seed/company'},
+      );
       return fromKnown;
     }
 
@@ -227,8 +243,13 @@ class ManagerLocationsService {
         final id = ManagerLocationModel.timezoneIdFrom(location.timezoneId) ??
             ManagerLocationModel.timezoneIdFrom(location.timezone);
         if (id != null) {
-          debugPrint(
-            '[AddLocation] timezoneId from existing location ${location.id}=$id',
+          AddLocationLog.dump(
+            sheet: 'New Location',
+            phase: 'timezone',
+            extra: {
+              'timezoneId': id,
+              'source': 'existing location ${location.id}',
+            },
           );
           return id;
         }
@@ -241,8 +262,13 @@ class ManagerLocationsService {
         final id = ManagerLocationModel.timezoneIdFrom(detail.data?.timezoneId) ??
             ManagerLocationModel.timezoneIdFrom(detail.data?.timezone);
         if (id != null) {
-          debugPrint(
-            '[AddLocation] timezoneId from location detail ${existing.data!.first.id}=$id',
+          AddLocationLog.dump(
+            sheet: 'New Location',
+            phase: 'timezone',
+            extra: {
+              'timezoneId': id,
+              'source': 'location detail ${existing.data!.first.id}',
+            },
           );
           return id;
         }
@@ -256,9 +282,15 @@ class ManagerLocationsService {
       city: city,
       country: country,
     );
-    debugPrint(
-      '[AddLocation] timezoneId from lookup iana=$iana '
-      'options=${_timezones!.length} matched=$matched',
+    AddLocationLog.dump(
+      sheet: 'New Location',
+      phase: 'timezone',
+      extra: {
+        'timezoneId': matched,
+        'source': 'lookup',
+        'iana': iana,
+        'options': _timezones!.length,
+      },
     );
     return matched;
   }
@@ -280,20 +312,42 @@ class ManagerLocationsService {
   Future<ApiResponse<ManagerLocationModel>> updateLocation({
     required ManagerLocationModel location,
     ApiCancelToken? cancelToken,
-  }) {
-    return _repository.updateLocation(
+  }) async {
+    final payload = {
+      'name': location.name,
+      'address': location.address,
+      'latitude': location.latitude,
+      'longitude': location.longitude,
+      'radius_meters':
+          location.radiusMeters ?? ManagerLocationModel.defaultRadiusMeters,
+      'allow_checkin_anywhere': location.allowCheckinAnywhere,
+    };
+    final api =
+        'GET ${ManagerEmployeeApiEndpoints.getLocation(location.id).path} then '
+        'PATCH|PUT ${ManagerEmployeeApiEndpoints.location(location.id)}';
+    AddLocationLog.dump(
+      sheet: 'Set up Location',
+      phase: 'user sending',
+      api: api,
+      apiNeeds: AddLocationLog.updatePinApiNeeds,
+      userSending: payload,
+    );
+    final result = await _repository.updateLocation(
       locationId: location.id,
-      payload: {
-        'name': location.name,
-        'address': location.address,
-        'latitude': location.latitude,
-        'longitude': location.longitude,
-        'radius_meters':
-            location.radiusMeters ?? ManagerLocationModel.defaultRadiusMeters,
-        'allow_checkin_anywhere': location.allowCheckinAnywhere,
-      },
+      payload: payload,
       cancelToken: cancelToken,
     );
+    AddLocationLog.dump(
+      sheet: 'Set up Location',
+      phase: 'response',
+      api: api,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      fieldErrors: result.fieldErrors,
+      extra: {'id': result.data?.id, 'address': result.data?.address},
+    );
+    return result;
   }
 
   Future<ApiResponse<LocationSchedule>> loadLocationSchedule({
@@ -414,6 +468,12 @@ class ManagerLocationsService {
       phase: 'changed',
       locationId: locationId,
       schedule: schedule,
+      api:
+          'GET ${ManagerEmployeeApiEndpoints.getLocation(locationId).path} + '
+          'GET ${ManagerEmployeeApiEndpoints.getLocationPermissions(locationId).path} '
+          'then PATCH|PUT location and permissions',
+      apiNeeds: AddLocationLog.scheduleApiNeeds,
+      userSending: schedule.toJson(),
     );
     final written = await _repository.updateLocationSchedule(
       locationId: locationId,
@@ -428,6 +488,9 @@ class ManagerLocationsService {
       success: written.success,
       statusCode: written.statusCode,
       message: written.message,
+      api:
+          'PATCH|PUT ${ManagerEmployeeApiEndpoints.location(locationId)} + '
+          'PATCH|PUT ${ManagerEmployeeApiEndpoints.locationPermissions(locationId)}',
     );
     if (!written.success) return written;
 
@@ -452,22 +515,57 @@ class ManagerLocationsService {
   Future<ApiResponse<bool>> deactivateLocation({
     required String locationId,
     ApiCancelToken? cancelToken,
-  }) {
-    return _repository.updateLocationStatus(
+  }) async {
+    final api =
+        'PATCH ${ManagerEmployeeApiEndpoints.locationStatus(locationId)}';
+    AddLocationLog.dump(
+      sheet: 'Deactivate Location',
+      phase: 'user sending',
+      api: api,
+      apiNeeds: 'is_active',
+      userSending: {'location_id': locationId, 'is_active': false},
+    );
+    final result = await _repository.updateLocationStatus(
       locationId: locationId,
       isActive: false,
       cancelToken: cancelToken,
     );
+    AddLocationLog.dump(
+      sheet: 'Deactivate Location',
+      phase: 'response',
+      api: api,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+    );
+    return result;
   }
 
   Future<ApiResponse<bool>> deleteLocation({
     required String locationId,
     ApiCancelToken? cancelToken,
-  }) {
-    return _repository.deleteLocation(
+  }) async {
+    final api = 'DELETE ${ManagerEmployeeApiEndpoints.location(locationId)}';
+    AddLocationLog.dump(
+      sheet: 'Delete Location',
+      phase: 'user sending',
+      api: api,
+      apiNeeds: 'location_id (path)',
+      userSending: {'location_id': locationId},
+    );
+    final result = await _repository.deleteLocation(
       locationId: locationId,
       cancelToken: cancelToken,
     );
+    AddLocationLog.dump(
+      sheet: 'Delete Location',
+      phase: 'response',
+      api: api,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+    );
+    return result;
   }
 
   Future<ApiResponse<int>> addLocationMembers({
@@ -476,10 +574,15 @@ class ManagerLocationsService {
     ApiCancelToken? cancelToken,
   }) async {
     rememberAssignedMembers(locationId, employeeIds);
+    final api =
+        'POST ${ManagerEmployeeApiEndpoints.locationMembers(locationId)}';
     LocationPolicyLog.dump(
-      sheet: 'add_members',
+      sheet: 'Add Member',
       phase: 'changed',
       locationId: locationId,
+      api: api,
+      apiNeeds: AddLocationLog.membersApiNeeds,
+      userSending: {'location_id': locationId, 'employee_ids': employeeIds},
       extra: {'employeeIds': employeeIds.join(',')},
     );
     final result = await _repository.addLocationMembers(
@@ -488,12 +591,14 @@ class ManagerLocationsService {
       cancelToken: cancelToken,
     );
     LocationPolicyLog.dump(
-      sheet: 'add_members',
+      sheet: 'Add Member',
       phase: 'response',
       locationId: locationId,
       success: result.success,
       statusCode: result.statusCode,
       message: result.message,
+      api:
+          'POST ${ManagerEmployeeApiEndpoints.locationMembers(locationId)}',
       extra: {
         'added': result.data,
         'employeeIds': employeeIds.join(','),

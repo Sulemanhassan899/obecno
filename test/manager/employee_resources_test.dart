@@ -144,9 +144,22 @@ void main() {
         ManagerEmployeeApiEndpoints.putLocation(9).path,
         '/manager/locations/9',
       );
+      expect(ManagerEmployeeApiEndpoints.patchLocation(9).method, 'PATCH');
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocation(9).path,
+        '/manager/locations/9',
+      );
       expect(
         ManagerEmployeeApiEndpoints.putLocationSchedule(9).method,
         'PUT',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationSchedule(9).method,
+        'PATCH',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.patchLocationSchedule(9).path,
+        '/manager/locations/9/schedule',
       );
       expect(
         ManagerEmployeeApiEndpoints.getLocationSchedule(9).method,

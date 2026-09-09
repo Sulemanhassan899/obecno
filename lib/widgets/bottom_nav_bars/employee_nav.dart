@@ -5,7 +5,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
-import 'package:obecno/features/employee_module/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -22,10 +22,12 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   // GlobalKey lets us call notifyTabResumed() on ClockScreen's state
   // when the user switches back to the Clock tab.
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
+  final GlobalKey<EmployeeAttendanceScreenState> _attendanceKey =
+      GlobalKey<EmployeeAttendanceScreenState>();
 
   late final List<Widget> screens = [
     ClockScreen(key: _clockKey),
-    EmployeeAttendanceScreen(),
+    EmployeeAttendanceScreen(key: _attendanceKey),
     AlertsScreen(),
     ProfileSettingsScreen(),
   ];
@@ -87,6 +89,9 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
                     // so the user sees the correct state without any delay.
                     if (index == 0 && previousIndex != 0) {
                       _clockKey.currentState?.notifyTabResumed();
+                    }
+                    if (index == 1 && previousIndex != 1) {
+                      _attendanceKey.currentState?.notifyTabResumed();
                     }
                   },
                   child: GestureDetector(

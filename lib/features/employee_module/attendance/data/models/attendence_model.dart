@@ -76,6 +76,32 @@ class AttendanceDayRecord {
   final AttendanceDayStatus status;
 
   final String? weekendLabel;
+
+  bool get isOnLeave =>
+      status == AttendanceDayStatus.onLeave ||
+      checkIn == 'Leave' ||
+      checkOut == 'Leave';
+
+  /// Working day with no punches — the dash/minus row in the month list.
+  bool get isAbsent {
+    if (isOnLeave) return false;
+    if (status == AttendanceDayStatus.holiday ||
+        status == AttendanceDayStatus.weekend) {
+      return false;
+    }
+    return status == AttendanceDayStatus.absent ||
+        (!hasPunchTime(checkIn) && !hasPunchTime(checkOut));
+  }
+
+  static bool hasPunchTime(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    return lower != 'leave' &&
+        lower != 'holiday' &&
+        lower != '--' &&
+        !lower.startsWith('--:--');
+  }
 }
 
 class MonthSummary {
