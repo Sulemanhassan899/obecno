@@ -6,6 +6,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
@@ -222,7 +223,11 @@ class _AttendanceContentState extends State<_AttendanceContent>
     return "$hour:$min $period";
   }
 
-  // ✅ FIX: convert to DateTime
+  /// 12:25 AM → hour 0, 8:00 PM → hour 20, 12:00 PM → hour 12.
+  static int _hour24(int hour12, int periodAm0) {
+    return AttendanceEditRequest.hourTo24(hour12, isPm: periodAm0 == 1);
+  }
+
   DateTime _toDateTime(TimeOfDay t) {
     return DateTime(
       widget.day.year,
@@ -233,17 +238,16 @@ class _AttendanceContentState extends State<_AttendanceContent>
     );
   }
 
-  // ✅ FIX: dynamic working hours
   String _calculateWorkingHours() {
-    final total = _toDateTime(checkOut).difference(_toDateTime(checkIn));
-    final breakDur = _toDateTime(breakEnd).difference(_toDateTime(breakStart));
-
-    final working = total - breakDur;
-
-    final h = working.inHours;
-    final m = working.inMinutes.remainder(60);
-
-    return "${h}h ${m.toString().padLeft(2, '0')}m";
+    var breakDur = _toDateTime(breakEnd).difference(_toDateTime(breakStart));
+    if (breakDur.isNegative) breakDur = Duration.zero;
+    return AttendanceFormat.duration(
+      AttendanceFormat.workedDuration(
+        start: _toDateTime(checkIn),
+        end: _toDateTime(checkOut),
+        breaks: breakDur,
+      ),
+    );
   }
 
   void openPicker(String fieldKey) async {
@@ -838,29 +842,29 @@ class _AttendanceContentState extends State<_AttendanceContent>
                             children: [
                               _wheel(13, selectedHour, (v) {
                                 selectedHour = v;
-                                final hour = selectedPeriod == 0
-                                    ? selectedHour
-                                    : (selectedHour + 12) % 24;
                                 onChanged(
-                                  TimeOfDay(hour: hour, minute: selectedMinute),
+                                  TimeOfDay(
+                                    hour: _hour24(selectedHour, selectedPeriod),
+                                    minute: selectedMinute,
+                                  ),
                                 );
                               }),
                               _wheel(60, selectedMinute, (v) {
                                 selectedMinute = v;
-                                final hour = selectedPeriod == 0
-                                    ? selectedHour
-                                    : (selectedHour + 12) % 24;
                                 onChanged(
-                                  TimeOfDay(hour: hour, minute: selectedMinute),
+                                  TimeOfDay(
+                                    hour: _hour24(selectedHour, selectedPeriod),
+                                    minute: selectedMinute,
+                                  ),
                                 );
                               }),
                               _wheel(2, selectedPeriod, (v) {
                                 selectedPeriod = v;
-                                final hour = selectedPeriod == 0
-                                    ? selectedHour
-                                    : (selectedHour + 12) % 24;
                                 onChanged(
-                                  TimeOfDay(hour: hour, minute: selectedMinute),
+                                  TimeOfDay(
+                                    hour: _hour24(selectedHour, selectedPeriod),
+                                    minute: selectedMinute,
+                                  ),
                                 );
                               }, labels: ["AM", "PM"]),
                             ],

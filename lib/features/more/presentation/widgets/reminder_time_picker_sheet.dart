@@ -11,30 +11,20 @@ class ReminderTimePickerSheet {
   static Future<TimeOfDay?> show(
     BuildContext context, {
     required TimeOfDay initial,
-    required TimeOfDay latest,
   }) {
-    final clamped = ReminderTimePickerSheet.clamp(initial, latest);
     return showModalBottomSheet<TimeOfDay>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _ReminderTimePickerBody(initial: clamped, latest: latest),
+      builder: (_) => _ReminderTimePickerBody(initial: initial),
     );
   }
-
-  static TimeOfDay clamp(TimeOfDay value, TimeOfDay latest) {
-    if (_toMinutes(value) > _toMinutes(latest)) return latest;
-    return value;
-  }
-
-  static int _toMinutes(TimeOfDay time) => time.hour * 60 + time.minute;
 }
 
 class _ReminderTimePickerBody extends StatefulWidget {
-  const _ReminderTimePickerBody({required this.initial, required this.latest});
+  const _ReminderTimePickerBody({required this.initial});
 
   final TimeOfDay initial;
-  final TimeOfDay latest;
 
   @override
   State<_ReminderTimePickerBody> createState() =>
@@ -85,12 +75,12 @@ class _ReminderTimePickerBodyState extends State<_ReminderTimePickerBody> {
                   use24hFormat: false,
                   initialDateTime: _asDate(_selected),
                   minimumDate: _asDate(const TimeOfDay(hour: 0, minute: 0)),
-                  maximumDate: _asDate(widget.latest),
+                  maximumDate: _asDate(const TimeOfDay(hour: 23, minute: 59)),
                   onDateTimeChanged: (value) {
                     setState(() {
-                      _selected = ReminderTimePickerSheet.clamp(
-                        TimeOfDay(hour: value.hour, minute: value.minute),
-                        widget.latest,
+                      _selected = TimeOfDay(
+                        hour: value.hour,
+                        minute: value.minute,
                       );
                     });
                   },

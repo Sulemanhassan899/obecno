@@ -380,29 +380,34 @@ class AttendanceRepository {
   }
 
   DateTime? _parseDetailTimestamp(Map<String, dynamic> detail) {
+    final timeStr = detail['attendance_time']?.toString();
+    if (timeStr != null && timeStr.trim().isNotEmpty) {
+      final dateStr = detail['attendance_date']?.toString();
+      final datePart = (dateStr != null && dateStr.trim().isNotEmpty)
+          ? DateTime.tryParse(dateStr.trim())
+          : null;
+      final base = datePart ?? DateTime.now();
+      final wall = _parseTimeOfDay(timeStr, day: base);
+      if (wall != null) return wall;
+    }
+
     final iso = detail['occurred_at_iso']?.toString();
     if (iso != null && iso.trim().isNotEmpty) {
       final parsed = DateTime.tryParse(iso.trim());
-      if (parsed != null) return parsed.toLocal();
+      if (parsed != null) {
+        final local = parsed.toLocal();
+        return DateTime(
+          local.year,
+          local.month,
+          local.day,
+          local.hour,
+          local.minute,
+          local.second,
+        );
+      }
     }
 
-    final timeStr = detail['attendance_time']?.toString();
-    if (timeStr == null || timeStr.trim().isEmpty) return null;
-
-    final dateStr = detail['attendance_date']?.toString();
-    final datePart = (dateStr != null && dateStr.trim().isNotEmpty)
-        ? DateTime.tryParse(dateStr.trim())
-        : null;
-    final base = datePart ?? DateTime.now();
-
-    final parts = timeStr.trim().split(':');
-    if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) return null;
-    final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-
-    return DateTime(base.year, base.month, base.day, hour, minute, second);
+    return null;
   }
 
   String? _dayLevelLocation(Map todayAttendance) {
@@ -423,15 +428,10 @@ class AttendanceRepository {
   }
 
   DateTime? _parseTimeOfDay(String? hms, {DateTime? day}) {
-    if (hms == null || hms.trim().isEmpty) return null;
-    final parts = hms.split(':');
-    if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) return null;
-    final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    final now = day ?? DateTime.now();
-    return DateTime(now.year, now.month, now.day, hour, minute, second);
+    return AttendanceEditRequest.parseClockTime(
+      hms ?? '',
+      date: day ?? DateTime.now(),
+    );
   }
 
   Map<String, dynamic>? _findTodayAttendanceContainer(dynamic raw) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
@@ -44,98 +45,103 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
               const BackButtonBg(title: 'Attendance Reminders'),
               const SizedBox(height: 20),
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.only(bottom: 40),
-                  children: [
-                    _section(
-                      title: 'Check In',
-                      child: Column(
-                        children: [
-                          _reminderCard(
-                            title: 'Check In',
-                            type: ReminderType.checkIn,
-                            reminders: reminders,
-                            detailLabel: 'Remind me at',
-                            detailValue: reminders.checkInTimeLabel,
-                          ),
-                          const SizedBox(height: 8),
-                          _reminderCard(
-                            title: 'Check In Missed',
-                            type: ReminderType.checkInMissed,
-                            reminders: reminders,
-                            detailLabel: 'Remind me after',
-                            detailValue: reminders.graceLabel,
-                          ),
-                        ],
+                child: ShimmerRefreshIndicator(
+                  onRefresh: () =>
+                      context.read<ReminderSettingsProvider>().refresh(),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 40),
+                    children: [
+                      _section(
+                        title: 'Check In',
+                        child: Column(
+                          children: [
+                            _reminderCard(
+                              title: 'Check In',
+                              type: ReminderType.checkIn,
+                              reminders: reminders,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.checkInTimeLabel,
+                            ),
+                            const SizedBox(height: 8),
+                            _reminderCard(
+                              title: 'Check In Missed',
+                              type: ReminderType.checkInMissed,
+                              reminders: reminders,
+                              detailLabel: 'Remind me after',
+                              detailValue: reminders.graceLabel,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    _section(
-                      title: 'Check Out',
-                      child: Column(
-                        children: [
-                          _reminderCard(
-                            title: 'Check Out',
-                            type: ReminderType.checkOut,
-                            reminders: reminders,
-                            detailLabel: 'Remind me at',
-                            detailValue: reminders.checkOutTimeLabel,
-                          ),
-                          const SizedBox(height: 8),
-                          _reminderCard(
-                            title: 'Check Out Missed',
-                            type: ReminderType.checkOutMissed,
-                            reminders: reminders,
-                            detailLabel: 'Remind me after',
-                            detailValue: reminders.graceLabel,
-                          ),
-                        ],
+                      _section(
+                        title: 'Check Out',
+                        child: Column(
+                          children: [
+                            _reminderCard(
+                              title: 'Check Out',
+                              type: ReminderType.checkOut,
+                              reminders: reminders,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.checkOutTimeLabel,
+                            ),
+                            const SizedBox(height: 8),
+                            _reminderCard(
+                              title: 'Check Out Missed',
+                              type: ReminderType.checkOutMissed,
+                              reminders: reminders,
+                              detailLabel: 'Remind me after',
+                              detailValue: reminders.graceLabel,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    _section(
-                      title: 'Break',
-                      caption:
-                          "You'll get a reminder after your break time is over.",
-                      child: Column(
-                        children: [
-                          _reminderCard(
-                            title: 'Break time',
-                            type: ReminderType.breakTime,
-                            reminders: reminders,
-                            detailLabel: 'Remind me at',
-                            detailValue: reminders.breakTimeLabel,
-                          ),
-                          const SizedBox(height: 8),
-                          _reminderCard(
-                            title: 'Break time ended',
-                            type: ReminderType.breakTimeEnded,
-                            reminders: reminders,
-                            detailLabel: 'Remind me at',
-                            detailValue: reminders.breakEndedTimeLabel,
-                          ),
-                          const SizedBox(height: 8),
-                          _reminderCard(
-                            title: 'Longer break',
-                            type: ReminderType.longerBreak,
-                            reminders: reminders,
-                            detailLabel: 'Remind me after',
-                            detailValue: reminders.longerBreakLabel,
-                          ),
-                        ],
+                      _section(
+                        title: 'Break',
+                        caption:
+                            "You'll get a reminder after your break time is over.",
+                        child: Column(
+                          children: [
+                            _reminderCard(
+                              title: 'Break time',
+                              type: ReminderType.breakTime,
+                              reminders: reminders,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.breakTimeLabel,
+                            ),
+                            const SizedBox(height: 8),
+                            _reminderCard(
+                              title: 'Break time ended',
+                              type: ReminderType.breakTimeEnded,
+                              reminders: reminders,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.breakEndedTimeLabel,
+                            ),
+                            const SizedBox(height: 8),
+                            _reminderCard(
+                              title: 'Longer break',
+                              type: ReminderType.longerBreak,
+                              reminders: reminders,
+                              detailLabel: 'Remind me after',
+                              detailValue: reminders.longerBreakLabel,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    _section(
-                      title: 'Attendance Issue',
-                      caption:
-                          "You'll get a reminder if you've checked in for 12+ hours without checking out.",
-                      child: _reminderCard(
-                        title: 'Very long attendance',
-                        type: ReminderType.veryLongAttendance,
-                        reminders: reminders,
-                        detailLabel: 'Notify me after',
-                        detailValue: reminders.longAttendanceLabel,
+                      _section(
+                        title: 'Attendance Issue',
+                        caption:
+                            "You'll get a reminder if you've checked in for 12+ hours without checking out.",
+                        child: _reminderCard(
+                          title: 'Very long attendance',
+                          type: ReminderType.veryLongAttendance,
+                          reminders: reminders,
+                          detailLabel: 'Notify me after',
+                          detailValue: reminders.longAttendanceLabel,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -186,7 +192,7 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     required String detailValue,
   }) {
     final on = reminders.isEnabled(type);
-    final canPick = type.canPickEarlierTime;
+    final canPick = type.canPickTime;
     return _card(
       children: [
         _toggleRow(label: title, type: type, reminders: reminders),
@@ -235,7 +241,6 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     final picked = await ReminderTimePickerSheet.show(
       context,
       initial: reminders.reminderTimeFor(type),
-      latest: reminders.latestTimeFor(type),
     );
     if (!mounted || picked == null) return;
     await reminders.setReminderTime(type, picked);

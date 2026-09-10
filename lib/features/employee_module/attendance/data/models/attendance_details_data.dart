@@ -177,12 +177,32 @@ class AttendanceDetailItem {
   }
 
   static DateTime? _parseTime(Map<String, dynamic> json) {
+    final date = json['attendance_date']?.toString();
+    final time = json['attendance_time']?.toString();
+    if (date != null && time != null) {
+      final day = DateTime.tryParse(date);
+      if (day != null) {
+        final wall = AttendanceEditRequest.parseClockTime(time, date: day);
+        if (wall != null) return wall;
+      }
+    }
+
+    DateTime? asLocalWall(DateTime parsed) {
+      final local = parsed.toLocal();
+      return DateTime(
+        local.year,
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+        local.second,
+      );
+    }
+
     final iso = json['occurred_at_iso']?.toString();
     if (iso != null && iso.isNotEmpty) {
       final parsed = DateTime.tryParse(iso);
-      // Always local — UTC ISO without toLocal() sorts/displays wrong vs
-      // attendance_time wall-clock values and can reorder first check-in.
-      if (parsed != null) return parsed.toLocal();
+      if (parsed != null) return asLocalWall(parsed);
     }
 
     final created = json['created_at']?.toString();
@@ -190,20 +210,10 @@ class AttendanceDetailItem {
       final normalized =
           created.contains('T') ? created : created.replaceFirst(' ', 'T');
       final parsed = DateTime.tryParse(normalized);
-      if (parsed != null) return parsed.toLocal();
+      if (parsed != null) return asLocalWall(parsed);
     }
 
-    final date = json['attendance_date']?.toString();
-    final time = json['attendance_time']?.toString();
-    if (date == null || time == null) return null;
-
-    final parts = time.split(':');
-    final h = int.tryParse(parts.elementAt(0)) ?? 0;
-    final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    final s = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
-    final day = DateTime.tryParse(date);
-    if (day == null) return null;
-    return DateTime(day.year, day.month, day.day, h, m, s);
+    return null;
   }
 
   static String? _normalizedLocation(dynamic raw) {

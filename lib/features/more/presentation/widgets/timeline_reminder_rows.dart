@@ -16,11 +16,11 @@ class TimelineReminderRows extends StatelessWidget {
     if (logs.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(left: 4, top: 10, bottom: 2),
+      padding: const EdgeInsets.only(left: 4, top: 2, bottom: 2),
       child: Column(
         children: [
           for (var i = 0; i < logs.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
+            if (i > 0) const SizedBox(height: 12),
             _ReminderRow(log: logs[i]),
           ],
         ],

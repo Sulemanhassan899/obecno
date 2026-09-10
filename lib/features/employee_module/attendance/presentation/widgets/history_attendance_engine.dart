@@ -1,5 +1,8 @@
 import 'package:obecno/core/constants/app_enums.dart';
-import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
+import 'package:obecno/features/clock/data/models/clock_attendence_event.dart'
+    show AttendanceFormat;
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
+    hide AttendanceFormat;
 
 class HistoryAttendanceSummary {
   final DateTime? firstCheckIn;
@@ -32,11 +35,15 @@ class HistoryAttendanceSummary {
   );
 
   Duration liveWorkingDuration({DateTime? now}) {
-    if (!isCheckedIn || isOnBreak || openSessionStart == null) {
-      return totalWorkingDuration;
-    }
-    final current = now ?? DateTime.now();
-    return totalWorkingDuration + current.difference(openSessionStart!);
+    return AttendanceFormat.workedDuration(
+      start: firstCheckIn,
+      end: isOnBreak
+          ? openSessionStart
+          : isCheckedIn
+          ? (now ?? DateTime.now())
+          : lastCheckOut,
+      breaks: totalBreakDuration,
+    );
   }
 
   Duration liveBreakDuration({DateTime? now}) {
@@ -111,18 +118,17 @@ class HistoryAttendanceEngine {
 
     final openSessionStart = openBreakStart ?? openWorkStart;
 
-    // The header shows first check-in and last check-out, so duration must
-    // match that span minus breaks — not the sum of in-office sessions.
     var working = Duration.zero;
     if (firstCheckIn != null) {
-      if (!isCheckedIn && lastCheckOut != null) {
-        working = lastCheckOut.difference(firstCheckIn) - breaks;
-      } else if (isOnBreak && openBreakStart != null) {
-        working = openBreakStart.difference(firstCheckIn) - breaks;
-      } else if (isCheckedIn && openWorkStart != null) {
-        working = openWorkStart.difference(firstCheckIn) - breaks;
-      }
-      if (working.isNegative) working = Duration.zero;
+      working = AttendanceFormat.workedDuration(
+        start: firstCheckIn,
+        end: isOnBreak
+            ? openBreakStart
+            : isCheckedIn
+            ? openWorkStart
+            : lastCheckOut,
+        breaks: breaks,
+      );
     }
 
     return HistoryAttendanceSummary(

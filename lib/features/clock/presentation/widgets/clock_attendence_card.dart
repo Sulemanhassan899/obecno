@@ -81,12 +81,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   String formatTime(DateTime? time) => AttendanceFormat.time(time);
 
-  String formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes.remainder(60);
-    final mm = minutes.toString().padLeft(2, '0');
-    return "${hours}h ${mm}m";
-  }
+  String formatDuration(Duration d) => AttendanceFormat.duration(d);
 
   String? get _firstCheckInLocation {
     for (final e in AttendanceEngine.sortedOldestFirst(widget.events)) {

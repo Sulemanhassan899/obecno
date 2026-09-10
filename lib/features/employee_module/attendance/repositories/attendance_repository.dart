@@ -2,6 +2,7 @@ import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/employee_leave.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
@@ -618,14 +619,12 @@ class HistoryAttendanceRepository {
   // ---------------------------------------------------------------------
 
   ({int hour, int minute, int second})? _parseClockTime(String? raw) {
-    if (raw == null) return null;
-    final parts = raw.split(':');
-    if (parts.length < 2) return null;
-    final h = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    if (h == null || m == null) return null;
-    final s = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    return (hour: h, minute: m, second: s);
+    final parsed = AttendanceEditRequest.parseClockTime(
+      raw ?? '',
+      date: DateTime(2000, 1, 1),
+    );
+    if (parsed == null) return null;
+    return (hour: parsed.hour, minute: parsed.minute, second: parsed.second);
   }
 
   bool _isAfterThreshold(
@@ -648,8 +647,7 @@ class HistoryAttendanceRepository {
     final t = _parseClockTime(raw);
     if (t == null) return null;
     final period = t.hour >= 12 ? 'PM' : 'AM';
-    var hour12 = t.hour % 12;
-    if (hour12 == 0) hour12 = 12;
+    final hour12 = t.hour % 12 == 0 ? 12 : t.hour % 12;
     final hh = hour12.toString().padLeft(2, '0');
     final mm = t.minute.toString().padLeft(2, '0');
     return '$hh:$mm $period';

@@ -129,22 +129,22 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
     required String title,
     required String subtitle,
   }) {
-    return Column(
-      children: [
-        Row(
-          spacing: 5,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CommonImageView(imagePath: icon, height: 16),
-
-            AppText.p2(title),
-          ],
-        ),
-        const SizedBox(height: 8),
-        AppText.p2(subtitle),
-
-        const SizedBox(height: 26),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 26),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CommonImageView(imagePath: icon, height: 16),
+              const SizedBox(width: 5),
+              Flexible(child: AppText.p2(title)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AppText.p2(subtitle, align: TextAlign.center),
+        ],
+      ),
     );
   }
 
@@ -153,25 +153,9 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: kbackground1,
-      bottomNavigationBar: Padding(
-        padding: AppSizes.DEFAULT,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MyButton(
-              buttonText: _loading ? "Please wait..." : "Continue",
-              radius: 30,
-              backgroundColor: kBlack,
-              fontColor: kWhite,
-              onTap: _loading ? () async {} : _handleContinue,
-            ),
-          ],
-        ),
-      ),
       body: Padding(
         padding: AppSizes.DEFAULT,
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
           children: [
             const SizedBox(height: 10),
 
@@ -184,39 +168,53 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
-
-            CommonImageView(
-              imagePath: Assets.imagesEnablePermission,
-              height: 200,
-            ),
-            const SizedBox(height: 16),
-            Center(child: AppText.h4("Enable App Permissions")),
-
-            const SizedBox(height: 10),
-
-            Center(
-              child: AppText.p2(
-                "We need a few permissions to make attendance work smoothly",
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(top: 20, bottom: 16),
+                children: [
+                  CommonImageView(
+                    imagePath: Assets.imagesEnablePermission,
+                    height: 200,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 16),
+                  Center(child: AppText.h4("Enable App Permissions")),
+                  const SizedBox(height: 10),
+                  Center(
+                    child: AppText.p2(
+                      "We need a few permissions to make attendance work smoothly",
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                  _permissionTile(
+                    icon: Assets.imagesLocationPin,
+                    title: "Location Access",
+                    subtitle: "Used for office-based check-ins and reminders",
+                  ),
+                  _permissionTile(
+                    icon: Assets.imagesBell,
+                    title: "Notifications",
+                    subtitle: "Never miss a check-in or check-out",
+                  ),
+                  _permissionTile(
+                    icon: Assets.imagesLocation,
+                    title: "Motion & Fitness",
+                    subtitle:
+                        "You detect movement to improve location accuracy\nOr auto-check-out after inactivity",
+                  ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 48),
-            _permissionTile(
-              icon: Assets.imagesLocationPin,
-              title: "Location Access",
-              subtitle: "Used for office-based check-ins and reminders",
-            ),
-            _permissionTile(
-              icon: Assets.imagesBell,
-              title: "Notifications",
-              subtitle: "Never miss a check-in or check-out",
-            ),
-            _permissionTile(
-              icon: Assets.imagesLocation,
-              title: "Motion & Fitness",
-              subtitle:
-                  "You detect movement to improve location accuracy\nOr auto-check-out after inactivity",
+            SafeArea(
+              top: false,
+              child: MyButton(
+                buttonText: _loading ? "Please wait..." : "Continue",
+                radius: 30,
+                backgroundColor: kBlack,
+                fontColor: kWhite,
+                onTap: _loading ? () async {} : _handleContinue,
+              ),
             ),
           ],
         ),

@@ -87,10 +87,16 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required bool clockArmed,
   }) => resumeExistingSession || clockArmed;
 
-  Future<void> load({bool resumeExistingSession = false}) async {
+  Future<void> load({
+    bool resumeExistingSession = false,
+    bool forcePolicyRefresh = false,
+  }) async {
     _loading = true;
     notifyListeners();
     try {
+      if (forcePolicyRefresh) {
+        await _policyService.refreshFromNetwork(force: true);
+      }
       await Future.wait([_loadSettings(), _loadPolicyTimes()]);
       _enabled[ReminderType.enterLocation] = false;
       _enabled[ReminderType.leaveLocation] = false;
@@ -116,6 +122,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Pull-to-refresh: fetch latest permission clocks and reschedule.
+  Future<void> refresh() =>
+      load(resumeExistingSession: _clockActivated, forcePolicyRefresh: true);
 
   /// First-time users wait until Clock. Returning users are already armed.
   Future<void> activateFromClock() async {
@@ -148,28 +158,18 @@ class ReminderSettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setReminderTime(ReminderType type, TimeOfDay value) async {
-    if (!type.canPickEarlierTime) return;
-    final latest = latestTimeFor(type);
-    final clamped = clampToLatest(value, latest);
-    _customMinutes[type] = clamped.hour * 60 + clamped.minute;
+    if (!type.canPickTime) return;
+    _customMinutes[type] = value.hour * 60 + value.minute;
     _applyCustomTimes();
     notifyListeners();
     await _dao.setRemindMinutes(
       userId: _userIdProvider(),
       type: type,
-      minutes: clamped.hour * 60 + clamped.minute,
+      minutes: value.hour * 60 + value.minute,
     );
     await _clearOsFired(DateTime.now(), type);
     await _persistSettingsSnapshot();
     await _rescheduleNotifications();
-  }
-
-  static TimeOfDay clampToLatest(TimeOfDay value, TimeOfDay latest) {
-    if (value.hour > latest.hour ||
-        (value.hour == latest.hour && value.minute > latest.minute)) {
-      return latest;
-    }
-    return value;
   }
 
   TimeOfDay latestTimeFor(ReminderType type) {
@@ -266,10 +266,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       punches: punches,
       locationName: _locationName(locationName),
     );
-    await _rescheduleNotifications(
-      now: DateTime.now(),
-      reloadPunches: false,
-    );
+    await _rescheduleNotifications(now: DateTime.now(), reloadPunches: false);
     return logs;
   }
 
@@ -404,9 +401,8 @@ class ReminderSettingsProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = _osFiredKey(date);
-      final next = <String>{
-        ...(prefs.getStringList(key) ?? const <String>[]),
-      }..remove(type.storageKey);
+      final next = <String>{...(prefs.getStringList(key) ?? const <String>[])}
+        ..remove(type.storageKey);
       await prefs.setStringList(key, next.toList());
     } catch (_) {}
   }
@@ -564,10 +560,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
     breakEndedTimeLabel = _formatTime(breakEndedReminderTime);
   }
 
-  TimeOfDay _resolvedTime(ReminderType type, TimeOfDay latest) {
+  TimeOfDay _resolvedTime(ReminderType type, TimeOfDay fallback) {
     final custom = _customMinutes[type];
-    if (custom == null) return latest;
-    return clampToLatest(_minutesToTime(custom), latest);
+    if (custom == null) return fallback;
+    return _minutesToTime(custom);
   }
 
   static TimeOfDay _minutesToTime(int minutes) {

@@ -266,6 +266,28 @@ class _ClockAttendanceDetailsSheetBodyState
     return primary.isSamePunchAs(event) ? kind : null;
   }
 
+  List<Widget> _timelineChildren(List<AttendanceEvent> timeline) {
+    final mixed = ReminderEngine.mixTimeline(
+      punchTimes: [for (final e in timeline) e.effectiveTime],
+      primaryKinds: [for (final e in timeline) _primaryKind(e)],
+      logs: _reminderLogs,
+    );
+    return [
+      for (final item in mixed)
+        if (item.isPunch)
+          _TimelineTile(
+            event: timeline[item.punchIndex!],
+            color: _colorFor(timeline[item.punchIndex!].type),
+            reminderLogs: item.attachedLogs,
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TimelineReminderRows(logs: item.standaloneLogs),
+          ),
+    ];
+  }
+
   void _recompute() {
     _summary = AttendanceEngine.compute(_events);
     _workingDuration = _summary.liveWorkingDuration();
@@ -521,7 +543,9 @@ class _ClockAttendanceDetailsSheetBodyState
                       const SizedBox(height: 14),
 
                       /// ================= TIMELINE =================
-                      if (timeline.isEmpty && !_loadingTimeline)
+                      if (timeline.isEmpty &&
+                          _reminderLogs.isEmpty &&
+                          !_loadingTimeline)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24),
                           child: AppText.p2(
@@ -530,16 +554,7 @@ class _ClockAttendanceDetailsSheetBodyState
                           ),
                         )
                       else
-                        ...timeline.map((e) {
-                          final kind = _primaryKind(e);
-                          return _TimelineTile(
-                            event: e,
-                            color: _colorFor(e.type),
-                            reminderLogs: kind == null
-                                ? const []
-                                : ReminderEngine.logsFor(kind, _reminderLogs),
-                          );
-                        }),
+                        ..._timelineChildren(timeline),
 
                       const SizedBox(height: 80),
                     ],
@@ -765,6 +780,7 @@ class _TimelineTile extends StatelessWidget {
             ],
           ),
         ),
+        if (reminderLogs.isNotEmpty) const SizedBox(height: 10),
         TimelineReminderRows(logs: reminderLogs),
         const SizedBox(height: 14),
       ],

@@ -5,6 +5,7 @@ import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     hide MonthSummary, AttendanceDayRecord;
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
@@ -470,15 +471,14 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
   static String? _format12h(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
-    final parts = raw.split(':');
-    if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) return null;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    var hour12 = hour % 12;
-    if (hour12 == 0) hour12 = 12;
-    return '${hour12.toString().padLeft(2, '0')}:'
-        '${minute.toString().padLeft(2, '0')} $period';
+    final parsed = AttendanceEditRequest.parseClockTime(
+      raw,
+      date: DateTime(2000, 1, 1),
+    );
+    if (parsed == null) return null;
+    final hour = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    final ampm = parsed.hour >= 12 ? 'PM' : 'AM';
+    return '${hour.toString().padLeft(2, '0')}:$minute $ampm';
   }
 }

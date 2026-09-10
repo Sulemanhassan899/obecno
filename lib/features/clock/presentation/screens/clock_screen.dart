@@ -125,10 +125,9 @@ class ClockScreenState extends State<ClockScreen>
 
     unawaited(_controller.loadPolicyFrom(bindings.companyPolicyService));
 
-    // Header must show the same trusted clock that stamps punches —
-    // DateTime.now() is the phone wall clock and can disagree after sleep
-    // or a user changing the device time.
-    _ticker.now = () => _controller.clockNow;
+    // Header follows the phone clock. Punch timestamps still come from
+    // trusted time so a changed device clock cannot rewrite attendance.
+    _ticker.now = () => _controller.phoneNow;
     _ticker.start();
 
     _previousSyncStateHandler = bindings.clockSyncService.onStateChanged;
@@ -449,11 +448,17 @@ class ClockScreenState extends State<ClockScreen>
     super.dispose();
   }
 
-  String _formattedTime(DateTime now) {
+  /// Header clock: 8:17 — AM/PM is drawn separately so it is not clipped.
+  String _formattedClock(DateTime now) {
     final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
     final minute = now.minute.toString().padLeft(2, '0');
-    return "$hour:$minute";
+    return '$hour:$minute';
   }
+
+  String _ampm(DateTime now) => now.hour >= 12 ? 'PM' : 'AM';
+
+  String _formattedTime(DateTime now) =>
+      '${_formattedClock(now)} ${_ampm(now)}';
 
   void _openLocationSheet() async {
     // 1. Permission Gate (Check & Request Permissions)
@@ -711,16 +716,6 @@ class ClockScreenState extends State<ClockScreen>
                       : bindings.authProvider.companyName;
 
                   final List<Widget> items = [
-                    if (isOnBreak) ...[
-                      const SizedBox(height: 40),
-                      AppText.p1(
-                        "Break started at ${_formattedTime(syncedController.breakStartedAt ?? _ticker.value)}",
-                        color: kYellowColorLight,
-                        weight: FontWeight.w400,
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-
                     ButtonAnimations.press(
                       onTap: () {},
                       child: Row(
@@ -736,14 +731,31 @@ class ClockScreenState extends State<ClockScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
+                    if (isOnBreak) ...[
+                      const SizedBox(height: 40),
+                      AppText.p1(
+                        "Break started at ${_formattedTime(syncedController.breakStartedAt ?? _ticker.value)}",
+                        color: kYellowColorLight,
+                        weight: FontWeight.w400,
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+
                     ValueListenableBuilder<DateTime>(
                       valueListenable: _ticker,
                       builder: (context, now, _) => Column(
                         children: [
-                          AppText.bigNumber3(
-                            _formattedTime(now),
-                            weight: FontWeight.w400,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              AppText.bigNumber3(
+                                _formattedClock(now),
+                                weight: FontWeight.w400,
+                              ),
+                            ],
                           ),
                           if (syncedController.rebootDetected ||
                               syncedController.sessionEndedByReboot) ...[
@@ -827,11 +839,11 @@ class ClockScreenState extends State<ClockScreen>
                     const SizedBox(height: 30),
                     (!isOnBreak && _controller.hasAnyEventToday)
                         ? AttendanceCard(
-                            day: syncedController.clockNow,
+                            day: syncedController.phoneNow,
                             events: _controller.events,
                             apiClient: bindings.apiClient,
                             userEmail: bindings.userEmail,
-                            clockNow: () => syncedController.clockNow,
+                            clockNow: () => syncedController.phoneNow,
                             onEditAttendance: () {},
                             onTodayEventsLoaded: _controller.mergeTodayEvents,
                           )
