@@ -2,7 +2,9 @@ import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engine.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart';
-import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
+    hide AttendanceFormat;
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -272,6 +274,138 @@ void main() {
       expect(dayModel.checkOuts.last, '17:57:00');
       expect(dayModel.firstCheckIn, '10:57:00');
       expect(dayModel.lastCheckOut, '17:57:00');
+    });
+  });
+
+  group('12-hour AM/PM working hours', () {
+    test('parses 12:25 AM as hour 0 and 8:00 PM as hour 20', () {
+      final day = DateTime(2026, 9, 10);
+      final checkIn = AttendanceEditRequest.parseClockTime(
+        '12:25 AM',
+        date: day,
+      )!;
+      final checkOut = AttendanceEditRequest.parseClockTime(
+        '8:00 PM',
+        date: day,
+      )!;
+      expect(checkIn.hour, 0);
+      expect(checkIn.minute, 25);
+      expect(checkOut.hour, 20);
+      expect(checkOut.minute, 0);
+      expect(
+        AttendanceFormat.workedDuration(
+          start: checkIn,
+          end: checkOut,
+          breaks: const Duration(hours: 1),
+        ),
+        const Duration(hours: 18, minutes: 35),
+      );
+    });
+
+    test('12:25 AM to 8:00 PM minus 1h break is 18h 35m', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(0, 25),
+        ),
+        AttendanceEvent(
+          id: '2',
+          type: AttendanceEventType.breakStart,
+          time: at(13, 0),
+        ),
+        AttendanceEvent(
+          id: '3',
+          type: AttendanceEventType.breakEnd,
+          time: at(14, 0),
+        ),
+        AttendanceEvent(
+          id: '4',
+          type: AttendanceEventType.checkOut,
+          time: at(20, 0),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(summary.firstCheckIn, at(0, 25));
+      expect(summary.lastCheckOut, at(20, 0));
+      expect(summary.totalBreakDuration, const Duration(hours: 1));
+      expect(
+        summary.totalWorkingDuration,
+        const Duration(hours: 18, minutes: 35),
+      );
+    });
+
+    test('live duration from 12:25 AM to 8:17 PM while still checked in', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(0, 25),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(
+        summary.liveWorkingDuration(now: at(20, 17)),
+        const Duration(hours: 19, minutes: 52),
+      );
+    });
+
+    test('12:25 AM to 8:25 PM minus 1h break is 19h', () {
+      final events = [
+        AttendanceEvent(
+          id: '1',
+          type: AttendanceEventType.checkIn,
+          time: at(0, 25),
+        ),
+        AttendanceEvent(
+          id: '2',
+          type: AttendanceEventType.breakStart,
+          time: at(13, 0),
+        ),
+        AttendanceEvent(
+          id: '3',
+          type: AttendanceEventType.breakEnd,
+          time: at(14, 0),
+        ),
+        AttendanceEvent(
+          id: '4',
+          type: AttendanceEventType.checkOut,
+          time: at(20, 25),
+        ),
+      ];
+      final summary = AttendanceEngine.compute(events);
+      expect(AttendanceFormat.time(summary.firstCheckIn), '12:25 AM');
+      expect(AttendanceFormat.time(summary.lastCheckOut), '8:25 PM');
+      expect(
+        summary.totalWorkingDuration,
+        const Duration(hours: 19),
+      );
+      expect(
+        AttendanceFormat.duration(summary.totalWorkingDuration),
+        '19h 00m',
+      );
+    });
+
+    test('UTC midnight stamp still counts as 12:25 AM wall clock', () {
+      final checkIn = DateTime.utc(2026, 8, 13, 0, 25);
+      final checkOut = DateTime(2026, 8, 13, 20, 25);
+      expect(AttendanceFormat.time(checkIn), '12:25 AM');
+      expect(AttendanceFormat.time(checkOut), '8:25 PM');
+      expect(
+        AttendanceFormat.workedDuration(
+          start: checkIn,
+          end: checkOut,
+          breaks: const Duration(hours: 1),
+        ),
+        const Duration(hours: 19),
+      );
+    });
+
+    test('hourTo24 maps 12 AM to 0 and 8 PM to 20', () {
+      expect(AttendanceEditRequest.hourTo24(12, isPm: false), 0);
+      expect(AttendanceEditRequest.hourTo24(12, isPm: true), 12);
+      expect(AttendanceEditRequest.hourTo24(8, isPm: true), 20);
+      expect(AttendanceEditRequest.hourTo24(8, isPm: false), 8);
     });
   });
 }

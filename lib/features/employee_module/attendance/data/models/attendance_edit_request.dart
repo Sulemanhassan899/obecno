@@ -25,35 +25,42 @@ class AttendanceEditRequest {
   bool get isApproved => status == AttendanceEditRequestStatus.approved;
   bool get isRejected => status == AttendanceEditRequestStatus.rejected;
 
-  /// Parses a clock label (`07:55 AM` / `07:55:00`) onto [date]'s calendar day.
+  /// Parses a clock label onto [date]'s calendar day.
+  ///
+  /// 12:25 AM → 00:25, 12:00 PM → 12:00, 8:00 PM → 20:00.
+  /// Never treats 12 AM as hour 12 (noon).
   static DateTime? parseClockTime(String raw, {required DateTime date}) {
-    final s = raw.trim();
+    final s = raw.trim().replaceAll(RegExp(r'[\u00a0\u202f]'), ' ');
     if (s.isEmpty || s == '--') return null;
 
     final ampm = RegExp(
-      r'^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$',
-      caseSensitive: false,
+      r'^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*([AaPp])\.?[Mm]\.?$',
     ).firstMatch(s);
     if (ampm != null) {
       var hour = int.parse(ampm.group(1)!);
       final minute = int.parse(ampm.group(2)!);
       final second = int.tryParse(ampm.group(3) ?? '') ?? 0;
-      final period = ampm.group(4)!.toUpperCase();
-      if (period == 'AM') {
-        if (hour == 12) hour = 0;
-      } else if (hour != 12) {
-        hour += 12;
-      }
+      final isPm = ampm.group(4)!.toUpperCase() == 'P';
+      hour = hourTo24(hour, isPm: isPm);
       return DateTime(date.year, date.month, date.day, hour, minute, second);
     }
 
     final parts = s.split(':');
     if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
+    final hour = int.tryParse(parts[0].trim());
+    final minute = int.tryParse(parts[1].trim());
     if (hour == null || minute == null) return null;
-    final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
+    final second = parts.length > 2
+        ? (int.tryParse(parts[2].trim().split(RegExp(r'\D')).first) ?? 0)
+        : 0;
+    if (hour < 0 || hour > 23 || minute > 59 || second > 59) return null;
     return DateTime(date.year, date.month, date.day, hour, minute, second);
+  }
+
+  /// 12-hour clock → 24-hour hour. 12 AM is 0, 12 PM is 12, 8 PM is 20.
+  static int hourTo24(int hour12, {required bool isPm}) {
+    final normalized = hour12 % 12;
+    return isPm ? normalized + 12 : normalized;
   }
 
   bool matchesClock(DateTime dt) {

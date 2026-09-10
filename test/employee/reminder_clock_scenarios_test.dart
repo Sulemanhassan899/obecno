@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
-import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/features/more/services/reminder_notification_plan.dart';
 
 /// Clock-jump scenarios for check-in, check-out, break start, and break end.
-/// Permission time can be anything; the user reminder can be any earlier time.
+/// Permission time can be anything; the user reminder can be before or after it.
 void main() {
   DateTime onDay(TimeOfDay time) =>
       DateTime(2026, 9, 9, time.hour, time.minute);
@@ -82,12 +81,12 @@ void main() {
     );
   }
 
-  void expectCannotPickAfter(TimeOfDay policy, TimeOfDay remind) {
-    final tooLate = ReminderNotificationPlan.timeFromMinutes(
-      ReminderNotificationPlan.minutesOf(policy) + 1,
+  void expectCanPickAfter(TimeOfDay policy, TimeOfDay later) {
+    expect(
+      ReminderNotificationPlan.minutesOf(later) >
+          ReminderNotificationPlan.minutesOf(policy),
+      isTrue,
     );
-    expect(ReminderSettingsProvider.clampToLatest(tooLate, policy), policy);
-    expect(ReminderSettingsProvider.clampToLatest(remind, policy), remind);
   }
 
   group('check-in — happy and critical', () {
@@ -167,8 +166,28 @@ void main() {
             },
           );
 
-          test('happy: cannot set reminder after permission time', () {
-            expectCannotPickAfter(policy, remind);
+          test('happy: can set reminder after permission time', () {
+            final later = ReminderNotificationPlan.timeFromMinutes(
+              ReminderNotificationPlan.minutesOf(policy) + 30,
+            );
+            expectCanPickAfter(policy, later);
+            final items = plan(
+              now: onDay(later),
+              policyCheckIn: policy,
+              policyCheckOut: policyOut,
+              remindCheckIn: later,
+              graceMinutes: graceMinutes,
+            );
+            expect(
+              ofType(items, ReminderType.checkIn).any(
+                (item) => item.fireAt == onDay(later),
+              ),
+              isTrue,
+            );
+            expect(
+              ofType(items, ReminderType.checkInMissed).single.fireAt,
+              after(later, graceMinutes),
+            );
           });
 
           test('critical: at missed minute with no punch shows Check In Missed', () {
@@ -317,8 +336,29 @@ void main() {
             expect(ofType(items, ReminderType.checkOutMissed), isEmpty);
           });
 
-          test('happy: cannot set reminder after permission time', () {
-            expectCannotPickAfter(policy, remind);
+          test('happy: can set reminder after permission time', () {
+            final later = ReminderNotificationPlan.timeFromMinutes(
+              ReminderNotificationPlan.minutesOf(policy) + 30,
+            );
+            expectCanPickAfter(policy, later);
+            final items = plan(
+              now: onDay(later),
+              policyCheckIn: policyIn,
+              policyCheckOut: policy,
+              remindCheckOut: later,
+              graceMinutes: graceMinutes,
+              punches: inPunch,
+            );
+            expect(
+              ofType(items, ReminderType.checkOut).any(
+                (item) => item.fireAt == onDay(later),
+              ),
+              isTrue,
+            );
+            expect(
+              ofType(items, ReminderType.checkOutMissed).single.fireAt,
+              after(later, graceMinutes),
+            );
           });
 
           test(
@@ -428,8 +468,24 @@ void main() {
             expect(ofType(items, ReminderType.breakTime), isEmpty);
           });
 
-          test('happy: cannot set reminder after permission break time', () {
-            expectCannotPickAfter(policyBreak, remind);
+          test('happy: can set reminder after permission break time', () {
+            final later = ReminderNotificationPlan.timeFromMinutes(
+              ReminderNotificationPlan.minutesOf(policyBreak) + 30,
+            );
+            expectCanPickAfter(policyBreak, later);
+            final items = plan(
+              now: onDay(later),
+              policyCheckIn: policyCheckIn,
+              policyCheckOut: policyCheckOut,
+              remindBreak: later,
+              punches: inPunch,
+            );
+            expect(
+              ofType(items, ReminderType.breakTime).any(
+                (item) => item.fireAt == onDay(later),
+              ),
+              isTrue,
+            );
           });
 
           test(
@@ -497,7 +553,6 @@ void main() {
         ),
         ReminderPunch(kind: ReminderPunchKind.breakStart, time: breakStart),
       ];
-      final breakDue = breakStart.add(Duration(minutes: breakMinutes));
 
       group(
         'work ${ReminderCopy.formatTime(policyCheckIn)}-${ReminderCopy.formatTime(policyCheckOut)}, reminder ${ReminderCopy.formatTime(remind)}',
@@ -556,12 +611,30 @@ void main() {
             expect(ofType(items, ReminderType.longerBreak), isEmpty);
           });
 
-          test(
-            'happy: cannot set reminder after permission break-end time',
-            () {
-              expectCannotPickAfter(policyEnd, remind);
-            },
-          );
+          test('happy: can set reminder after permission break-end time', () {
+            final later = ReminderNotificationPlan.timeFromMinutes(
+              ReminderNotificationPlan.minutesOf(policyEnd) + 30,
+            );
+            expectCanPickAfter(policyEnd, later);
+            final items = plan(
+              now: onDay(later),
+              policyCheckIn: policyCheckIn,
+              policyCheckOut: policyCheckOut,
+              remindBreakEnd: later,
+              breakMinutes: breakMinutes,
+              punches: onBreak,
+            );
+            expect(
+              ofType(items, ReminderType.breakTimeEnded).any(
+                (item) => item.fireAt == onDay(later),
+              ),
+              isTrue,
+            );
+            expect(
+              ofType(items, ReminderType.longerBreak).single.fireAt,
+              onDay(later).add(const Duration(hours: 1)),
+            );
+          });
 
           test('critical: still on break at end minute shows break-ended', () {
             final items = plan(
@@ -582,9 +655,9 @@ void main() {
           });
 
           test(
-            'critical: longer-break fires one hour after break duration ends',
+            'critical: longer-break fires one hour after the chosen break-end',
             () {
-              final longerAt = breakDue.add(const Duration(hours: 1));
+              final longerAt = onDay(remind).add(const Duration(hours: 1));
               final items = plan(
                 now: longerAt,
                 policyCheckIn: policyCheckIn,

@@ -71,97 +71,105 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
 
     return Scaffold(
       backgroundColor: kbackground1,
-      body: ShimmerRefreshIndicator(
-        onRefresh: provider.refresh,
-        child: Padding(
-          padding: AppSizes.DEFAULT,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: ManagerAttendanceHeader(
-                  selectedDate: provider.selectedDate,
-                  onDateSelected: provider.setDate,
-                  onSearchModeChanged: (searching) {
-                    setState(() {
-                      _isSearching = searching;
-                      if (!searching) _searchQuery = "";
-                    });
-                  },
-                  onSearchQueryChanged: (query) {
-                    setState(() => _searchQuery = query);
-                  },
-                ),
+      body: SafeArea(
+        child: ShimmerRefreshIndicator(
+          onRefresh: provider.refresh,
+          child: Padding(
+            padding: AppSizes.HORIZONTAL,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-              if (_isSearching)
-                SliverFillRemaining(
-                  hasScrollBody: true,
-                  child: ManagerAttendanceSearchView(
-                    query: _searchQuery,
-                    results: _searchResults,
-                    recent: ManagerAttendanceRecentSearch.items,
-                    onPersonTap: (person) {
-                      ManagerAttendanceRecentSearch.add(person);
-                      _openDetails(person, provider.selectedDate);
-                    },
-                  ),
-                )
-              else ...[
+              slivers: [
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
                 SliverToBoxAdapter(
-                  child: ManagerFilters(
-                    initialStatus: provider.statusFilterId,
-                    initialLocationId: provider.locationId,
-                    onStatusChanged: provider.setStatus,
-                    onLocationChanged: (id) {
-                      final name = id == LocationFilterOption.allId
-                          ? null
-                          : context
-                                .read<ManagerLocationsProvider>()
-                                .byId(id)
-                                ?.name;
-                      provider.setLocation(id: id, name: name);
+                  child: ManagerAttendanceHeader(
+                    selectedDate: provider.selectedDate,
+                    onDateSelected: provider.setDate,
+                    onSearchModeChanged: (searching) {
+                      setState(() {
+                        _isSearching = searching;
+                        if (!searching) _searchQuery = "";
+                      });
+                    },
+                    onSearchQueryChanged: (query) {
+                      setState(() => _searchQuery = query);
                     },
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                if (isInitialLoad)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: ShimmerProgress()),
-                  )
-                else if (provider.hasError && provider.items.isEmpty)
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                if (_isSearching)
                   SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _AttendanceMessage(
-                      message:
-                          provider.errorMessage ?? 'Failed to load attendance.',
-                      actionLabel: 'Retry',
-                      onAction: provider.load,
+                    hasScrollBody: true,
+                    child: ManagerAttendanceSearchView(
+                      query: _searchQuery,
+                      results: _searchResults,
+                      recent: ManagerAttendanceRecentSearch.items,
+                      onPersonTap: (person) {
+                        ManagerAttendanceRecentSearch.add(person);
+                        _openDetails(person, provider.selectedDate);
+                      },
                     ),
                   )
-                else if (tiles.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _AttendanceMessage(message: 'No attendance'),
-                  )
-                else
-                  SliverList.separated(
-                    itemCount: tiles.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 24, color: kDividerColor),
-                    itemBuilder: (context, index) {
-                      final item = tiles[index];
-                      return ManagerAttendanceTile(
-                        data: item,
-                        onTap: () => _openDetails(item, provider.selectedDate),
-                      );
-                    },
+                else ...[
+                  SliverToBoxAdapter(
+                    child: ManagerFilters(
+                      initialStatus: provider.statusFilterId,
+                      initialLocationId: provider.locationId,
+                      onStatusChanged: provider.setStatus,
+                      onLocationChanged: (id) {
+                        final name = id == LocationFilterOption.allId
+                            ? null
+                            : context
+                                  .read<ManagerLocationsProvider>()
+                                  .byId(id)
+                                  ?.name;
+                        provider.setLocation(id: id, name: name);
+                      },
+                    ),
                   ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  if (isInitialLoad)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: ShimmerProgress()),
+                    )
+                  else if (provider.hasError && provider.items.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _AttendanceMessage(
+                        message:
+                            provider.errorMessage ??
+                            'Failed to load attendance.',
+                        actionLabel: 'Retry',
+                        onAction: provider.load,
+                      ),
+                    )
+                  else if (tiles.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _AttendanceMessage(message: 'No attendance'),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.only(bottom: 32),
+                      sliver: SliverList.separated(
+                        itemCount: tiles.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 24, color: kDividerColor),
+                        itemBuilder: (context, index) {
+                          final item = tiles[index];
+                          return ManagerAttendanceTile(
+                            data: item,
+                            onTap: () =>
+                                _openDetails(item, provider.selectedDate),
+                          );
+                        },
+                      ),
+                    ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

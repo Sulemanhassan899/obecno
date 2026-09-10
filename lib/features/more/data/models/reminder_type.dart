@@ -42,7 +42,9 @@ enum ReminderType {
     return null;
   }
 
-  bool get canPickEarlierTime {
+  /// Check-in, check-out, and break clocks are editable. Missed / longer
+  /// reminders are derived from those clocks plus grace or duration.
+  bool get canPickTime {
     switch (this) {
       case ReminderType.checkIn:
       case ReminderType.checkOut:

@@ -1,3 +1,5 @@
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+
 class BreakSession {
   const BreakSession({
     required this.breakIn,
@@ -52,14 +54,16 @@ class AttendanceDay {
   /// later re-check-in as the day header check-in.
   String? get firstCheckIn {
     if (checkIns.isEmpty) return null;
-    final sorted = [...checkIns]..sort();
+    final sorted = [...checkIns]
+      ..sort((a, b) => _clockSortKey(a).compareTo(_clockSortKey(b)));
     return sorted.first;
   }
 
   /// Latest check-out of the day. Intermediate check-outs are superseded.
   String? get lastCheckOut {
     if (checkOuts.isEmpty) return null;
-    final sorted = [...checkOuts]..sort();
+    final sorted = [...checkOuts]
+      ..sort((a, b) => _clockSortKey(a).compareTo(_clockSortKey(b)));
     return sorted.last;
   }
 
@@ -68,7 +72,7 @@ class AttendanceDay {
     final pairs = [
       for (var i = 0; i < checkIns.length; i++)
         (checkIns[i], i < checkInLocations.length ? checkInLocations[i] : null),
-    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    ]..sort((a, b) => _clockSortKey(a.$1).compareTo(_clockSortKey(b.$1)));
     return pairs.first.$2;
   }
 
@@ -80,7 +84,7 @@ class AttendanceDay {
           checkOuts[i],
           i < checkOutLocations.length ? checkOutLocations[i] : null,
         ),
-    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    ]..sort((a, b) => _clockSortKey(a.$1).compareTo(_clockSortKey(b.$1)));
     return pairs.last.$2;
   }
 
@@ -260,6 +264,16 @@ class AttendanceDay {
     final s = raw.toString().trim();
     if (s.isEmpty) return null;
     return DateTime.tryParse(s);
+  }
+
+  /// 12:25 AM (hour 0) sorts before 8:00 AM and 8:00 PM.
+  static int _clockSortKey(String raw) {
+    final parsed = AttendanceEditRequest.parseClockTime(
+      raw,
+      date: DateTime(2000, 1, 1),
+    );
+    if (parsed == null) return 0;
+    return parsed.hour * 3600 + parsed.minute * 60 + parsed.second;
   }
 
   static String? _normalizedTime(dynamic raw) {

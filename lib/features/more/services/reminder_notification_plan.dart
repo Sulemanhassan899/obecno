@@ -33,6 +33,10 @@ class ReminderNotificationSyncResult {
 
 /// When each reminder should actually notify — never the policy/permission time
 /// unless that is also the time the user chose.
+///
+/// Check-in missed / check-out missed add [graceMinutes] to the chosen clocks.
+/// Longer break adds [longerBreakAfter] to the chosen (or due) break-end.
+/// Very long attendance adds [longAttendanceHours] to the actual check-in punch.
 class ReminderFireSchedule {
   const ReminderFireSchedule({
     required this.checkInAt,
@@ -67,34 +71,53 @@ class ReminderFireSchedule {
     required int longAttendanceHours,
     required ReminderClockStatus status,
   }) {
-    DateTime at(TimeOfDay time) =>
-        DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    DateTime at(TimeOfDay time) => ReminderNotificationPlan.at(day, time);
     final grace = Duration(minutes: graceMinutes < 0 ? 0 : graceMinutes);
     final hours = longAttendanceHours <= 0 ? 12 : longAttendanceHours;
     final minutes = breakMinutes <= 0 ? 60 : breakMinutes;
+    final overnight = ReminderNotificationPlan.isOvernightShift(
+      policyCheckInTime,
+      policyCheckOutTime,
+    );
+
+    final checkInAt = at(checkInTime);
+    var checkOutAt = at(checkOutTime);
+    if (overnight && !checkOutAt.isAfter(checkInAt)) {
+      checkOutAt = checkOutAt.add(const Duration(days: 1));
+    }
+
+    DateTime place(TimeOfDay time) {
+      var dt = at(time);
+      if (overnight && dt.isBefore(checkInAt)) {
+        dt = dt.add(const Duration(days: 1));
+      }
+      return dt;
+    }
 
     DateTime? breakEndedAt;
     DateTime? longerBreakAt;
     if (status.breakStart != null) {
       final breakDue = status.breakStart!.add(Duration(minutes: minutes));
-      longerBreakAt = breakDue.add(ReminderNotificationPlan.longerBreakAfter);
+      var endedAt = breakDue;
       if (breakEndedReminderTime != null) {
-        var endedAt = at(breakEndedReminderTime);
-        if (endedAt.isBefore(status.breakStart!) || endedAt.isAfter(breakDue)) {
-          endedAt = breakDue;
+        var selected = place(breakEndedReminderTime);
+        if (overnight && selected.isBefore(status.breakStart!)) {
+          selected = selected.add(const Duration(days: 1));
         }
-        breakEndedAt = endedAt;
-      } else {
-        breakEndedAt = breakDue;
+        if (!selected.isBefore(status.breakStart!)) {
+          endedAt = selected;
+        }
       }
+      breakEndedAt = endedAt;
+      longerBreakAt = endedAt.add(ReminderNotificationPlan.longerBreakAfter);
     }
 
     return ReminderFireSchedule(
-      checkInAt: at(checkInTime),
-      checkInMissedAt: at(checkInTime).add(grace),
-      checkOutAt: at(checkOutTime),
-      checkOutMissedAt: at(checkOutTime).add(grace),
-      breakAt: at(breakReminderTime),
+      checkInAt: checkInAt,
+      checkInMissedAt: checkInAt.add(grace),
+      checkOutAt: checkOutAt,
+      checkOutMissedAt: checkOutAt.add(grace),
+      breakAt: place(breakReminderTime),
       breakEndedAt: breakEndedAt,
       longerBreakAt: longerBreakAt,
       veryLongAttendanceAt: status.firstCheckIn?.add(Duration(hours: hours)),
@@ -155,15 +178,27 @@ class ReminderNotificationPlan {
   static int minutesOf(TimeOfDay time) => time.hour * 60 + time.minute;
 
   static TimeOfDay timeFromMinutes(int minutes) {
-    final wrapped = minutes.clamp(0, 23 * 60 + 59);
+    final day = 24 * 60;
+    final wrapped = ((minutes % day) + day) % day;
     return TimeOfDay(hour: wrapped ~/ 60, minute: wrapped % 60);
+  }
+
+  /// Checkout at or before check-in on the clock (9 PM–6 AM, 12 PM–12 AM).
+  static bool isOvernightShift(TimeOfDay checkIn, TimeOfDay checkOut) =>
+      minutesOf(checkOut) <= minutesOf(checkIn);
+
+  static int spanMinutes(TimeOfDay start, TimeOfDay end) {
+    var span = minutesOf(end) - minutesOf(start);
+    if (span <= 0) span += 24 * 60;
+    return span;
   }
 
   static TimeOfDay defaultBreakReminderTime({
     required TimeOfDay checkInTime,
     required TimeOfDay checkOutTime,
   }) {
-    final mid = (minutesOf(checkInTime) + minutesOf(checkOutTime)) ~/ 2;
+    final mid =
+        minutesOf(checkInTime) + spanMinutes(checkInTime, checkOutTime) ~/ 2;
     return timeFromMinutes(mid - 5);
   }
 
@@ -287,12 +322,16 @@ class ReminderNotificationPlan {
     add(
       ReminderType.checkOut,
       todaySchedule.checkOutAt,
-      applicable: status.isCheckedIn,
+      applicable:
+          status.isCheckedIn &&
+          !todaySchedule.checkOutAt.isBefore(status.firstCheckIn!),
     );
     add(
       ReminderType.checkOutMissed,
       todaySchedule.checkOutMissedAt,
-      applicable: status.isCheckedIn,
+      applicable:
+          status.isCheckedIn &&
+          !todaySchedule.checkOutMissedAt.isBefore(status.firstCheckIn!),
     );
 
     final longAt = todaySchedule.veryLongAttendanceAt;
@@ -305,7 +344,10 @@ class ReminderNotificationPlan {
     add(
       ReminderType.breakTime,
       todaySchedule.breakAt,
-      applicable: status.isCheckedIn && status.breakStart == null,
+      applicable:
+          status.isCheckedIn &&
+          status.breakStart == null &&
+          !todaySchedule.breakAt.isBefore(status.firstCheckIn!),
     );
 
     final endedAt = todaySchedule.breakEndedAt;

@@ -460,14 +460,8 @@ class DeviceModel {
     );
   }
 
-  /// Returns a copy with [isCurrent] recomputed against the device id of the
-  /// device this app instance is running on. Used by DeviceProvider so the
-  /// "current device" highlight in the Linked Devices screen works even if
-  /// the backend doesn't echo an `is_current` flag.
-  DeviceModel markCurrent(String currentDeviceId) {
-    if (deviceId.isEmpty || currentDeviceId.isEmpty) return this;
-    if (deviceId != currentDeviceId) return this;
-    if (isCurrent) return this;
+  DeviceModel withCurrentFlag(bool value) {
+    if (isCurrent == value) return this;
     return DeviceModel(
       id: id,
       deviceId: deviceId,
@@ -483,11 +477,194 @@ class DeviceModel {
       lastActive: lastActive,
       requestedAt: requestedAt,
       status: status,
-      isCurrent: true,
+      isCurrent: value,
       approvedFlag: approvedFlag,
       actionedBy: actionedBy,
       actionedById: actionedById,
     );
+  }
+
+  /// True when [currentDeviceId] matches this row's `device_id` or server `id`.
+  bool matchesDeviceId(String currentDeviceId) {
+    final current = currentDeviceId.trim().toLowerCase();
+    if (current.isEmpty) return false;
+    if (deviceId.trim().toLowerCase() == current) return true;
+    if (id.trim().toLowerCase() == current) return true;
+    return false;
+  }
+
+  /// Same physical phone: stable id, or the same hardware when the backend
+  /// doesn't echo our `device_id` (so login would otherwise POST a duplicate).
+  bool matchesPhysicalDevice({
+    required String currentDeviceId,
+    String model = '',
+    String manufacturer = '',
+    String platform = '',
+    String name = '',
+  }) {
+    if (matchesDeviceId(currentDeviceId)) return true;
+    return _hardwareMatches(
+      model: model,
+      manufacturer: manufacturer,
+      platform: platform,
+      name: name,
+    );
+  }
+
+  bool _hardwareMatches({
+    required String model,
+    required String manufacturer,
+    required String platform,
+    required String name,
+  }) {
+    if (!_platformCompatible(platform)) return false;
+
+    final thisDisplay = displayName.trim().toLowerCase();
+    final otherDisplay = DeviceDisplayName.resolve(
+      name: name,
+      model: model,
+      manufacturer: manufacturer,
+      platform: platform,
+      os: platform,
+    ).trim().toLowerCase();
+
+    if (thisDisplay.isEmpty || otherDisplay.isEmpty) return false;
+    if (thisDisplay == 'device' || otherDisplay == 'device') return false;
+    if (thisDisplay == otherDisplay) return true;
+
+    final thisModel = this.model.trim().toLowerCase();
+    final otherModel = model.trim().toLowerCase();
+    if (thisModel.isNotEmpty &&
+        otherModel.isNotEmpty &&
+        thisModel == otherModel) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _platformCompatible(String otherPlatform) {
+    final a = _normalizePlatform(platform.isNotEmpty ? platform : os);
+    final b = _normalizePlatform(otherPlatform);
+    if (a.isEmpty || b.isEmpty) return true;
+    return a == b;
+  }
+
+  static String _normalizePlatform(String raw) {
+    final value = raw.trim().toLowerCase();
+    if (value.isEmpty) return '';
+    if (value.contains('android')) return 'android';
+    if (value.contains('ios') ||
+        value.contains('iphone') ||
+        value.contains('ipad')) {
+      return 'ios';
+    }
+    return value;
+  }
+
+  /// Pick this phone's row: exact id first, then an approved hardware match
+  /// (so a new pending request is not treated as current over an Active A36).
+  static DeviceModel? pickCurrent(
+    List<DeviceModel> devices, {
+    required String currentDeviceId,
+    String model = '',
+    String manufacturer = '',
+    String platform = '',
+    String name = '',
+  }) {
+    final matches = devices
+        .where(
+          (d) => d.matchesPhysicalDevice(
+            currentDeviceId: currentDeviceId,
+            model: model,
+            manufacturer: manufacturer,
+            platform: platform,
+            name: name,
+          ),
+        )
+        .toList();
+    if (matches.isEmpty) return null;
+
+    int rank(DeviceModel d) {
+      final idMatch = d.matchesDeviceId(currentDeviceId);
+      // Approved wins even over a newer pending row for the same phone,
+      // so login does not keep treating an Active device as a new request.
+      if (idMatch && d.isApproved) return 0;
+      if (d.isApproved) return 1;
+      if (idMatch && d.isPending) return 2;
+      if (idMatch) return 3;
+      if (d.isPending) return 4;
+      return 5;
+    }
+
+    matches.sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      if (byRank != 0) return byRank;
+      final aTime = a.lastActive ?? a.requestedAt;
+      final bTime = b.lastActive ?? b.requestedAt;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+    return matches.first;
+  }
+
+  /// Marks exactly one row as current. Used after GET so an already-approved
+  /// phone is recognized even when `device_id` on the server doesn't match.
+  static List<DeviceModel> markCurrentDevice(
+    List<DeviceModel> devices, {
+    required String currentDeviceId,
+    String model = '',
+    String manufacturer = '',
+    String platform = '',
+    String name = '',
+  }) {
+    if (devices.isEmpty) return devices;
+    final current = pickCurrent(
+      devices,
+      currentDeviceId: currentDeviceId,
+      model: model,
+      manufacturer: manufacturer,
+      platform: platform,
+      name: name,
+    );
+    if (current == null) {
+      return devices
+          .map((d) => d.isCurrent ? d.withCurrentFlag(false) : d)
+          .toList(growable: false);
+    }
+    return [
+      for (final d in devices)
+        _isSameRow(d, current)
+            ? d.withCurrentFlag(true)
+            : d.withCurrentFlag(false),
+    ];
+  }
+
+  static bool _isSameRow(DeviceModel a, DeviceModel b) {
+    if (identical(a, b)) return true;
+    if (a.id.isNotEmpty && a.id == b.id) return true;
+    if (a.deviceId.isNotEmpty &&
+        b.deviceId.isNotEmpty &&
+        a.deviceId == b.deviceId &&
+        (a.id == b.id || a.id.isEmpty || b.id.isEmpty)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Already on the user's list — login must not POST another request.
+  bool get hasExistingRegistration =>
+      isApproved || isPending || isBlocked || isRejected;
+
+  /// Returns a copy with [isCurrent] recomputed against the device id of the
+  /// device this app instance is running on. Used by DeviceProvider so the
+  /// "current device" highlight in the Linked Devices screen works even if
+  /// the backend doesn't echo an `is_current` flag.
+  DeviceModel markCurrent(String currentDeviceId) {
+    if (!matchesDeviceId(currentDeviceId)) return this;
+    if (isCurrent) return this;
+    return withCurrentFlag(true);
   }
 
   DeviceModel withActionedBy(String? name) {

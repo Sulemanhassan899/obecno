@@ -201,6 +201,7 @@ class ShimmerRefreshIndicator extends StatefulWidget {
   final Color? color;
   // ignore: unused_field
   final double displacement;
+  // ignore: unused_field
   final double edgeOffset;
   final ScrollNotificationPredicate notificationPredicate;
 
@@ -210,9 +211,17 @@ class ShimmerRefreshIndicator extends StatefulWidget {
 }
 
 class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator> {
+  /// Finger must move this far *down* while already at the top.
+  /// Rubber-band / a normal scroll into the list must not reload.
+  static const double _pullThreshold = 160;
+
   bool _refreshing = false;
+  bool _atTop = true;
+  double _fingerPull = 0;
+  final GlobalKey _childKey = GlobalKey();
 
   Future<void> _handleRefresh() async {
+    if (_refreshing) return;
     setState(() => _refreshing = true);
     try {
       await widget.onRefresh();
@@ -221,23 +230,51 @@ class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator> {
     }
   }
 
+  void _onPointerMove(PointerMoveEvent event) {
+    if (_refreshing || !_atTop) return;
+    // Finger up → scrolling the list. Finger down → possible pull-to-refresh.
+    if (event.delta.dy <= 0) {
+      _fingerPull = 0;
+      return;
+    }
+    _fingerPull += event.delta.dy;
+  }
+
+  void _onPointerEnd(PointerEvent event) {
+    final shouldRefresh =
+        !_refreshing && _atTop && _fingerPull >= _pullThreshold;
+    _fingerPull = 0;
+    if (shouldRefresh) _handleRefresh();
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (!widget.notificationPredicate(notification)) return false;
+    if (notification.depth != 0) return false;
+
+    _atTop =
+        notification.metrics.pixels <= notification.metrics.minScrollExtent + 1;
+    if (!_atTop) _fingerPull = 0;
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _handleRefresh,
-      color: Colors.transparent,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      strokeWidth: 0.1,
-      displacement: 0,
-      edgeOffset: widget.edgeOffset,
-      notificationPredicate: widget.notificationPredicate,
-      child: AppShimmerOverlay(
-        isLoading: _refreshing,
-        baseColor: AppShimmerColors.base,
-        highlightColor: AppShimmerColors.highlight,
-        period: AppShimmerColors.period,
-        child: widget.child,
+    return Listener(
+      onPointerMove: _onPointerMove,
+      onPointerUp: _onPointerEnd,
+      onPointerCancel: _onPointerEnd,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: AppShimmerOverlay(
+          isLoading: _refreshing,
+          baseColor: AppShimmerColors.base,
+          highlightColor: AppShimmerColors.highlight,
+          period: AppShimmerColors.period,
+          child: KeyedSubtree(
+            key: _childKey,
+            child: widget.child,
+          ),
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/more/data/models/device_model.dart';
 import 'package:obecno/features/more/repositories/device_repository.dart';
 import 'package:obecno/features/more/services/device_cache_service.dart';
+import 'package:obecno/features/more/services/device_info_service.dart';
 import 'package:obecno/features/more/services/device_service.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 
@@ -49,6 +50,7 @@ class DeviceProvider extends BaseProvider {
 
   DeviceModel? _registeredFallback;
   Completer<DeviceRegisterResult>? _registerCompleter;
+  Completer<LoginDeviceCheck>? _loginRegisterCompleter;
 
   bool get isDeviceApproved => _deviceApproved;
   bool get isDeviceBlocked => _deviceBlocked;
@@ -100,15 +102,7 @@ class DeviceProvider extends BaseProvider {
       operationKey: 'devices_fetch',
       request: (_) => _service.fetchLinkedDevices(),
       onSuccess: (data) {
-        _devices = data.devices
-            .map((d) {
-              var marked = d.markCurrent(currentId);
-              if (marked.requestedAt == null && marked.lastActive == null) {
-                marked = marked.withTimestamps(requestedAt: DateTime.now());
-              }
-              return marked;
-            })
-            .toList(growable: false);
+        _devices = _decorateDevices(data.devices, currentDeviceInfo);
         _isShowingCachedDevices = false;
         _currentListedByServer = _devices.any((d) => d.isCurrent);
         _mergeRegisteredFallback(currentId);
@@ -124,9 +118,7 @@ class DeviceProvider extends BaseProvider {
 
     final cached = await _cache.getCachedDevices();
     if (cached.isNotEmpty) {
-      _devices = cached
-          .map((d) => d.markCurrent(currentId))
-          .toList(growable: false);
+      _devices = _decorateDevices(cached, currentDeviceInfo);
       _isShowingCachedDevices = true;
       _currentListedByServer = true;
       _mergeRegisteredFallback(currentId);
@@ -141,6 +133,7 @@ class DeviceProvider extends BaseProvider {
 
     _mergeRegisteredFallback(currentId);
     if (_devices.isNotEmpty) {
+      _devices = _decorateDevices(_devices, currentDeviceInfo);
       _syncCurrentDevice(currentId);
       _syncApprovalFromList(fetchSucceeded: true);
       setSuccess();
@@ -148,6 +141,28 @@ class DeviceProvider extends BaseProvider {
     }
 
     return false;
+  }
+
+  List<DeviceModel> _decorateDevices(
+    List<DeviceModel> devices,
+    DeviceInfoSnapshot info,
+  ) {
+    final stamped = devices
+        .map((d) {
+          if (d.requestedAt == null && d.lastActive == null) {
+            return d.withTimestamps(requestedAt: DateTime.now());
+          }
+          return d;
+        })
+        .toList(growable: false);
+    return DeviceModel.markCurrentDevice(
+      stamped,
+      currentDeviceId: info.deviceId,
+      model: info.model,
+      manufacturer: info.manufacturer,
+      platform: info.platform,
+      name: info.deviceName,
+    );
   }
 
   DeviceModel? get _listedCurrent {
@@ -204,6 +219,17 @@ class DeviceProvider extends BaseProvider {
         return true;
       }
       if (fallback.id.isNotEmpty && d.id == fallback.id) return true;
+      final local = _currentDevice;
+      if (local != null &&
+          d.matchesPhysicalDevice(
+            currentDeviceId: currentId,
+            model: local.model,
+            manufacturer: local.manufacturer,
+            platform: local.platform,
+            name: local.name,
+          )) {
+        return true;
+      }
       return false;
     });
     if (alreadyListed) {
@@ -309,11 +335,18 @@ class DeviceProvider extends BaseProvider {
 
   /// Linked Devices screen: fetch the list, and if this phone is still
   /// missing, POST a registration request then reload so the pending card
-  /// is visible.
+  /// is visible. Never POST again when this phone is already approved
+  /// (or already has a pending/blocked row).
   Future<bool> loadLinkedDevices() async {
     await fetchDevices();
-    final hasCurrent = _devices.any((d) => d.isCurrent);
-    if (hasCurrent) return true;
+    final listed = _listedCurrent;
+    if (listed != null && listed.hasExistingRegistration) {
+      AppLogger.info(
+        '[DeviceProvider] Linked Devices: current device already '
+        '${listed.statusLabel} -- skipping register request',
+      );
+      return true;
+    }
 
     AppLogger.info(
       '[DeviceProvider] Linked Devices: current device not in list -- sending register request',
@@ -367,31 +400,82 @@ class DeviceProvider extends BaseProvider {
   }
 
   Future<LoginDeviceCheck> registerOnLogin() async {
+    if (_loginRegisterCompleter != null) {
+      return _loginRegisterCompleter!.future;
+    }
+    final completer = Completer<LoginDeviceCheck>();
+    _loginRegisterCompleter = completer;
     try {
-      final result = await _registerOnce();
-      switch (result.outcome) {
-        case DeviceRegisterOutcome.registered:
-          _deviceApproved = false;
-          _deviceBlocked = false;
-          _statusValidated = true;
-          _rememberRegisteredDevice(result.device);
-          return LoginDeviceCheck.newlyRegistered;
-        case DeviceRegisterOutcome.alreadyRegistered:
-          _deviceApproved = false;
-          _deviceBlocked = false;
-          _statusValidated = true;
-          _rememberRegisteredDevice(result.device);
-          return LoginDeviceCheck.registeredSilently;
-        case DeviceRegisterOutcome.blocked:
-          _deviceBlocked = true;
-          _statusValidated = true;
-          return LoginDeviceCheck.blocked;
-        case DeviceRegisterOutcome.failed:
-          return LoginDeviceCheck.checkFailed;
-      }
+      final result = await _registerOnLoginOnce();
+      completer.complete(result);
+      return result;
     } catch (e, st) {
       AppLogger.error('DeviceProvider', 'registerOnLogin', e, stackTrace: st);
-      return LoginDeviceCheck.checkFailed;
+      const failed = LoginDeviceCheck.checkFailed;
+      completer.complete(failed);
+      return failed;
+    } finally {
+      _loginRegisterCompleter = null;
+    }
+  }
+
+  Future<LoginDeviceCheck> _registerOnLoginOnce() async {
+    // Always read the existing list first. POST /employee/devices creates a
+    // new pending row even when this phone is already Active.
+    final fetched = await fetchDevices();
+    if (fetched) {
+      final listed = _listedCurrent;
+      if (listed != null && listed.hasExistingRegistration) {
+        _statusValidated = true;
+        _rememberRegisteredDevice(listed);
+        if (listed.isApproved) {
+          _deviceApproved = true;
+          _deviceBlocked = false;
+          AppLogger.info(
+            '[DeviceProvider] registerOnLogin: already approved '
+            '(${listed.displayName}) -- skipping POST',
+          );
+          return LoginDeviceCheck.registeredSilently;
+        }
+        if (listed.isBlocked || listed.isRejected) {
+          _deviceApproved = false;
+          _deviceBlocked = true;
+          AppLogger.info(
+            '[DeviceProvider] registerOnLogin: already '
+            '${listed.statusLabel} -- skipping POST',
+          );
+          return LoginDeviceCheck.blocked;
+        }
+        _deviceApproved = false;
+        _deviceBlocked = false;
+        AppLogger.info(
+          '[DeviceProvider] registerOnLogin: request already pending '
+          '(${listed.displayName}) -- skipping POST',
+        );
+        return LoginDeviceCheck.newlyRegistered;
+      }
+    }
+
+    final result = await _registerOnce();
+    switch (result.outcome) {
+      case DeviceRegisterOutcome.registered:
+        _deviceApproved = false;
+        _deviceBlocked = false;
+        _statusValidated = true;
+        _rememberRegisteredDevice(result.device);
+        return LoginDeviceCheck.newlyRegistered;
+      case DeviceRegisterOutcome.alreadyRegistered:
+        _deviceApproved = false;
+        _deviceBlocked = false;
+        _statusValidated = true;
+        _rememberRegisteredDevice(result.device);
+        return LoginDeviceCheck.registeredSilently;
+      case DeviceRegisterOutcome.blocked:
+        _deviceBlocked = true;
+        _statusValidated = true;
+        return LoginDeviceCheck.blocked;
+      case DeviceRegisterOutcome.failed:
+        return LoginDeviceCheck.checkFailed;
     }
   }
 

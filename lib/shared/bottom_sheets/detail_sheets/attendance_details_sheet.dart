@@ -210,6 +210,28 @@ class _AttendanceDetailsSheetBodyState
     return same ? kind : null;
   }
 
+  List<Widget> _timelineChildren(List<HistoryAttendanceEvent> timeline) {
+    final mixed = ReminderEngine.mixTimeline(
+      punchTimes: [for (final e in timeline) e.time],
+      primaryKinds: [for (final e in timeline) _primaryKind(e)],
+      logs: _reminderLogs,
+    );
+    return [
+      for (final item in mixed)
+        if (item.isPunch)
+          _TimelineTile(
+            event: timeline[item.punchIndex!],
+            color: _colorFor(timeline[item.punchIndex!].type),
+            reminderLogs: item.attachedLogs,
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TimelineReminderRows(logs: item.standaloneLogs),
+          ),
+    ];
+  }
+
   /// Prefer API `change_requests` / `changes`. If a card has none, attach
   /// any locally cached pending fix requests for that event type (optimistic).
   Future<List<HistoryAttendanceEvent>> _mergeLocalFallback(
@@ -346,7 +368,7 @@ class _AttendanceDetailsSheetBodyState
                   color: kbackground2,
                   child: _loadingDetails
                       ? const Center(child: ShimmerProgress())
-                      : timeline.isEmpty
+                      : timeline.isEmpty && _reminderLogs.isEmpty
                       ? Center(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -504,19 +526,7 @@ class _AttendanceDetailsSheetBodyState
 
                             const SizedBox(height: 14),
 
-                            ...timeline.map((e) {
-                              final kind = _primaryKind(e);
-                              return _TimelineTile(
-                                event: e,
-                                color: _colorFor(e.type),
-                                reminderLogs: kind == null
-                                    ? const []
-                                    : ReminderEngine.logsFor(
-                                        kind,
-                                        _reminderLogs,
-                                      ),
-                              );
-                            }),
+                            ..._timelineChildren(timeline),
                           ],
                         ),
                 ),
@@ -791,6 +801,7 @@ class _TimelineTileState extends State<_TimelineTile> {
             ],
           ),
         ),
+        if (widget.reminderLogs.isNotEmpty) const SizedBox(height: 10),
         TimelineReminderRows(logs: widget.reminderLogs),
         const SizedBox(height: 14),
       ],

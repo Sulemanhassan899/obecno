@@ -93,6 +93,12 @@ class ReminderEngine {
       );
     }
 
+    bool afterStartingWork(DateTime fireAt) {
+      final start = status.firstCheckIn;
+      if (start == null) return false;
+      return !fireAt.isBefore(start);
+    }
+
     await logIfDue(
       ReminderType.checkIn,
       schedule.checkInAt,
@@ -111,16 +117,18 @@ class ReminderEngine {
     await logIfDue(
       ReminderType.checkOut,
       schedule.checkOutAt,
-      status.isCheckedIn ||
-          (status.lastCheckOut != null &&
-              status.lastCheckOut!.isAfter(schedule.checkOutAt)),
+      afterStartingWork(schedule.checkOutAt) &&
+          (status.isCheckedIn ||
+              (status.lastCheckOut != null &&
+                  status.lastCheckOut!.isAfter(schedule.checkOutAt))),
     );
     await logIfDue(
       ReminderType.checkOutMissed,
       schedule.checkOutMissedAt,
-      status.isCheckedIn ||
-          (status.lastCheckOut != null &&
-              status.lastCheckOut!.isAfter(schedule.checkOutMissedAt)),
+      afterStartingWork(schedule.checkOutMissedAt) &&
+          (status.isCheckedIn ||
+              (status.lastCheckOut != null &&
+                  status.lastCheckOut!.isAfter(schedule.checkOutMissedAt))),
     );
 
     if (status.firstCheckIn != null) {
@@ -133,9 +141,10 @@ class ReminderEngine {
     await logIfDue(
       ReminderType.breakTime,
       schedule.breakAt,
-      (status.isCheckedIn && status.breakStart == null) ||
-          (status.breakStart != null &&
-              status.breakStart!.isAfter(schedule.breakAt)),
+      afterStartingWork(schedule.breakAt) &&
+          ((status.isCheckedIn && status.breakStart == null) ||
+              (status.breakStart != null &&
+                  status.breakStart!.isAfter(schedule.breakAt))),
     );
 
     final endedAt = schedule.breakEndedAt;
@@ -195,6 +204,18 @@ class ReminderEngine {
         }
       }
     }
+    final startedAt = status.firstCheckIn;
+    if (startedAt != null) {
+      if (schedule.breakAt.isBefore(startedAt)) {
+        stale.add(ReminderType.breakTime);
+      }
+      if (schedule.checkOutAt.isBefore(startedAt)) {
+        stale.add(ReminderType.checkOut);
+      }
+      if (schedule.checkOutMissedAt.isBefore(startedAt)) {
+        stale.add(ReminderType.checkOutMissed);
+      }
+    }
     if (!status.isOnBreak) {
       if (status.breakEnd == null ||
           schedule.breakEndedAt == null ||
@@ -215,6 +236,20 @@ class ReminderEngine {
     }
 
     if (stale.isEmpty) return;
+
+    // Keep notices that already fired, except reminders that landed before
+    // the employee actually checked in (break/checkout catch-up on punch-in).
+    final existing = await dao.loadLogs(userId: userId, date: day);
+    for (final log in existing) {
+      if (log.firedAt.isAfter(now)) continue;
+      if (status.firstCheckIn != null &&
+          _statusDependentTypes.contains(log.type) &&
+          log.firedAt.isBefore(status.firstCheckIn!)) {
+        continue;
+      }
+      stale.remove(log.type);
+    }
+    if (stale.isEmpty) return;
     await dao.deleteLogsOfTypes(userId: userId, date: day, types: stale);
   }
 
@@ -226,4 +261,70 @@ class ReminderEngine {
       ..sort((a, b) => b.firedAt.compareTo(a.firedAt));
     return matched;
   }
+
+  /// Notifications whose punch card is missing — still shown on the timeline.
+  static List<ReminderLog> unattachedLogs(
+    Set<ReminderPunchKind> presentKinds,
+    List<ReminderLog> logs,
+  ) {
+    final unmatched = logs
+        .where((log) => !presentKinds.contains(log.anchor))
+        .toList()
+      ..sort((a, b) => b.firedAt.compareTo(a.firedAt));
+    return unmatched;
+  }
+
+  /// Screenshot layout: alerts whose punch card is missing sit in one group
+  /// above the cards (Check Out / Break / 12h). Matching alerts stay under
+  /// their card (Check In alerts under the Check-In card).
+  static List<ReminderTimelineItem> mixTimeline({
+    required List<DateTime> punchTimes,
+    required List<ReminderPunchKind?> primaryKinds,
+    required List<ReminderLog> logs,
+  }) {
+    assert(punchTimes.length == primaryKinds.length);
+
+    final present = <ReminderPunchKind>{
+      for (final kind in primaryKinds)
+        if (kind != null) kind,
+    };
+    final missingCardAlerts = unattachedLogs(present, logs);
+
+    return [
+      if (missingCardAlerts.isNotEmpty)
+        ReminderTimelineItem.reminders(
+          time: missingCardAlerts.first.firedAt,
+          standaloneLogs: missingCardAlerts,
+        ),
+      for (var i = 0; i < punchTimes.length; i++)
+        ReminderTimelineItem.punch(
+          punchIndex: i,
+          time: punchTimes[i],
+          attachedLogs: primaryKinds[i] == null
+              ? const []
+              : logsFor(primaryKinds[i]!, logs),
+        ),
+    ];
+  }
+}
+
+class ReminderTimelineItem {
+  const ReminderTimelineItem.punch({
+    required this.punchIndex,
+    required this.time,
+    required this.attachedLogs,
+  }) : standaloneLogs = const [];
+
+  const ReminderTimelineItem.reminders({
+    required this.time,
+    required this.standaloneLogs,
+  }) : punchIndex = null,
+       attachedLogs = const [];
+
+  final int? punchIndex;
+  final DateTime time;
+  final List<ReminderLog> attachedLogs;
+  final List<ReminderLog> standaloneLogs;
+
+  bool get isPunch => punchIndex != null;
 }

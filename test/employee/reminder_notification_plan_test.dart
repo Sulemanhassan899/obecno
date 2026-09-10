@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
-import 'package:obecno/features/more/presentation/widgets/reminder_time_picker_sheet.dart';
 import 'package:obecno/features/more/services/reminder_notification_plan.dart';
 
 void main() {
@@ -144,6 +143,18 @@ void main() {
       expect(of(items, ReminderType.breakTime)!.deliverImmediately, isFalse);
     });
 
+    test('does not catch-up a break that was due before check-in', () {
+      final items = plan(
+        now: wed(0, 20),
+        checkInTime: const TimeOfDay(hour: 0, minute: 20),
+        breakReminderTime: const TimeOfDay(hour: 0, minute: 17),
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(0, 20)),
+        ],
+      );
+      expect(of(items, ReminderType.breakTime, day: 9), isNull);
+    });
+
     test('punch exactly at policy check-in cancels missed', () {
       final items = plan(
         now: wed(9, 1),
@@ -203,8 +214,8 @@ void main() {
         ],
       );
       expect(of(items, ReminderType.breakTime), isNull);
-      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(14));
-      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(15));
+      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(14, 30));
+      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(15, 30));
       expect(
         of(items, ReminderType.breakTimeEnded)!.title,
         'Break time is over',
@@ -235,7 +246,7 @@ void main() {
         ],
       );
       expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 30));
-      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(15));
+      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 30));
     });
   });
 
@@ -335,15 +346,15 @@ void main() {
       expect(of(items, ReminderType.veryLongAttendance), isNull);
     });
 
-    test('longer break fires on the minute one hour after duration', () {
+    test('longer break fires one hour after the chosen break-end time', () {
       final items = plan(
-        now: wed(15),
+        now: wed(15, 30),
         punches: [
           ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
           ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
         ],
       );
-      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(15));
+      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(15, 30));
       expect(of(items, ReminderType.longerBreak)!.deliverImmediately, isTrue);
       expect(of(items, ReminderType.breakTimeEnded), isNull);
     });
@@ -404,7 +415,7 @@ void main() {
       expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
     });
 
-    test('break-ended later than duration is clamped to punch duration', () {
+    test('break-ended later than duration keeps the chosen time', () {
       final items = plan(
         now: wed(13, 5),
         breakEndedReminderTime: const TimeOfDay(hour: 16, minute: 0),
@@ -413,7 +424,8 @@ void main() {
           ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
         ],
       );
-      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(14));
+      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(16));
+      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(17));
     });
 
     test('break-ended before the punch started falls back to duration', () {
@@ -513,7 +525,7 @@ void main() {
       expect(of(items, ReminderType.veryLongAttendance)!.fireAt, wed(21));
     });
 
-    test('very short break schedules longer-break one hour after duration', () {
+    test('very short break schedules longer-break one hour after chosen end', () {
       final items = plan(
         now: wed(13, 1),
         breakMinutes: 5,
@@ -522,8 +534,8 @@ void main() {
           ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
         ],
       );
-      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 5));
-      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 5));
+      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 35));
+      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 35));
     });
   });
 
@@ -645,18 +657,15 @@ void main() {
       );
     });
 
-    test('critical: 8:31 is not allowed past 9:00 policy', () {
-      expect(
-        ReminderSettingsProvider.clampToLatest(
-          const TimeOfDay(hour: 9, minute: 1),
-          checkIn,
-        ),
-        checkIn,
+    test('critical: 10:00 after 9:00 policy is a valid reminder time', () {
+      final items = plan(
+        now: wed(10),
+        checkInTime: const TimeOfDay(hour: 10, minute: 0),
+        policyCheckInTime: checkIn,
+        policyCheckOutTime: checkOut,
       );
-      expect(
-        ReminderSettingsProvider.clampToLatest(remindAt, checkIn),
-        remindAt,
-      );
+      expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(10));
+      expect(of(items, ReminderType.checkInMissed, day: 9)!.fireAt, wed(10, 5));
     });
   });
 
@@ -807,50 +816,108 @@ void main() {
       );
     });
 
-    test('clampToLatest rejects times after the policy time', () {
-      const policy = TimeOfDay(hour: 9, minute: 0);
-      expect(
-        ReminderSettingsProvider.clampToLatest(
-          const TimeOfDay(hour: 9, minute: 1),
-          policy,
-        ),
-        policy,
+    test('later check-in reminder adds grace to the chosen time', () {
+      final items = plan(
+        now: wed(10),
+        checkInTime: const TimeOfDay(hour: 10, minute: 0),
+        policyCheckInTime: checkIn,
+        policyCheckOutTime: checkOut,
+        graceMinutes: 15,
       );
-      expect(
-        ReminderSettingsProvider.clampToLatest(
-          const TimeOfDay(hour: 8, minute: 0),
-          policy,
-        ),
-        const TimeOfDay(hour: 8, minute: 0),
-      );
-      expect(ReminderSettingsProvider.clampToLatest(policy, policy), policy);
+      expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(10));
+      expect(of(items, ReminderType.checkInMissed, day: 9)!.fireAt, wed(10, 15));
     });
 
-    test('picker clamp matches provider clamp', () {
-      const latest = TimeOfDay(hour: 18, minute: 0);
-      const tooLate = TimeOfDay(hour: 18, minute: 1);
-      const earlier = TimeOfDay(hour: 17, minute: 0);
-      expect(
-        ReminderTimePickerSheet.clamp(tooLate, latest),
-        ReminderSettingsProvider.clampToLatest(tooLate, latest),
+    test('later checkout reminder adds grace to the chosen time', () {
+      final items = plan(
+        now: wed(19),
+        checkOutTime: const TimeOfDay(hour: 19, minute: 0),
+        policyCheckOutTime: checkOut,
+        graceMinutes: 10,
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      expect(of(items, ReminderType.checkOut)!.fireAt, wed(19));
+      expect(of(items, ReminderType.checkOutMissed)!.fireAt, wed(19, 10));
+    });
+
+    test('12 AM to 12 PM permission schedules midday break and grace', () {
+      const midnight = TimeOfDay(hour: 0, minute: 0);
+      const noon = TimeOfDay(hour: 12, minute: 0);
+      final items = plan(
+        now: wed(0),
+        checkInTime: midnight,
+        checkOutTime: noon,
+        policyCheckInTime: midnight,
+        policyCheckOutTime: noon,
+        graceMinutes: 5,
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(0, 10)),
+        ],
       );
       expect(
-        ReminderTimePickerSheet.clamp(earlier, latest),
-        ReminderSettingsProvider.clampToLatest(earlier, latest),
+        ReminderNotificationPlan.defaultBreakReminderTime(
+          checkInTime: midnight,
+          checkOutTime: noon,
+        ),
+        const TimeOfDay(hour: 5, minute: 55),
+      );
+      expect(of(items, ReminderType.checkOut)!.fireAt, wed(12));
+      expect(of(items, ReminderType.checkOutMissed)!.fireAt, wed(12, 5));
+      expect(of(items, ReminderType.breakTime)!.fireAt, wed(5, 55));
+    });
+
+    test('overnight 9 PM to 6 AM places checkout on the next morning', () {
+      const nightIn = TimeOfDay(hour: 21, minute: 0);
+      const morningOut = TimeOfDay(hour: 6, minute: 0);
+      final items = plan(
+        now: wed(21),
+        checkInTime: nightIn,
+        checkOutTime: morningOut,
+        policyCheckInTime: nightIn,
+        policyCheckOutTime: morningOut,
+        graceMinutes: 10,
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(21)),
+        ],
+      );
+      expect(
+        of(items, ReminderType.checkOut)!.fireAt,
+        DateTime(2026, 9, 10, 6),
+      );
+      expect(
+        of(items, ReminderType.checkOutMissed)!.fireAt,
+        DateTime(2026, 9, 10, 6, 10),
+      );
+      expect(of(items, ReminderType.breakTime)!.fireAt.hour, 1);
+      expect(of(items, ReminderType.breakTime)!.fireAt.day, 10);
+    });
+
+    test('grace past midnight lands on the next calendar day', () {
+      final items = plan(
+        now: wed(23, 50),
+        checkInTime: const TimeOfDay(hour: 23, minute: 55),
+        policyCheckInTime: checkIn,
+        policyCheckOutTime: checkOut,
+        graceMinutes: 10,
+      );
+      expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(23, 55));
+      expect(
+        of(items, ReminderType.checkInMissed)!.fireAt,
+        DateTime(2026, 9, 10, 0, 5),
       );
     });
 
     test('only check-in, check-out, and break times are editable', () {
-      expect(ReminderType.checkIn.canPickEarlierTime, isTrue);
-      expect(ReminderType.checkOut.canPickEarlierTime, isTrue);
-      expect(ReminderType.breakTime.canPickEarlierTime, isTrue);
-      expect(ReminderType.breakTimeEnded.canPickEarlierTime, isTrue);
-      expect(ReminderType.checkInMissed.canPickEarlierTime, isFalse);
-      expect(ReminderType.checkOutMissed.canPickEarlierTime, isFalse);
-      expect(ReminderType.longerBreak.canPickEarlierTime, isFalse);
-      expect(ReminderType.veryLongAttendance.canPickEarlierTime, isFalse);
-      expect(ReminderType.enterLocation.canPickEarlierTime, isFalse);
-      expect(ReminderType.leaveLocation.canPickEarlierTime, isFalse);
+      expect(ReminderType.checkIn.canPickTime, isTrue);
+      expect(ReminderType.checkOut.canPickTime, isTrue);
+      expect(ReminderType.breakTime.canPickTime, isTrue);
+      expect(ReminderType.breakTimeEnded.canPickTime, isTrue);
+      expect(ReminderType.checkInMissed.canPickTime, isFalse);
+      expect(ReminderType.checkOutMissed.canPickTime, isFalse);
+      expect(ReminderType.longerBreak.canPickTime, isFalse);
+      expect(ReminderType.veryLongAttendance.canPickTime, isFalse);
+      expect(ReminderType.enterLocation.canPickTime, isFalse);
+      expect(ReminderType.leaveLocation.canPickTime, isFalse);
     });
 
     test('copy exists for every reminder type', () {

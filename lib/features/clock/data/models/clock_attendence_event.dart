@@ -217,9 +217,10 @@ class AttendanceFormat {
 
   static String time(DateTime? t) {
     if (t == null) return "--";
-    final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
-    final minute = t.minute.toString().padLeft(2, '0');
-    final ampm = t.hour >= 12 ? "PM" : "AM";
+    final wall = asWallClock(t);
+    final hour = wall.hour % 12 == 0 ? 12 : wall.hour % 12;
+    final minute = wall.minute.toString().padLeft(2, '0');
+    final ampm = wall.hour >= 12 ? "PM" : "AM";
     return "$hour:$minute $ampm";
   }
 
@@ -229,6 +230,37 @@ class AttendanceFormat {
     final minutes = d.inMinutes.remainder(60);
     final mm = minutes.toString().padLeft(2, '0');
     return "${hours}h ${mm}m";
+  }
+
+  /// Calendar clock the UI shows: 12:25 AM is hour 0, 8:25 PM is hour 20.
+  /// Drops the UTC flag so a UTC midnight stamp is not shifted against local now.
+  static DateTime asWallClock(DateTime t) {
+    return DateTime(
+      t.year,
+      t.month,
+      t.day,
+      t.hour,
+      t.minute,
+      t.second,
+      t.millisecond,
+    );
+  }
+
+  /// Working hours = check-out (or now) − check-in − breaks.
+  ///
+  /// 12:25 AM → 8:25 PM minus a 1h break = 19h 00m.
+  /// 12:25 AM → 8:00 PM minus a 1h break = 18h 35m.
+  static Duration workedDuration({
+    required DateTime? start,
+    required DateTime? end,
+    Duration breaks = Duration.zero,
+  }) {
+    if (start == null || end == null) return Duration.zero;
+    var span = asWallClock(end).difference(asWallClock(start));
+    if (span.isNegative) span += const Duration(days: 1);
+    span -= breaks;
+    if (span.isNegative) return Duration.zero;
+    return span;
   }
 
   static const List<String> _days = [
