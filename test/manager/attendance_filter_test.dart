@@ -292,6 +292,35 @@ void main() {
       expect(merged.any((e) => e.employeeName == 'Other Site'), isFalse);
     });
 
+    test('overlays dashboard live punches onto member stubs', () {
+      const items = [
+        ManagerTeamAttendanceItem(userId: 1, employeeName: 'Owner'),
+        ManagerTeamAttendanceItem(userId: 2, employeeName: 'Employee2'),
+      ];
+      const live = [
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          checkin: '10:50:00',
+          isOpen: true,
+        ),
+      ];
+
+      final overlaid = TeamAttendanceMapper.overlayLive(
+        items: items,
+        live: live,
+      );
+      expect(overlaid.first.isActive, isTrue);
+      expect(overlaid.first.checkin, '10:50:00');
+      expect(
+        ManagerAttendanceFilters.applyItems(
+          source: overlaid,
+          selectedStatus: 'Active',
+        ).map((e) => e.employeeName),
+        ['Owner'],
+      );
+    });
+
     test('puts people with a status above empty-state rows', () {
       const items = [
         ManagerTeamAttendanceItem(employeeName: 'Employee1'),
@@ -929,6 +958,40 @@ void main() {
       expect(filtered, hasLength(1));
       expect(filtered.first.employeeName, 'Employee1');
     });
+
+    test('treats check-in with no check-out as active without is_open', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 1,
+        'employee_name': 'Owner',
+        'check_in': '10:50:00',
+      });
+      expect(item.isActive, isTrue);
+      expect(item.isOpen, isTrue);
+
+      final filtered = ManagerAttendanceFilters.applyItems(
+        source: [item],
+        selectedStatus: 'Active',
+      );
+      expect(filtered, hasLength(1));
+      expect(filtered.first.employeeName, 'Owner');
+    });
+
+    test('does not treat a closed shift as active', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 1,
+        'employee_name': 'Owner',
+        'check_in': '10:50:00',
+        'check_out': '18:00:00',
+      });
+      expect(item.isActive, isFalse);
+      expect(
+        ManagerAttendanceFilters.applyItems(
+          source: [item],
+          selectedStatus: 'Active',
+        ),
+        isEmpty,
+      );
+    });
   });
 
   group('ManagerEmployeeHistoryMapper punches', () {
@@ -1198,6 +1261,7 @@ void main() {
         teamMemberCount: 7,
       );
       expect(summary.presentToday, 3);
+      expect(summary.active, 3);
       expect(summary.totalTeamMembers, 7);
     });
   });

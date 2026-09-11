@@ -259,10 +259,12 @@ class _StatItem extends StatelessWidget {
 
   void _onTap(BuildContext context) {
     if (!data.showShare || data.statusFilter == null) return;
+    final overview = context.read<ManagerOverviewProvider>();
     ManagerBottomNavBar.goToAttendance(
       context,
       statusFilter: data.statusFilter,
-      date: context.read<ManagerOverviewProvider>().selectedDate,
+      date: overview.selectedDate,
+      seedItems: overview.attendance,
     );
   }
 

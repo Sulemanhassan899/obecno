@@ -255,12 +255,12 @@ class _ClockAttendanceDetailsSheetBodyState
   ReminderPunchKind? _primaryKind(AttendanceEvent event) {
     final kind = ReminderPunchKind.fromName(event.type.name);
     if (kind == null) return null;
+    if (kind == ReminderPunchKind.breakEnd) return kind;
     final ofType = AttendanceEngine.sortedOldestFirst(
       _events,
     ).where((e) => e.type == event.type).toList();
     if (ofType.isEmpty) return null;
-    final primary =
-        kind == ReminderPunchKind.checkOut || kind == ReminderPunchKind.breakEnd
+    final primary = kind == ReminderPunchKind.checkOut
         ? ofType.last
         : ofType.first;
     return primary.isSamePunchAs(event) ? kind : null;

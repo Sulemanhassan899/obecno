@@ -91,7 +91,8 @@ class ReminderClockStatus {
           isOnBreak = false;
           break;
         case ReminderPunchKind.breakStart:
-          breakStart ??= punch.time;
+          breakStart = punch.time;
+          breakEnd = null;
           isOnBreak = true;
           break;
         case ReminderPunchKind.breakEnd:

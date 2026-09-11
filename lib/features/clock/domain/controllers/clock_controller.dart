@@ -662,10 +662,6 @@ class ClockScreenController extends ChangeNotifier {
 
     final status = _statusFromEvents;
 
-    if (status == AttendanceDayStatus.checkedOut && !isTodayWorkingDay) {
-      return AttendanceActionResult.nonWorkingDay;
-    }
-
     isProcessing = true;
     notifyListeners();
     await Future.delayed(tapProcessingDelay);

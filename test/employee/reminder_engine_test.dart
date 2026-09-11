@@ -198,6 +198,27 @@ void main() {
       );
       expect(of(logs, ReminderType.longerBreak), isNull);
     });
+
+    test(
+      'ending break after the settings clock still lists break-ended',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(14, 40),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(13)),
+            ReminderPunch(kind: ReminderPunchKind.breakEnd, time: at(14, 35)),
+          ],
+        );
+        expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(14, 30));
+        expect(
+          of(logs, ReminderType.breakTimeEnded)!.timelineLabel,
+          'Break time ended',
+        );
+        expect(of(logs, ReminderType.longerBreak), isNull);
+      },
+    );
   });
 
   group('critical path', () {
@@ -293,14 +314,19 @@ void main() {
       expect(of(logs, ReminderType.veryLongAttendance), isNull);
     });
 
-    test('twelve hours still checked in logs still-working at punch + 12h', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(22, 10),
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(10))],
-      );
-      expect(of(logs, ReminderType.veryLongAttendance)!.firedAt, at(22));
-    });
+    test(
+      'twelve hours still checked in logs still-working at punch + 12h',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(22, 10),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(10)),
+          ],
+        );
+        expect(of(logs, ReminderType.veryLongAttendance)!.firedAt, at(22));
+      },
+    );
 
     test('not checked in does not log still-working or break', () async {
       final logs = await sync(dao: _MemoryReminderDao(), now: at(15, 51));
@@ -309,19 +335,22 @@ void main() {
       expect(of(logs, ReminderType.checkIn)!.firedAt, at(9));
     });
 
-    test('check-in at policy time after 8am reminder logs missed at 8:05', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(9, 10),
-        checkInTime: const TimeOfDay(hour: 8, minute: 0),
-        policyCheckInTime: checkIn,
-        punches: [
-          ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
-        ],
-      );
-      expect(of(logs, ReminderType.checkIn)!.firedAt, at(8));
-      expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(8, 5));
-    });
+    test(
+      'check-in at policy time after 8am reminder logs missed at 8:05',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(9, 10),
+          checkInTime: const TimeOfDay(hour: 8, minute: 0),
+          policyCheckInTime: checkIn,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+          ],
+        );
+        expect(of(logs, ReminderType.checkIn)!.firedAt, at(8));
+        expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(8, 5));
+      },
+    );
 
     test('overtime logs very long attendance', () async {
       final logs = await sync(
@@ -336,30 +365,59 @@ void main() {
       );
     });
 
-    test('staying on break logs break-ended before the longer-break hour', () async {
+    test(
+      'staying on break logs break-ended at the settings clock',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(14, 35),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(13)),
+          ],
+        );
+        expect(of(logs, ReminderType.longerBreak), isNull);
+        expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(14, 30));
+      },
+    );
+
+    test('staying on break an hour after the settings clock logs longer-break', () async {
       final logs = await sync(
         dao: _MemoryReminderDao(),
-        now: at(14, 10),
+        now: at(15, 35),
         punches: [
           ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
           ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(13)),
         ],
       );
-      expect(of(logs, ReminderType.longerBreak), isNull);
-      expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(14));
+      expect(of(logs, ReminderType.longerBreak)!.firedAt, at(15, 30));
+      expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(14, 30));
     });
 
-    test('staying on break an hour after duration logs longer-break', () async {
+    test('afternoon break logs at start plus duration, not 2:30', () async {
       final logs = await sync(
         dao: _MemoryReminderDao(),
-        now: at(15, 1),
+        now: at(16, 30),
         punches: [
           ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
-          ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(13)),
+          ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(15, 28)),
         ],
       );
-      expect(of(logs, ReminderType.longerBreak)!.firedAt, at(15));
-      expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(14));
+      expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(16, 28));
+    });
+
+    test('second break logs from the open break start', () async {
+      final logs = await sync(
+        dao: _MemoryReminderDao(),
+        now: at(16, 5),
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+          ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(11)),
+          ReminderPunch(kind: ReminderPunchKind.breakEnd, time: at(11, 20)),
+          ReminderPunch(kind: ReminderPunchKind.breakStart, time: at(15)),
+        ],
+      );
+      expect(of(logs, ReminderType.breakTimeEnded)!.firedAt, at(16));
     });
 
     test('disabled types are skipped', () async {
@@ -415,19 +473,22 @@ void main() {
       expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(8, 35));
     });
 
-    test('punch at 8:40 after 8:30 reminder still logs missed at 8:35', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(8, 50),
-        checkInTime: const TimeOfDay(hour: 8, minute: 30),
-        policyCheckInTime: checkIn,
-        punches: [
-          ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(8, 40)),
-        ],
-      );
-      expect(of(logs, ReminderType.checkIn)!.firedAt, at(8, 30));
-      expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(8, 35));
-    });
+    test(
+      'punch at 8:40 after 8:30 reminder still logs missed at 8:35',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(8, 50),
+          checkInTime: const TimeOfDay(hour: 8, minute: 30),
+          policyCheckInTime: checkIn,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(8, 40)),
+          ],
+        );
+        expect(of(logs, ReminderType.checkIn)!.firedAt, at(8, 30));
+        expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(8, 35));
+      },
+    );
 
     test(
       'no punch by 9:10 logs missed at the reminder time, not permission time',
@@ -443,56 +504,74 @@ void main() {
       },
     );
 
-    test('5:30 checkout reminder logs missed at 5:35, not permission 6:05', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(18, 20),
-        checkOutTime: const TimeOfDay(hour: 17, minute: 30),
-        policyCheckOutTime: checkOut,
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9))],
-      );
-      expect(of(logs, ReminderType.checkOut)!.firedAt, at(17, 30));
-      expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(17, 35));
-    });
+    test(
+      '5:30 checkout reminder logs missed at 5:35, not permission 6:05',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(18, 20),
+          checkOutTime: const TimeOfDay(hour: 17, minute: 30),
+          policyCheckOutTime: checkOut,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+          ],
+        );
+        expect(of(logs, ReminderType.checkOut)!.firedAt, at(17, 30));
+        expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(17, 35));
+      },
+    );
 
-    test('later check-in reminder logs missed after chosen time plus grace', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(10, 20),
-        checkInTime: const TimeOfDay(hour: 10, minute: 0),
-        policyCheckInTime: checkIn,
-        graceMinutes: 15,
-      );
-      expect(of(logs, ReminderType.checkIn)!.firedAt, at(10));
-      expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(10, 15));
-    });
+    test(
+      'later check-in reminder logs missed after chosen time plus grace',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(10, 20),
+          checkInTime: const TimeOfDay(hour: 10, minute: 0),
+          policyCheckInTime: checkIn,
+          graceMinutes: 15,
+        );
+        expect(of(logs, ReminderType.checkIn)!.firedAt, at(10));
+        expect(of(logs, ReminderType.checkInMissed)!.firedAt, at(10, 15));
+      },
+    );
 
-    test('later checkout reminder logs missed after chosen time plus grace', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(19, 20),
-        checkOutTime: const TimeOfDay(hour: 19, minute: 0),
-        policyCheckOutTime: checkOut,
-        graceMinutes: 10,
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9))],
-      );
-      expect(of(logs, ReminderType.checkOut)!.firedAt, at(19));
-      expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(19, 10));
-    });
+    test(
+      'later checkout reminder logs missed after chosen time plus grace',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(19, 20),
+          checkOutTime: const TimeOfDay(hour: 19, minute: 0),
+          policyCheckOutTime: checkOut,
+          graceMinutes: 10,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(9)),
+          ],
+        );
+        expect(of(logs, ReminderType.checkOut)!.firedAt, at(19));
+        expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(19, 10));
+      },
+    );
 
-    test('12 AM to 12 PM permission logs checkout missed at noon plus grace', () async {
-      final logs = await sync(
-        dao: _MemoryReminderDao(),
-        now: at(12, 10),
-        checkInTime: const TimeOfDay(hour: 0, minute: 0),
-        checkOutTime: const TimeOfDay(hour: 12, minute: 0),
-        policyCheckInTime: const TimeOfDay(hour: 0, minute: 0),
-        policyCheckOutTime: const TimeOfDay(hour: 12, minute: 0),
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(0, 10))],
-      );
-      expect(of(logs, ReminderType.checkOut)!.firedAt, at(12));
-      expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(12, 5));
-    });
+    test(
+      '12 AM to 12 PM permission logs checkout missed at noon plus grace',
+      () async {
+        final logs = await sync(
+          dao: _MemoryReminderDao(),
+          now: at(12, 10),
+          checkInTime: const TimeOfDay(hour: 0, minute: 0),
+          checkOutTime: const TimeOfDay(hour: 12, minute: 0),
+          policyCheckInTime: const TimeOfDay(hour: 0, minute: 0),
+          policyCheckOutTime: const TimeOfDay(hour: 12, minute: 0),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: at(0, 10)),
+          ],
+        );
+        expect(of(logs, ReminderType.checkOut)!.firedAt, at(12));
+        expect(of(logs, ReminderType.checkOutMissed)!.firedAt, at(12, 5));
+      },
+    );
 
     test(
       'checked in all day with no break or checkout logs every due reminder',
@@ -551,15 +630,12 @@ void main() {
         );
         expect(items, hasLength(2));
         expect(items.first.isPunch, isFalse);
-        expect(
-          items.first.standaloneLogs.map((log) => log.type).toList(),
-          [
-            ReminderType.veryLongAttendance,
-            ReminderType.checkOutMissed,
-            ReminderType.checkOut,
-            ReminderType.breakTime,
-          ],
-        );
+        expect(items.first.standaloneLogs.map((log) => log.type).toList(), [
+          ReminderType.veryLongAttendance,
+          ReminderType.checkOutMissed,
+          ReminderType.checkOut,
+          ReminderType.breakTime,
+        ]);
         expect(items.last.isPunch, isTrue);
         expect(items.last.attachedLogs, isEmpty);
       },
@@ -629,6 +705,63 @@ void main() {
         ReminderType.longerBreak,
       );
     });
+
+    test('break-end reminder sits above cards while on break, like break start', () {
+      final logs = [
+        ReminderLog(
+          type: ReminderType.breakTimeEnded,
+          firedAt: at(14, 30),
+          title: 'Break time is over',
+          message: 'Ready to get back to work?',
+        ),
+      ];
+      final items = ReminderEngine.mixTimeline(
+        punchTimes: [at(13), at(9)],
+        primaryKinds: const [
+          ReminderPunchKind.breakStart,
+          ReminderPunchKind.checkIn,
+        ],
+        logs: logs,
+      );
+      expect(items, hasLength(3));
+      expect(items.first.isPunch, isFalse);
+      expect(
+        items.first.standaloneLogs.single.type,
+        ReminderType.breakTimeEnded,
+      );
+      expect(items[1].isPunch, isTrue);
+      expect(items[1].attachedLogs, isEmpty);
+      expect(items.last.attachedLogs, isEmpty);
+    });
+
+    test(
+      'break-end reminder attaches to the break-end card after punch back',
+      () {
+        final logs = [
+          ReminderLog(
+            type: ReminderType.breakTimeEnded,
+            firedAt: at(14, 30),
+            title: 'Break time is over',
+            message: 'Ready to get back to work?',
+          ),
+        ];
+        final items = ReminderEngine.mixTimeline(
+          punchTimes: [at(14, 35), at(13), at(9)],
+          primaryKinds: const [
+            ReminderPunchKind.breakEnd,
+            ReminderPunchKind.breakStart,
+            ReminderPunchKind.checkIn,
+          ],
+          logs: logs,
+        );
+        expect(items.every((item) => item.isPunch), isTrue);
+        expect(
+          items.first.attachedLogs.single.type,
+          ReminderType.breakTimeEnded,
+        );
+        expect(items[1].attachedLogs, isEmpty);
+      },
+    );
 
     test('checkout reminder appears while still checked in', () {
       final logs = [
@@ -750,20 +883,17 @@ void main() {
       );
       expect(items, hasLength(2));
       expect(items.first.isPunch, isFalse);
-      expect(
-        items.first.standaloneLogs.map((log) => log.type).toList(),
-        [
-          ReminderType.veryLongAttendance,
-          ReminderType.checkOutMissed,
-          ReminderType.checkOut,
-          ReminderType.breakTime,
-        ],
-      );
+      expect(items.first.standaloneLogs.map((log) => log.type).toList(), [
+        ReminderType.veryLongAttendance,
+        ReminderType.checkOutMissed,
+        ReminderType.checkOut,
+        ReminderType.breakTime,
+      ]);
       expect(items.last.isPunch, isTrue);
-      expect(
-        items.last.attachedLogs.map((log) => log.type).toList(),
-        [ReminderType.checkInMissed, ReminderType.checkIn],
-      );
+      expect(items.last.attachedLogs.map((log) => log.type).toList(), [
+        ReminderType.checkInMissed,
+        ReminderType.checkIn,
+      ]);
     });
   });
 }

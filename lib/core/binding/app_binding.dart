@@ -200,16 +200,17 @@ class AppBindings {
     );
 
     managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
+    managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
     managerAttendanceService = ManagerAttendanceService(
       managerAttendanceRepository,
       employeesRepository: managerEmployeesRepository,
+      overviewRepository: managerOverviewRepository,
       currentUserIdProvider: () => authProvider.user?.id,
     );
     managerAttendanceProvider = ManagerAttendanceProvider(
       managerAttendanceService,
     );
 
-    managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
     managerOverviewService = ManagerOverviewService(
       managerOverviewRepository,
       employeesRepository: managerEmployeesRepository,

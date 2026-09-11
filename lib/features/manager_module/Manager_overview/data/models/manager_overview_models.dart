@@ -111,7 +111,9 @@ class ManagerTeamAttendanceItem {
   final bool isOnTime;
   final String? hoursVsExpected;
 
-  bool get hasCheckIn => checkin != null && checkin!.isNotEmpty;
+  bool get hasCheckIn => checkin != null && checkin!.trim().isNotEmpty;
+
+  bool get hasCheckOut => checkout != null && checkout!.trim().isNotEmpty;
 
   /// Live break: API flag, status text, or an open breakout without breakin.
   bool get isCurrentlyOnBreak {
@@ -120,7 +122,10 @@ class ManagerTeamAttendanceItem {
     return _hasOpenBreak(breakout, breakin);
   }
 
-  bool get isActive => isOpen && !isCurrentlyOnBreak;
+  /// Clocked in right now. Team-attendance payloads often omit `is_open`,
+  /// so a check-in with no check-out is treated as an open session.
+  bool get isActive =>
+      (isOpen || (hasCheckIn && !hasCheckOut)) && !isCurrentlyOnBreak;
 
   bool get isOnLeave {
     final raw = '${status ?? ''} ${statusLabel ?? ''}'.toLowerCase();
@@ -207,6 +212,18 @@ class ManagerTeamAttendanceItem {
           json['break_end'] ??
           json['break_ended_at'],
     );
+    final checkin = _asNullableString(
+      json['checkin'] ??
+          json['check_in'] ??
+          json['check_in_time'] ??
+          json['first_check_in'],
+    );
+    final checkout = _asNullableString(
+      json['checkout'] ??
+          json['check_out'] ??
+          json['check_out_time'] ??
+          json['last_check_out'],
+    );
     final onBreak =
         _asBool(json['is_on_break']) ||
         _asBool(json['on_break']) ||
@@ -243,22 +260,15 @@ class ManagerTeamAttendanceItem {
         ),
       ),
       date: _asDate(json['date']),
-      checkin: _asNullableString(
-        json['checkin'] ??
-            json['check_in'] ??
-            json['check_in_time'] ??
-            json['first_check_in'],
-      ),
-      checkout: _asNullableString(
-        json['checkout'] ??
-            json['check_out'] ??
-            json['check_out_time'] ??
-            json['last_check_out'],
-      ),
+      checkin: checkin,
+      checkout: checkout,
       breakout: breakout,
       breakin: breakin,
       isOpen:
-          _asBool(json['is_open']) || _isLiveClockedIn(liveStatus) || onBreak,
+          _asBool(json['is_open']) ||
+          _isLiveClockedIn(liveStatus) ||
+          onBreak ||
+          _hasOpenSession(checkin, checkout),
       currentLocation: _asNullableString(json['current_location']),
       lat: _asDoubleOrNull(json['lat']),
       lon: _asDoubleOrNull(json['lon']),
@@ -460,12 +470,18 @@ bool _hasOpenBreak(String? breakout, String? breakin) {
   return (breakin ?? '').trim().isEmpty;
 }
 
+bool _hasOpenSession(String? checkin, String? checkout) {
+  return (checkin ?? '').trim().isNotEmpty && (checkout ?? '').trim().isEmpty;
+}
+
 bool _isLiveClockedIn(String? raw) {
   final value = _normStatus(raw);
   return value == 'working' ||
       value == 'active' ||
       value == 'late' ||
       value == 'latecheckin' ||
+      value == 'clockedin' ||
+      value == 'checkedin' ||
       _looksBreak(raw);
 }
 
