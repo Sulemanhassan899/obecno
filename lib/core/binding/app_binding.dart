@@ -17,6 +17,9 @@ import 'package:obecno/features/more/services/terms_service.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
 import 'package:obecno/features/launch/book_demo/repositories/book_demo_repository.dart';
 import 'package:obecno/features/launch/book_demo/services/book_demo_service.dart';
+import 'package:obecno/features/more/providers/help_feedback_provider.dart';
+import 'package:obecno/features/more/repositories/help_feedback_repository.dart';
+import 'package:obecno/features/more/services/help_feedback_service.dart';
 import 'package:obecno/features/more/data/local/reminder_dao.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
@@ -74,6 +77,9 @@ class AppBindings {
   late final BookDemoRepository bookDemoRepository;
   late final BookDemoService bookDemoService;
   late final BookDemoProvider bookDemoProvider;
+  late final HelpFeedbackRepository helpFeedbackRepository;
+  late final HelpFeedbackService helpFeedbackService;
+  late final HelpFeedbackProvider helpFeedbackProvider;
   late final ProfileRepository profileRepository;
   late final ProfileService profileService;
   late final ProfileProvider profileProvider;
@@ -177,6 +183,13 @@ class AppBindings {
     deviceService = DeviceService(deviceRepository, deviceInfoService);
     deviceProvider = DeviceProvider(deviceService, deviceCacheService);
 
+    helpFeedbackRepository = HelpFeedbackRepository(ApihttpClient);
+    helpFeedbackService = HelpFeedbackService(helpFeedbackRepository);
+    helpFeedbackProvider = HelpFeedbackProvider(
+      helpFeedbackService,
+      deviceInfoService,
+    );
+
     reminderDao = ReminderDao();
     reminderSettingsProvider = ReminderSettingsProvider(
       dao: reminderDao,
@@ -250,7 +263,9 @@ class AppBindings {
       unawaited(privacyProvider.preloadOnLogin());
       final userId = authProvider.user?.id;
       if (userId != null && userId.isNotEmpty) {
-        unawaited(employeeTrustedTime.captureAuthenticatedLogin(userId: userId));
+        unawaited(
+          employeeTrustedTime.captureAuthenticatedLogin(userId: userId),
+        );
       }
 
       // Device registration/status is checked in the background by
@@ -259,9 +274,7 @@ class AppBindings {
       // toast/dialog. Only silently (re-)register here so a returning
       // user's device is registered even before either widget runs.
       unawaited(deviceProvider.registerOnLogin());
-      unawaited(
-        reminderSettingsProvider.load(resumeExistingSession: true),
-      );
+      unawaited(reminderSettingsProvider.load(resumeExistingSession: true));
     }
     _authListener = () {
       final isAuthenticatedNow = authProvider.isAuthenticated;
@@ -271,7 +284,9 @@ class AppBindings {
         unawaited(reminderSettingsProvider.load());
         final userId = authProvider.user?.id;
         if (userId != null && userId.isNotEmpty) {
-          unawaited(employeeTrustedTime.captureAuthenticatedLogin(userId: userId));
+          unawaited(
+            employeeTrustedTime.captureAuthenticatedLogin(userId: userId),
+          );
         }
       } else if (!isAuthenticatedNow && _wasAuthenticated) {
         // Logged out: drop cached device state so a different user logging

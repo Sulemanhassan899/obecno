@@ -3,22 +3,40 @@ import 'package:url_launcher/url_launcher.dart';
 class MapsLauncher {
   MapsLauncher._();
 
-  static Future<bool> open({required double lat, required double lon}) async {
+  /// URIs that drop a pin at [lat],[lon]. Never use navigation / directions
+  /// schemes (`google.navigation`, `/maps/dir`, `daddr`) — those start routing.
+  static List<Uri> pinUris({
+    required double lat,
+    required double lon,
+    String? label,
+  }) {
     final query = '$lat,$lon';
     final encoded = Uri.encodeComponent(query);
-    final web = Uri.https('www.google.com', '/maps/search/', {
-      'api': '1',
-      'query': query,
-    });
+    final pinLabel = (label == null || label.trim().isEmpty)
+        ? 'Location'
+        : label.trim();
+    final labeledQuery = Uri.encodeComponent('$query($pinLabel)');
+    final encodedLabel = Uri.encodeComponent(pinLabel);
 
-    final candidates = <Uri>[
-      Uri.parse('comgooglemaps://?q=$encoded&center=$query'),
-      Uri.parse('maps://?ll=$query&q=$encoded'),
-      Uri.parse('google.navigation:q=$encoded'),
-      Uri.parse('geo:$query?q=$encoded'),
-      Uri.https('maps.google.com', '/', {'q': query}),
-      web,
+    return [
+      Uri.https('www.google.com', '/maps/search/', {
+        'api': '1',
+        'query': query,
+      }),
+      Uri.parse('geo:0,0?q=$labeledQuery'),
+      Uri.parse('maps://?ll=$query&q=$encodedLabel'),
+      Uri.parse('comgooglemaps://?q=$encoded&center=$query&zoom=16'),
+      Uri.https('maps.apple.com', '/', {'ll': query, 'q': pinLabel}),
     ];
+  }
+
+  static Future<bool> open({
+    required double lat,
+    required double lon,
+    String? label,
+  }) async {
+    final candidates = pinUris(lat: lat, lon: lon, label: label);
+    final fallback = candidates.first;
 
     for (final uri in candidates) {
       if (await _tryLaunch(uri, LaunchMode.externalNonBrowserApplication)) {
@@ -27,7 +45,7 @@ class MapsLauncher {
       if (await _tryLaunch(uri, LaunchMode.externalApplication)) return true;
     }
 
-    return _tryLaunch(web, LaunchMode.platformDefault);
+    return _tryLaunch(fallback, LaunchMode.platformDefault);
   }
 
   static Future<bool> _tryLaunch(Uri uri, LaunchMode mode) async {

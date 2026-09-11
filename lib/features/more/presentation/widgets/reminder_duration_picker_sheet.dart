@@ -3,48 +3,65 @@ import 'package:flutter/material.dart';
 
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/widgets/my_button.dart';
 
-class ReminderTimePickerSheet {
-  ReminderTimePickerSheet._();
+class ReminderDurationPickerSheet {
+  ReminderDurationPickerSheet._();
 
-  static Future<TimeOfDay?> show(
+  static Future<int?> show(
     BuildContext context, {
-    required TimeOfDay initial,
-    required TimeOfDay resetTo,
+    required int initialMinutes,
+    required int resetMinutes,
   }) {
-    return showModalBottomSheet<TimeOfDay>(
+    return showModalBottomSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) =>
-          _ReminderTimePickerBody(initial: initial, resetTo: resetTo),
+      builder: (_) => _ReminderDurationPickerBody(
+        initialMinutes: ReminderCopy.snapDuration(initialMinutes),
+        resetMinutes: ReminderCopy.snapDuration(resetMinutes),
+      ),
     );
   }
 }
 
-class _ReminderTimePickerBody extends StatefulWidget {
-  const _ReminderTimePickerBody({required this.initial, required this.resetTo});
+class _ReminderDurationPickerBody extends StatefulWidget {
+  const _ReminderDurationPickerBody({
+    required this.initialMinutes,
+    required this.resetMinutes,
+  });
 
-  final TimeOfDay initial;
-  final TimeOfDay resetTo;
+  final int initialMinutes;
+  final int resetMinutes;
 
   @override
-  State<_ReminderTimePickerBody> createState() =>
-      _ReminderTimePickerBodyState();
+  State<_ReminderDurationPickerBody> createState() =>
+      _ReminderDurationPickerBodyState();
 }
 
-class _ReminderTimePickerBodyState extends State<_ReminderTimePickerBody> {
-  late TimeOfDay _selected;
+class _ReminderDurationPickerBodyState
+    extends State<_ReminderDurationPickerBody> {
+  late int _selected;
+  late FixedExtentScrollController _controller;
+
+  List<int> get _options => ReminderCopy.durationOptionsInMinutes;
 
   @override
   void initState() {
     super.initState();
-    _selected = widget.initial;
+    _selected = widget.initialMinutes;
+    final index = _options.indexOf(_selected);
+    _controller = FixedExtentScrollController(
+      initialItem: index < 0 ? 0 : index,
+    );
   }
 
-  DateTime _asDate(TimeOfDay time) =>
-      DateTime(2020, 1, 1, time.hour, time.minute);
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,24 +86,27 @@ class _ReminderTimePickerBodyState extends State<_ReminderTimePickerBody> {
                 ),
               ),
               const SizedBox(height: 16),
-              AppText.h6('Remind me at', weight: FontWeight.w600),
+              AppText.h6('Notify me after', weight: FontWeight.w600),
               const SizedBox(height: 8),
               SizedBox(
                 height: 180,
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.time,
-                  use24hFormat: false,
-                  initialDateTime: _asDate(_selected),
-                  minimumDate: _asDate(const TimeOfDay(hour: 0, minute: 0)),
-                  maximumDate: _asDate(const TimeOfDay(hour: 23, minute: 59)),
-                  onDateTimeChanged: (value) {
-                    setState(() {
-                      _selected = TimeOfDay(
-                        hour: value.hour,
-                        minute: value.minute,
-                      );
-                    });
+                child: CupertinoPicker(
+                  scrollController: _controller,
+                  itemExtent: 36,
+                  magnification: 1.1,
+                  useMagnifier: true,
+                  onSelectedItemChanged: (index) {
+                    setState(() => _selected = _options[index]);
                   },
+                  children: [
+                    for (final minutes in _options)
+                      Center(
+                        child: AppText.h6(
+                          ReminderCopy.durationPhrase(minutes),
+                          weight: FontWeight.w500,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -99,7 +119,8 @@ class _ReminderTimePickerBodyState extends State<_ReminderTimePickerBody> {
                       backgroundColor: kWhite,
                       fontColor: kBlack,
                       outlineColor: kBorderColor,
-                      onTap: () async => Navigator.pop(context, widget.resetTo),
+                      onTap: () async =>
+                          Navigator.pop(context, widget.resetMinutes),
                     ),
                   ),
                   const SizedBox(width: 10),

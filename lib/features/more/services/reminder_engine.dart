@@ -94,6 +94,7 @@ class ReminderEngine {
             checkOutTime: checkOutTime,
             breakTime: breakAtTime,
             breakEndTime: breakEndedAtTime,
+            longAttendanceHours: longAttendanceHours,
           ),
           clockStatus: status.storageValue,
         ),
@@ -149,9 +150,8 @@ class ReminderEngine {
       ReminderType.breakTime,
       schedule.breakAt,
       afterStartingWork(schedule.breakAt) &&
-          ((status.isCheckedIn && status.breakStart == null) ||
-              (status.breakStart != null &&
-                  status.breakStart!.isAfter(schedule.breakAt))),
+          !_onBreakBefore(status, schedule.breakAt) &&
+          (status.isCheckedIn || status.isOnBreak),
     );
 
     final endedAt = schedule.breakEndedAt;
@@ -176,7 +176,7 @@ class ReminderEngine {
       await logIfDue(
         ReminderType.veryLongAttendance,
         longAt,
-        status.isCheckedIn,
+        _stayedThrough(status, longAt),
       );
     }
 
@@ -189,6 +189,23 @@ class ReminderEngine {
     if (status.breakStart!.isAfter(fireAt)) return false;
     final ended = status.breakEnd;
     return ended == null || !ended.isBefore(fireAt);
+  }
+
+  /// Already on a break that started before this clock. A finished earlier
+  /// break does not consume the take-break reminder.
+  static bool _onBreakBefore(ReminderClockStatus status, DateTime fireAt) {
+    if (status.breakStart == null) return false;
+    if (!status.breakStart!.isBefore(fireAt)) return false;
+    final ended = status.breakEnd;
+    return ended == null || !ended.isBefore(fireAt);
+  }
+
+  /// Still checked in, or left at/after this clock — they were here long enough.
+  static bool _stayedThrough(ReminderClockStatus status, DateTime fireAt) {
+    if (status.firstCheckIn == null) return false;
+    if (status.isCheckedIn) return true;
+    final left = status.lastCheckOut;
+    return left != null && !left.isBefore(fireAt);
   }
 
   static Future<void> _pruneInvalidLogs({
@@ -236,9 +253,9 @@ class ReminderEngine {
       stale.add(ReminderType.longerBreak);
     }
     final longAt = schedule.veryLongAttendanceAt;
-    final reachedTwelveHoursWhileCheckedIn =
-        status.isCheckedIn && longAt != null && !longAt.isAfter(now);
-    if (!reachedTwelveHoursWhileCheckedIn) {
+    final reachedLongAttendance =
+        longAt != null && !longAt.isAfter(now) && _stayedThrough(status, longAt);
+    if (!reachedLongAttendance) {
       stale.add(ReminderType.veryLongAttendance);
     }
 
@@ -272,13 +289,91 @@ class ReminderEngine {
   /// Notifications whose punch card is missing — still shown on the timeline.
   static List<ReminderLog> unattachedLogs(
     Set<ReminderPunchKind> presentKinds,
-    List<ReminderLog> logs,
-  ) {
-    final unmatched = logs
-        .where((log) => !presentKinds.contains(log.anchor))
-        .toList()
-      ..sort((a, b) => b.firedAt.compareTo(a.firedAt));
+    List<ReminderLog> logs, {
+    List<DateTime> punchTimes = const [],
+    List<ReminderPunchKind?> primaryKinds = const [],
+  }) {
+    final unmatched = logs.where((log) {
+      if (log.type == ReminderType.breakTimeEnded) {
+        return !_breakEndCardCovers(
+          log,
+          punchTimes: punchTimes,
+          primaryKinds: primaryKinds,
+        );
+      }
+      if (log.type == ReminderType.breakTime) {
+        return !_breakStartCardCovers(
+          log,
+          punchTimes: punchTimes,
+          primaryKinds: primaryKinds,
+        );
+      }
+      return !presentKinds.contains(log.anchor);
+    }).toList()..sort((a, b) => b.firedAt.compareTo(a.firedAt));
     return unmatched;
+  }
+
+  /// Only a break-end punch at/after the reminder belongs to this notice.
+  /// An earlier finished break must not hide a later "break time is over" row.
+  static bool _breakEndCardCovers(
+    ReminderLog log, {
+    required List<DateTime> punchTimes,
+    required List<ReminderPunchKind?> primaryKinds,
+  }) {
+    return _cardCovers(
+      log,
+      kind: ReminderPunchKind.breakEnd,
+      punchTimes: punchTimes,
+      primaryKinds: primaryKinds,
+    );
+  }
+
+  /// Only a break-start punch at/after the reminder belongs to this notice.
+  /// An earlier finished break must not hide a later "break time" row.
+  static bool _breakStartCardCovers(
+    ReminderLog log, {
+    required List<DateTime> punchTimes,
+    required List<ReminderPunchKind?> primaryKinds,
+  }) {
+    return _cardCovers(
+      log,
+      kind: ReminderPunchKind.breakStart,
+      punchTimes: punchTimes,
+      primaryKinds: primaryKinds,
+    );
+  }
+
+  static bool _cardCovers(
+    ReminderLog log, {
+    required ReminderPunchKind kind,
+    required List<DateTime> punchTimes,
+    required List<ReminderPunchKind?> primaryKinds,
+  }) {
+    final count = punchTimes.length < primaryKinds.length
+        ? punchTimes.length
+        : primaryKinds.length;
+    for (var i = 0; i < count; i++) {
+      if (primaryKinds[i] != kind) continue;
+      if (!punchTimes[i].isBefore(log.firedAt)) return true;
+    }
+    return false;
+  }
+
+  static List<ReminderLog> _logsUnderPunch({
+    required ReminderPunchKind kind,
+    required DateTime punchTime,
+    required List<ReminderLog> logs,
+  }) {
+    final attached = logsFor(kind, logs);
+    return [
+      for (final log in attached)
+        if (!_timedBreakLog(log) || !punchTime.isBefore(log.firedAt)) log,
+    ];
+  }
+
+  static bool _timedBreakLog(ReminderLog log) {
+    return log.type == ReminderType.breakTime ||
+        log.type == ReminderType.breakTimeEnded;
   }
 
   /// Screenshot layout: alerts whose punch card is missing sit in one group
@@ -295,7 +390,12 @@ class ReminderEngine {
       for (final kind in primaryKinds)
         if (kind != null) kind,
     };
-    final missingCardAlerts = unattachedLogs(present, logs);
+    final missingCardAlerts = unattachedLogs(
+      present,
+      logs,
+      punchTimes: punchTimes,
+      primaryKinds: primaryKinds,
+    );
 
     return [
       if (missingCardAlerts.isNotEmpty)
@@ -309,7 +409,11 @@ class ReminderEngine {
           time: punchTimes[i],
           attachedLogs: primaryKinds[i] == null
               ? const []
-              : logsFor(primaryKinds[i]!, logs),
+              : _logsUnderPunch(
+                  kind: primaryKinds[i]!,
+                  punchTime: punchTimes[i],
+                  logs: logs,
+                ),
         ),
     ];
   }

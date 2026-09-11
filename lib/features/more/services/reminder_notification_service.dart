@@ -153,7 +153,9 @@ class ReminderNotificationService {
           body: item.body,
         );
         if (shown) seen.add(item.type);
-      } else if (rebuildSchedule) {
+      } else if (rebuildSchedule ||
+          item.type == ReminderType.breakTime ||
+          item.type == ReminderType.veryLongAttendance) {
         await _schedule(item);
       }
     }
@@ -271,19 +273,28 @@ class ReminderNotificationService {
   }
 
   /// Watch ticks skip a full rebuild, so a leftover break-end alarm can fire
-  /// after they already punched back in.
+  /// after they already punched back in. Do not dismiss a banner that is
+  /// already on screen — check-out reminders stay until swipe, and break-end
+  /// should too.
   Future<void> _cancelUnplannedBreakReminders(
     List<ScheduledReminderNotification> planned,
   ) async {
     final plannedTypes = {for (final item in planned) item.type};
+    final activeIds = await _activeNotificationIds();
     for (final type in const [
       ReminderType.breakTime,
       ReminderType.breakTimeEnded,
       ReminderType.longerBreak,
     ]) {
       if (plannedTypes.contains(type)) continue;
+      final id = ReminderNotificationPlan.idFor(type);
+      if ((type == ReminderType.breakTimeEnded ||
+              type == ReminderType.breakTime) &&
+          activeIds.contains(id)) {
+        continue;
+      }
       try {
-        await _plugin.cancel(id: ReminderNotificationPlan.idFor(type));
+        await _plugin.cancel(id: id);
         await _plugin.cancel(
           id: ReminderNotificationPlan.idFor(type, dayOffset: 1),
         );

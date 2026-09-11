@@ -6,7 +6,6 @@ import 'package:obecno/features/employee_module/alerts/presentation/screens/aler
 import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
-import 'package:obecno/widgets/bottom_nav_bars/swipeable_tabs.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -17,8 +16,9 @@ class EmployeeBottomNavBar extends StatefulWidget {
   State<EmployeeBottomNavBar> createState() => _EmployeeBottomNavBarState();
 }
 
-class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar>
-    with SwipeableBottomNavMixin {
+class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
+  int selectedIndex = 0;
+
   // GlobalKey lets us call notifyTabResumed() on ClockScreen's state
   // when the user switches back to the Clock tab.
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
@@ -31,16 +31,6 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar>
     AlertsScreen(),
     ProfileSettingsScreen(),
   ];
-
-  @override
-  void onTabSettled(int index, int previousIndex) {
-    if (index == previousIndex) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (index == 0) _clockKey.currentState?.notifyTabResumed();
-      if (index == 1) _attendanceKey.currentState?.notifyTabResumed();
-    });
-  }
 
   final List<Map<String, dynamic>> items = [
     {
@@ -68,11 +58,7 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SwipeableTabBody(
-        controller: pageController,
-        onPageChanged: onSwipePageChanged,
-        children: screens,
-      ),
+      body: IndexedStack(index: selectedIndex, children: screens),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -93,7 +79,21 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar>
                 final isSelected = selectedIndex == index;
 
                 return ButtonAnimations.press(
-                  onTap: () => selectTab(index),
+                  onTap: () {
+                    final previousIndex = selectedIndex;
+                    setState(() {
+                      selectedIndex = index;
+                    });
+                    // When switching back to the Clock tab (index 0),
+                    // tell the screen to refresh the geofence immediately
+                    // so the user sees the correct state without any delay.
+                    if (index == 0 && previousIndex != 0) {
+                      _clockKey.currentState?.notifyTabResumed();
+                    }
+                    if (index == 1 && previousIndex != 1) {
+                      _attendanceKey.currentState?.notifyTabResumed();
+                    }
+                  },
                   child: GestureDetector(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

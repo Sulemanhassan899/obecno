@@ -794,6 +794,40 @@ void main() {
       expect(of(items, ReminderType.breakTime), isNull);
     });
 
+    test(
+      'happy: finished earlier break still schedules the later take-break',
+      () {
+        final items = plan(
+          now: wed(12, 20),
+          breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(11)),
+            ReminderPunch(kind: ReminderPunchKind.breakEnd, time: wed(11, 20)),
+          ],
+        );
+        expect(of(items, ReminderType.breakTime)!.fireAt, wed(12, 30));
+        expect(of(items, ReminderType.breakTime)!.deliverImmediately, isFalse);
+      },
+    );
+
+    test(
+      'happy: take-break fires on its minute after a finished earlier break',
+      () {
+        final items = plan(
+          now: wed(12, 30),
+          breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(11)),
+            ReminderPunch(kind: ReminderPunchKind.breakEnd, time: wed(11, 20)),
+          ],
+        );
+        expect(of(items, ReminderType.breakTime)!.fireAt, wed(12, 30));
+        expect(of(items, ReminderType.breakTime)!.deliverImmediately, isTrue);
+      },
+    );
+
     test('critical: 12:40 does not catch-up the 12:30 take-break reminder', () {
       final items = plan(
         now: wed(12, 40),
@@ -970,7 +1004,7 @@ void main() {
       );
     });
 
-    test('only check-in, check-out, and break times are editable', () {
+    test('only check-in, check-out, and break times are editable clocks', () {
       expect(ReminderType.checkIn.canPickTime, isTrue);
       expect(ReminderType.checkOut.canPickTime, isTrue);
       expect(ReminderType.breakTime.canPickTime, isTrue);
@@ -982,6 +1016,106 @@ void main() {
       expect(ReminderType.enterLocation.canPickTime, isFalse);
       expect(ReminderType.leaveLocation.canPickTime, isFalse);
     });
+
+    test('very long attendance duration is editable', () {
+      expect(ReminderType.veryLongAttendance.canPickDuration, isTrue);
+      expect(ReminderType.checkIn.canPickDuration, isFalse);
+      expect(ReminderType.checkOut.canPickDuration, isFalse);
+      expect(ReminderType.longerBreak.canPickDuration, isFalse);
+    });
+
+    test('custom long attendance fires after the chosen hours', () {
+      final items = plan(
+        now: wed(17),
+        longAttendanceHours: 8,
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      final long = of(items, ReminderType.veryLongAttendance)!;
+      expect(long.fireAt, wed(17));
+      expect(long.deliverImmediately, isTrue);
+      expect(long.body, "You've been checked in for 8 hours.");
+    });
+
+    test('long attendance picker includes 10 through 50 minutes', () {
+      expect(
+        ReminderCopy.durationOptionsInMinutes,
+        containsAll([10, 20, 30, 40, 50, 60, 120, 12 * 60]),
+      );
+      expect(ReminderCopy.durationPhrase(10), '10 minutes');
+      expect(ReminderCopy.durationPhrase(50), '50 minutes');
+      expect(ReminderCopy.durationPhrase(60), '1 hour');
+    });
+
+    test('custom long attendance fires after the chosen minutes', () {
+      final items = plan(
+        now: wed(9, 10),
+        longAttendanceHours: 10,
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      final long = of(items, ReminderType.veryLongAttendance)!;
+      expect(long.fireAt, wed(9, 10));
+      expect(long.deliverImmediately, isTrue);
+      expect(long.body, "You've been checked in for 10 minutes.");
+    });
+
+    test(
+      'every long-attendance picker from 10 minutes to 12 hours notifies',
+      () {
+        final durations = ReminderCopy.durationOptionsInMinutes
+            .where((minutes) => minutes <= 12 * 60)
+            .toList();
+        expect(durations.first, 10);
+        expect(durations.last, 12 * 60);
+        final checkInAt = wed(9);
+        for (final minutes in durations) {
+          final fireAt = checkInAt.add(Duration(minutes: minutes));
+          final punches = [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: checkInAt),
+          ];
+          final before = plan(
+            now: fireAt.subtract(const Duration(minutes: 1)),
+            longAttendanceHours: minutes,
+            punches: punches,
+          );
+          expect(
+            of(before, ReminderType.veryLongAttendance)!.fireAt,
+            fireAt,
+            reason: '$minutes minutes scheduled at the wrong time',
+          );
+          expect(
+            of(before, ReminderType.veryLongAttendance)!.deliverImmediately,
+            isFalse,
+            reason: '$minutes minutes fired early',
+          );
+
+          final onTime = plan(
+            now: fireAt,
+            longAttendanceHours: minutes,
+            punches: punches,
+          );
+          expect(
+            of(onTime, ReminderType.veryLongAttendance)!.deliverImmediately,
+            isTrue,
+            reason: '$minutes minutes missed its minute',
+          );
+          expect(
+            of(onTime, ReminderType.veryLongAttendance)!.body,
+            "You've been checked in for ${ReminderCopy.durationPhrase(minutes)}.",
+          );
+
+          final late = plan(
+            now: fireAt.add(const Duration(minutes: 7)),
+            longAttendanceHours: minutes,
+            punches: punches,
+          );
+          expect(
+            of(late, ReminderType.veryLongAttendance)!.deliverImmediately,
+            isTrue,
+            reason: '$minutes minutes skipped after it was due',
+          );
+        }
+      },
+    );
 
     test('copy exists for every reminder type', () {
       for (final type in ReminderType.values) {

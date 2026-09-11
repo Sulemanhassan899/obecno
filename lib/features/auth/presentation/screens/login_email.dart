@@ -140,7 +140,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
                         bottom: 0,
                         controller: _emailController,
                         focusNode: _emailFocus,
-                        labelText: "Email / Phone / ID",
+                        labelText: "Email",
                         haveLebelText: true,
                         hintText: "Enter Email Address",
                         radius: 14,

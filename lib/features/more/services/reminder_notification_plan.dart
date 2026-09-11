@@ -36,7 +36,7 @@ class ReminderNotificationSyncResult {
 ///
 /// Check-in missed / check-out missed add [graceMinutes] to the chosen clocks.
 /// Longer break adds [longerBreakAfter] to the chosen (or due) break-end.
-/// Very long attendance adds [longAttendanceHours] to the actual check-in punch.
+/// Very long attendance adds the chosen duration to the actual check-in punch.
 class ReminderFireSchedule {
   const ReminderFireSchedule({
     required this.checkInAt,
@@ -73,7 +73,7 @@ class ReminderFireSchedule {
   }) {
     DateTime at(TimeOfDay time) => ReminderNotificationPlan.at(day, time);
     final grace = Duration(minutes: graceMinutes < 0 ? 0 : graceMinutes);
-    final hours = longAttendanceHours <= 0 ? 12 : longAttendanceHours;
+    final attendanceMinutes = ReminderCopy.durationMinutes(longAttendanceHours);
     final minutes = breakMinutes <= 0 ? 60 : breakMinutes;
     final overnight = ReminderNotificationPlan.isOvernightShift(
       policyCheckInTime,
@@ -120,7 +120,9 @@ class ReminderFireSchedule {
       breakAt: place(breakReminderTime),
       breakEndedAt: breakEndedAt,
       longerBreakAt: longerBreakAt,
-      veryLongAttendanceAt: status.firstCheckIn?.add(Duration(hours: hours)),
+      veryLongAttendanceAt: status.firstCheckIn?.add(
+        Duration(minutes: attendanceMinutes),
+      ),
     );
   }
 }
@@ -259,11 +261,14 @@ class ReminderNotificationPlan {
       DateTime fireAt, {
       required bool applicable,
       int dayOffset = 0,
+      bool catchUp = false,
     }) {
       if (!applicable) return;
       if (!(enabled[type] ?? false)) return;
       final onMinute = isOnReminderMinute(fireAt, now);
-      if (fireAt.isBefore(now) && !onMinute && !allowCatchUp) return;
+      if (fireAt.isBefore(now) && !onMinute && !allowCatchUp && !catchUp) {
+        return;
+      }
       final dueNow = onMinute || !fireAt.isAfter(now);
       if (dayOffset == 0 && alreadyFired.contains(type) && dueNow) return;
       items.add(
@@ -278,6 +283,7 @@ class ReminderNotificationPlan {
             checkOutTime: checkOutTime,
             breakTime: breakAtTime,
             breakEndTime: breakEndedAtTime,
+            longAttendanceHours: longAttendanceHours,
           ),
           deliverImmediately: dueNow,
         ),
@@ -339,6 +345,7 @@ class ReminderNotificationPlan {
       ReminderType.veryLongAttendance,
       longAt ?? now,
       applicable: status.isCheckedIn && longAt != null,
+      catchUp: true,
     );
 
     add(
@@ -346,7 +353,7 @@ class ReminderNotificationPlan {
       todaySchedule.breakAt,
       applicable:
           status.isCheckedIn &&
-          status.breakStart == null &&
+          !status.isOnBreak &&
           !todaySchedule.breakAt.isBefore(status.firstCheckIn!),
     );
 

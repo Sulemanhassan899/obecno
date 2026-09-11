@@ -15,6 +15,7 @@ import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/features/more/repositories/privacy_provider.dart';
 import 'package:obecno/features/more/repositories/terms_provider.dart';
 import 'package:obecno/features/launch/book_demo/providers/book_demo_provider.dart';
+import 'package:obecno/features/more/providers/help_feedback_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
@@ -94,6 +95,10 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<BookDemoProvider>(
           notifier: bindings.bookDemoProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<HelpFeedbackProvider>(
+          notifier: bindings.helpFeedbackProvider,
           child: child,
         ),
         (child) => ChangeNotifierProvider<LocationProvider>(

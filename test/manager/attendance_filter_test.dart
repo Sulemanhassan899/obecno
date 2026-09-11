@@ -1300,6 +1300,25 @@ void main() {
         isFalse,
       );
     });
+
+    test('isOwnedBy is true only for the signed-in user id', () {
+      final own = ManagerAttendanceDetailsData(
+        day: DateTime(2026, 9, 11),
+        name: 'Owner',
+        userId: 42,
+      );
+      expect(own.isOwnedBy('42'), isTrue);
+      expect(own.isOwnedBy(' 42 '), isTrue);
+      expect(own.isOwnedBy('7'), isFalse);
+      expect(own.isOwnedBy(null), isFalse);
+      expect(own.isOwnedBy(''), isFalse);
+
+      final other = ManagerAttendanceDetailsData(
+        day: DateTime(2026, 9, 11),
+        name: 'Employee',
+      );
+      expect(other.isOwnedBy('42'), isFalse);
+    });
   });
 
   group('PendingAttendanceOverlay', () {

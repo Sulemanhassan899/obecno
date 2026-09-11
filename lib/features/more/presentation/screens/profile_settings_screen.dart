@@ -8,6 +8,7 @@ import 'package:obecno/core/helpers/dialog.dart';
 
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/more/data/models/employee_profile_model.dart';
+import 'package:obecno/features/more/presentation/screens/help_feedback_screen.dart';
 import 'package:obecno/features/more/presentation/screens/account_setting.dart';
 import 'package:obecno/features/more/presentation/screens/attendance_reminders_screen.dart';
 import 'package:obecno/features/more/presentation/screens/change_password.dart';
@@ -212,7 +213,14 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       );
                     }),
                     _divider(),
-                    _settingTile("Help & Feedback", Assets.imagesInfo, () {}),
+                    _settingTile("Help & Feedback", Assets.imagesInfo, () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const HelpFeedbackScreen(),
+                        ),
+                      );
+                    }),
                   ]),
 
                   const SizedBox(height: 14),
@@ -347,10 +355,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
         const SizedBox(height: 6),
 
-        AppText.p2(
-          _departmentLabel(profile, authProvider),
-          color: kGreyColor,
-        ),
+        AppText.p2(_departmentLabel(profile, authProvider), color: kGreyColor),
       ],
     );
   }

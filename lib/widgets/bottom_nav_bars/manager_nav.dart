@@ -17,7 +17,6 @@ import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_shee
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 
-import 'package:obecno/widgets/bottom_nav_bars/swipeable_tabs.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -45,8 +44,8 @@ class ManagerBottomNavBar extends StatefulWidget {
   State<ManagerBottomNavBar> createState() => _ManagerBottomNavBarState();
 }
 
-class _ManagerBottomNavBarState extends State<ManagerBottomNavBar>
-    with SwipeableBottomNavMixin {
+class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
+  int selectedIndex = 0;
   String? _attendanceStatusFilter;
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
 
@@ -70,31 +69,33 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar>
   }
 
   void openAttendance({String? statusFilter}) {
-    _attendanceStatusFilter = statusFilter;
-    selectTab(2, animate: false);
-  }
-
-  @override
-  void onTabSelected(int index, int previousIndex) {
-    if (index != 2) {
-      _attendanceStatusFilter = null;
-    } else if (_attendanceStatusFilter == null) {
-      context.read<ManagerAttendanceProvider>().setStatus(
-        StatusFilterOption.allId,
-      );
-      context.read<ManagerAttendanceProvider>().setLocation(
-        id: LocationFilterOption.allId,
-      );
-    }
-  }
-
-  @override
-  void onTabSettled(int index, int previousIndex) {
-    if (index != 1 || previousIndex == 1) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _clockKey.currentState?.notifyTabResumed();
+    setState(() {
+      selectedIndex = 2;
+      _attendanceStatusFilter = statusFilter;
     });
+  }
+
+  void _selectTab(int index) {
+    final previousIndex = selectedIndex;
+    setState(() {
+      if (index != 2) {
+        _attendanceStatusFilter = null;
+      } else if (_attendanceStatusFilter == null) {
+        context.read<ManagerAttendanceProvider>().setStatus(
+          StatusFilterOption.allId,
+        );
+        context.read<ManagerAttendanceProvider>().setLocation(
+          id: LocationFilterOption.allId,
+        );
+      }
+      selectedIndex = index;
+    });
+    if (index == 1 && previousIndex != 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _clockKey.currentState?.notifyTabResumed();
+      });
+    }
   }
 
   final List<Map<String, dynamic>> items = [
@@ -128,11 +129,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SwipeableTabBody(
-        controller: pageController,
-        onPageChanged: onSwipePageChanged,
-        children: screens,
-      ),
+      body: IndexedStack(index: selectedIndex, children: screens),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -147,7 +144,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar>
             final isSelected = selectedIndex == index;
 
             return ButtonAnimations.press(
-              onTap: () => selectTab(index),
+              onTap: () => _selectTab(index),
               child: GestureDetector(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
