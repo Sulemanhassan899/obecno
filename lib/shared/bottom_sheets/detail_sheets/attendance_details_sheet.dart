@@ -196,12 +196,12 @@ class _AttendanceDetailsSheetBodyState
   ReminderPunchKind? _primaryKind(HistoryAttendanceEvent event) {
     final kind = ReminderPunchKind.fromName(event.type.name);
     if (kind == null) return null;
+    if (kind == ReminderPunchKind.breakEnd) return kind;
     final ofType = HistoryAttendanceEngine.sortedOldestFirst(
       _events,
     ).where((e) => e.type == event.type).toList();
     if (ofType.isEmpty) return null;
-    final primary =
-        kind == ReminderPunchKind.checkOut || kind == ReminderPunchKind.breakEnd
+    final primary = kind == ReminderPunchKind.checkOut
         ? ofType.last
         : ofType.first;
     final same =

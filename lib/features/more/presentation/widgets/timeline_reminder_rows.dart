@@ -69,9 +69,16 @@ class _ReminderRow extends StatelessWidget {
   }
 
   static String _paddedTime(DateTime time) {
-    final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
-    final minute = time.minute.toString().padLeft(2, '0');
-    final ampm = time.hour >= 12 ? 'PM' : 'AM';
+    final wall = DateTime(
+      time.year,
+      time.month,
+      time.day,
+      time.hour,
+      time.minute,
+    );
+    final hour = wall.hour % 12 == 0 ? 12 : wall.hour % 12;
+    final minute = wall.minute.toString().padLeft(2, '0');
+    final ampm = wall.hour >= 12 ? 'PM' : 'AM';
     return '${hour.toString().padLeft(2, '0')}:$minute $ampm';
   }
 }

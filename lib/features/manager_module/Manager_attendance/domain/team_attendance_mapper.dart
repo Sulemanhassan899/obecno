@@ -6,7 +6,7 @@ class TeamAttendanceMapper {
   TeamAttendanceMapper._();
 
   static ManagerAttendanceModel toTile(ManagerTeamAttendanceItem item) {
-    final live = item.isOpen || item.isCurrentlyOnBreak;
+    final live = item.isActive || item.isOpen || item.isCurrentlyOnBreak;
     return ManagerAttendanceModel(
       userId: item.userId,
       attendanceId: item.attendanceId,
@@ -82,6 +82,74 @@ class TeamAttendanceMapper {
       merged.addAll(unused);
     }
     return statusFirst(merged);
+  }
+
+  /// Copy live dashboard punches onto the team list so Overview "Active"
+  /// matches the Attendance filter. Team-attendance often omits `is_open`.
+  static List<ManagerTeamAttendanceItem> overlayLive({
+    required List<ManagerTeamAttendanceItem> items,
+    required List<ManagerTeamAttendanceItem> live,
+  }) {
+    if (live.isEmpty) return items;
+    if (items.isEmpty) return statusFirst(live);
+
+    final unused = List<ManagerTeamAttendanceItem>.from(live);
+    final next = <ManagerTeamAttendanceItem>[];
+    for (final item in items) {
+      final match = _takeLiveMatch(unused, item);
+      next.add(match == null ? item : _overlayLive(item, match));
+    }
+    next.addAll(unused);
+    return statusFirst(next);
+  }
+
+  static ManagerTeamAttendanceItem _overlayLive(
+    ManagerTeamAttendanceItem base,
+    ManagerTeamAttendanceItem live,
+  ) {
+    final liveOpen = live.isActive || live.isOpen || live.isCurrentlyOnBreak;
+    return base.copyWith(
+      attendanceId: live.attendanceId ?? base.attendanceId,
+      userId: live.userId ?? base.userId,
+      employeeName: (live.employeeName ?? '').trim().isEmpty
+          ? base.employeeName
+          : live.employeeName,
+      departmentTitle: (live.departmentTitle ?? '').trim().isEmpty
+          ? base.departmentTitle
+          : live.departmentTitle,
+      locationId: live.locationId ?? base.locationId,
+      locationName: live.locationName ?? base.locationName,
+      photoUrl: (live.photoUrl == null || live.photoUrl!.isEmpty)
+          ? base.photoUrl
+          : live.photoUrl,
+      checkin: live.hasCheckIn ? live.checkin : base.checkin,
+      checkout: liveOpen ? '' : (live.checkout ?? base.checkout),
+      breakout: live.breakout ?? base.breakout,
+      breakin: live.breakin ?? base.breakin,
+      isOpen: liveOpen || base.isOpen || base.isActive,
+      currentLocation: live.currentLocation ?? base.currentLocation,
+      status: live.status ?? base.status,
+      statusLabel: live.statusLabel ?? base.statusLabel,
+      isLate: live.isLate || base.isLate,
+      isOnBreak: live.isCurrentlyOnBreak,
+    );
+  }
+
+  static ManagerTeamAttendanceItem? _takeLiveMatch(
+    List<ManagerTeamAttendanceItem> unused,
+    ManagerTeamAttendanceItem item,
+  ) {
+    if (item.userId != null) {
+      final byId = unused.indexWhere((live) => live.userId == item.userId);
+      if (byId >= 0) return unused.removeAt(byId);
+    }
+    final name = (item.employeeName ?? '').trim().toLowerCase();
+    if (name.isEmpty) return null;
+    final byName = unused.indexWhere(
+      (live) => (live.employeeName ?? '').trim().toLowerCase() == name,
+    );
+    if (byName >= 0) return unused.removeAt(byName);
+    return null;
   }
 
   static List<ManagerTeamAttendanceItem> statusFirst(

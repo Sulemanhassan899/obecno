@@ -258,7 +258,12 @@ class ManagerAttendanceProvider extends BaseProvider {
   }
 
   /// Used when jumping from Overview stats: apply that day's date + status.
-  Future<bool> open({DateTime? date, String? statusFilter}) {
+  /// [seedItems] is the overview list so Active/On Break counts match immediately.
+  Future<bool> open({
+    DateTime? date,
+    String? statusFilter,
+    List<ManagerTeamAttendanceItem>? seedItems,
+  }) {
     final nextDate = date == null ? selectedDate : _dateOnly(date);
     final nextStatus = StatusFilterOption.idFromLabel(statusFilter);
     final dateChanged = nextDate != selectedDate;
@@ -275,7 +280,13 @@ class ManagerAttendanceProvider extends BaseProvider {
       _pendingSaves.clear();
     }
 
+    if (seedItems != null && seedItems.isNotEmpty) {
+      items = List<ManagerTeamAttendanceItem>.from(seedItems);
+      total = items.length;
+    }
+
     if (dateChanged || items.isEmpty || status != ViewStatus.success) {
+      if (items.isNotEmpty) notifyListeners();
       return load();
     }
     notifyListeners();

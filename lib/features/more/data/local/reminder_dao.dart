@@ -378,6 +378,41 @@ class ReminderDao {
     };
   }
 
+  Future<List<ReminderLog>> loadDeliveredLogs({
+    required String userId,
+    required DateTime date,
+  }) async {
+    if (userId.isEmpty) return const [];
+    final db = await _db.database;
+    final rows = await db.query(
+      AttendanceDb.reminderDeliveriesTable,
+      where: 'user_id = ? AND date = ?',
+      whereArgs: [userId, _dateKey(date)],
+    );
+    final logs = <ReminderLog>[];
+    for (final row in rows) {
+      final type = ReminderType.fromStorageKey(
+        row['reminder_type']?.toString() ?? '',
+      );
+      if (type == null) continue;
+      final firedAt =
+          DateTime.tryParse(row['scheduled_at']?.toString() ?? '') ??
+          DateTime.tryParse(row['delivered_at']?.toString() ?? '');
+      if (firedAt == null) continue;
+      logs.add(
+        ReminderLog(
+          type: type,
+          firedAt: firedAt,
+          title: row['title']?.toString() ?? '',
+          message: row['message']?.toString() ?? '',
+          clockStatus: row['clock_status']?.toString(),
+          deliveredAt: DateTime.tryParse(row['delivered_at']?.toString() ?? ''),
+        ),
+      );
+    }
+    return logs;
+  }
+
   Future<void> markDelivered({
     required String userId,
     required DateTime date,

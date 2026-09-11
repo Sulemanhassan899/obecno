@@ -8,17 +8,21 @@ import 'package:obecno/features/manager_module/Manager_attendance/repositories/m
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/repositories/manager_employees_repository.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
+import 'package:obecno/features/manager_module/Manager_overview/repositories/manager_overview_repository.dart';
 
 class ManagerAttendanceService {
   ManagerAttendanceService(
     this._repository, {
     ManagerEmployeesRepository? employeesRepository,
+    ManagerOverviewRepository? overviewRepository,
     String? Function()? currentUserIdProvider,
   }) : _employeesRepository = employeesRepository,
+       _overviewRepository = overviewRepository,
        _currentUserIdProvider = currentUserIdProvider;
 
   final ManagerAttendanceRepository _repository;
   final ManagerEmployeesRepository? _employeesRepository;
+  final ManagerOverviewRepository? _overviewRepository;
   final String? Function()? _currentUserIdProvider;
 
   Future<ApiResponse<ManagerTeamAttendanceData>> loadTeamAttendance({
@@ -32,9 +36,13 @@ class ManagerAttendanceService {
       cancelToken: cancelToken,
     );
     final membersFuture = _loadMembers(cancelToken);
+    final liveFuture = _isToday(date)
+        ? _liveToday(cancelToken)
+        : Future.value(const <ManagerTeamAttendanceItem>[]);
 
     final attendanceResponse = await attendanceFuture;
     final members = await membersFuture;
+    final live = await liveFuture;
 
     if (!attendanceResponse.success || attendanceResponse.data == null) {
       return attendanceResponse;
@@ -44,8 +52,12 @@ class ManagerAttendanceService {
       attendance: attendanceResponse.data!.attendance,
       members: members,
     );
-    final attendance = await withOwnerAttendance(
+    final withLive = TeamAttendanceMapper.overlayLive(
       items: merged,
+      live: live,
+    );
+    final attendance = await withOwnerAttendance(
+      items: withLive,
       members: members,
       date: date,
     );
@@ -211,6 +223,27 @@ class ManagerAttendanceService {
     } catch (_) {
       return const [];
     }
+  }
+
+  Future<List<ManagerTeamAttendanceItem>> _liveToday(
+    ApiCancelToken? cancelToken,
+  ) async {
+    final repo = _overviewRepository;
+    if (repo == null) return const [];
+    try {
+      final response = await repo.getDashboard(cancelToken: cancelToken);
+      if (!response.success || response.data == null) return const [];
+      return response.data!.teamAttendanceToday;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static bool _isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
   }
 
   /// Makes sure the signed-in owner is on the list and has today's punches.

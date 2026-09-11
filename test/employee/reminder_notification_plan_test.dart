@@ -248,22 +248,61 @@ void main() {
       expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 30));
       expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 30));
     });
-  });
 
-  group('critical — late / missed punches', () {
     test(
-      'does not catch-up check-in hours after the reminder time',
+      'afternoon break uses start plus duration, not the 2:30 policy label',
       () {
-        final items = plan(now: wed(16, 59));
-        expect(of(items, ReminderType.checkIn, day: 9), isNull);
-        expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
-        expect(of(items, ReminderType.checkIn, day: 10), isNotNull);
+        final items = plan(
+          now: wed(15, 28),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+            ReminderPunch(
+              kind: ReminderPunchKind.breakStart,
+              time: wed(15, 28),
+            ),
+          ],
+        );
+        expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(16, 28));
+        expect(of(items, ReminderType.longerBreak)!.fireAt, wed(17, 28));
+        expect(
+          of(items, ReminderType.breakTimeEnded)!.deliverImmediately,
+          isFalse,
+        );
       },
     );
 
+    test(
+      'second break of the day reminds from the open break, not the first',
+      () {
+        final items = plan(
+          now: wed(15, 5),
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(11)),
+            ReminderPunch(kind: ReminderPunchKind.breakEnd, time: wed(11, 20)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(15)),
+          ],
+        );
+        expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(16));
+        expect(of(items, ReminderType.longerBreak)!.fireAt, wed(17));
+      },
+    );
+  });
+
+  group('critical — late / missed punches', () {
+    test('does not catch-up check-in hours after the reminder time', () {
+      final items = plan(now: wed(16, 59));
+      expect(of(items, ReminderType.checkIn, day: 9), isNull);
+      expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
+      expect(of(items, ReminderType.checkIn, day: 10), isNotNull);
+    });
+
     test('fires check-in on the reminder minute only', () {
       final items = plan(now: wed(9));
-      expect(of(items, ReminderType.checkIn, day: 9)!.deliverImmediately, isTrue);
+      expect(
+        of(items, ReminderType.checkIn, day: 9)!.deliverImmediately,
+        isTrue,
+      );
       expect(
         of(items, ReminderType.checkInMissed, day: 9)!.deliverImmediately,
         isFalse,
@@ -328,7 +367,9 @@ void main() {
     test('still working waits 12 hours from actual check-in, not policy', () {
       final items = plan(
         now: wed(18),
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(10))],
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(10)),
+        ],
       );
       final long = of(items, ReminderType.veryLongAttendance)!;
       expect(long.fireAt, wed(22));
@@ -349,6 +390,7 @@ void main() {
     test('longer break fires one hour after the chosen break-end time', () {
       final items = plan(
         now: wed(15, 30),
+        breakEndedReminderTime: const TimeOfDay(hour: 14, minute: 30),
         punches: [
           ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
           ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
@@ -361,33 +403,50 @@ void main() {
   });
 
   group('critical — custom times vs policy', () {
-    test('earlier check-in reminder fires missed after the reminder, not policy', () {
-      final items = plan(
-        now: wed(7),
-        checkInTime: const TimeOfDay(hour: 8, minute: 0),
-        policyCheckInTime: checkIn,
-        policyCheckOutTime: checkOut,
-      );
-      expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(8));
-      expect(of(items, ReminderType.checkInMissed, day: 9)!.fireAt, wed(8, 5));
-      expect(of(items, ReminderType.checkIn)!.body, 'Ready to start your day?');
-      expect(
-        of(items, ReminderType.checkInMissed, day: 9)!.body,
-        "Check in now if you've started work.",
-      );
-    });
+    test(
+      'earlier check-in reminder fires missed after the reminder, not policy',
+      () {
+        final items = plan(
+          now: wed(7),
+          checkInTime: const TimeOfDay(hour: 8, minute: 0),
+          policyCheckInTime: checkIn,
+          policyCheckOutTime: checkOut,
+        );
+        expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(8));
+        expect(
+          of(items, ReminderType.checkInMissed, day: 9)!.fireAt,
+          wed(8, 5),
+        );
+        expect(
+          of(items, ReminderType.checkIn)!.body,
+          'Ready to start your day?',
+        );
+        expect(
+          of(items, ReminderType.checkInMissed, day: 9)!.body,
+          "Check in now if you've started work.",
+        );
+      },
+    );
 
-    test('earlier checkout reminder fires missed after the reminder, not policy', () {
-      final items = plan(
-        now: wed(16),
-        checkOutTime: const TimeOfDay(hour: 17, minute: 0),
-        policyCheckOutTime: checkOut,
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
-      );
-      expect(of(items, ReminderType.checkOut)!.fireAt, wed(17));
-      expect(of(items, ReminderType.checkOutMissed)!.fireAt, wed(17, 5));
-      expect(of(items, ReminderType.checkOut)!.body, 'Wrapping up for today?');
-    });
+    test(
+      'earlier checkout reminder fires missed after the reminder, not policy',
+      () {
+        final items = plan(
+          now: wed(16),
+          checkOutTime: const TimeOfDay(hour: 17, minute: 0),
+          policyCheckOutTime: checkOut,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+          ],
+        );
+        expect(of(items, ReminderType.checkOut)!.fireAt, wed(17));
+        expect(of(items, ReminderType.checkOutMissed)!.fireAt, wed(17, 5));
+        expect(
+          of(items, ReminderType.checkOut)!.body,
+          'Wrapping up for today?',
+        );
+      },
+    );
 
     test('on-time vs policy after custom reminder still cancels missed', () {
       final items = plan(
@@ -407,9 +466,7 @@ void main() {
         now: wed(9, 20),
         checkInTime: const TimeOfDay(hour: 8, minute: 0),
         policyCheckInTime: checkIn,
-        punches: [
-          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
-        ],
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
       );
       expect(of(items, ReminderType.checkIn, day: 9), isNull);
       expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
@@ -525,18 +582,21 @@ void main() {
       expect(of(items, ReminderType.veryLongAttendance)!.fireAt, wed(21));
     });
 
-    test('very short break schedules longer-break one hour after chosen end', () {
-      final items = plan(
-        now: wed(13, 1),
-        breakMinutes: 5,
-        punches: [
-          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
-          ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
-        ],
-      );
-      expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 35));
-      expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 35));
-    });
+    test(
+      'very short break schedules longer-break one hour after chosen end',
+      () {
+        final items = plan(
+          now: wed(13, 1),
+          breakMinutes: 5,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+            ReminderPunch(kind: ReminderPunchKind.breakStart, time: wed(13)),
+          ],
+        );
+        expect(of(items, ReminderType.breakTimeEnded)!.fireAt, wed(13, 35));
+        expect(of(items, ReminderType.longerBreak)!.fireAt, wed(14, 35));
+      },
+    );
   });
 
   group('user set reminder before policy — 8:30 vs 9:00 check-in', () {
@@ -696,16 +756,21 @@ void main() {
       expect(of(items, ReminderType.checkOutMissed), isNull);
     });
 
-    test('critical: 5:45 does not catch-up the 5:30 checkout or 5:35 missed', () {
-      final items = plan(
-        now: wed(17, 45),
-        checkOutTime: const TimeOfDay(hour: 17, minute: 30),
-        policyCheckOutTime: checkOut,
-        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
-      );
-      expect(of(items, ReminderType.checkOut), isNull);
-      expect(of(items, ReminderType.checkOutMissed), isNull);
-    });
+    test(
+      'critical: 5:45 does not catch-up the 5:30 checkout or 5:35 missed',
+      () {
+        final items = plan(
+          now: wed(17, 45),
+          checkOutTime: const TimeOfDay(hour: 17, minute: 30),
+          policyCheckOutTime: checkOut,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+          ],
+        );
+        expect(of(items, ReminderType.checkOut), isNull);
+        expect(of(items, ReminderType.checkOutMissed), isNull);
+      },
+    );
 
     test('happy: break reminder at 12:30 instead of 1:25', () {
       final items = plan(
@@ -729,22 +794,17 @@ void main() {
       expect(of(items, ReminderType.breakTime), isNull);
     });
 
-    test(
-      'critical: 12:40 does not catch-up the 12:30 take-break reminder',
-      () {
-        final items = plan(
-          now: wed(12, 40),
-          breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
-          punches: [
-            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
-          ],
-        );
-        final breaks = items.where(
-          (item) => item.type == ReminderType.breakTime && item.fireAt.day == 9,
-        );
-        expect(breaks, isEmpty);
-      },
-    );
+    test('critical: 12:40 does not catch-up the 12:30 take-break reminder', () {
+      final items = plan(
+        now: wed(12, 40),
+        breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      final breaks = items.where(
+        (item) => item.type == ReminderType.breakTime && item.fireAt.day == 9,
+      );
+      expect(breaks, isEmpty);
+    });
 
     test('happy: break-ended reminder at 2:00 while on a 1:00 break', () {
       final items = plan(
@@ -825,7 +885,10 @@ void main() {
         graceMinutes: 15,
       );
       expect(of(items, ReminderType.checkIn, day: 9)!.fireAt, wed(10));
-      expect(of(items, ReminderType.checkInMissed, day: 9)!.fireAt, wed(10, 15));
+      expect(
+        of(items, ReminderType.checkInMissed, day: 9)!.fireAt,
+        wed(10, 15),
+      );
     });
 
     test('later checkout reminder adds grace to the chosen time', () {
@@ -959,6 +1022,36 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test('manager home arms reminders without opening Clock', () {
+      expect(
+        ReminderSettingsProvider.shouldScheduleOnLoad(
+          resumeExistingSession: false,
+          clockArmed: true,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('manager / owner reminders after check-in', () {
+    test('before work, check-in reminder is scheduled', () {
+      final items = plan(now: wed(8));
+      expect(of(items, ReminderType.checkIn, day: 9), isNotNull);
+      expect(of(items, ReminderType.checkInMissed, day: 9), isNotNull);
+    });
+
+    test('after check-in, checkout and break reminders still schedule', () {
+      final items = plan(
+        now: wed(10),
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      expect(of(items, ReminderType.checkIn, day: 9), isNull);
+      expect(of(items, ReminderType.checkOut, day: 9), isNotNull);
+      expect(of(items, ReminderType.checkOutMissed, day: 9), isNotNull);
+      expect(of(items, ReminderType.breakTime, day: 9), isNotNull);
+      expect(of(items, ReminderType.veryLongAttendance, day: 9), isNotNull);
     });
   });
 

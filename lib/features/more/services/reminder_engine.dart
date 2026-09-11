@@ -47,6 +47,13 @@ class ReminderEngine {
           checkInTime: policyIn,
           checkOutTime: policyOut,
         );
+    final breakEndedAtTime =
+        breakEndedReminderTime ??
+        ReminderNotificationPlan.defaultBreakEndedReminderTime(
+          checkInTime: policyIn,
+          checkOutTime: policyOut,
+          breakMinutes: breakMinutes,
+        );
     final schedule = ReminderFireSchedule.forDay(
       day: day,
       checkInTime: checkInTime,
@@ -54,7 +61,7 @@ class ReminderEngine {
       policyCheckInTime: policyIn,
       policyCheckOutTime: policyOut,
       breakReminderTime: breakAtTime,
-      breakEndedReminderTime: breakEndedReminderTime,
+      breakEndedReminderTime: breakEndedAtTime,
       graceMinutes: graceMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceHours,
@@ -85,8 +92,8 @@ class ReminderEngine {
             type,
             checkInTime: checkInTime,
             checkOutTime: checkOutTime,
-            breakTime: breakReminderTime,
-            breakEndTime: breakEndedReminderTime,
+            breakTime: breakAtTime,
+            breakEndTime: breakEndedAtTime,
           ),
           clockStatus: status.storageValue,
         ),
@@ -153,16 +160,14 @@ class ReminderEngine {
       await logIfDue(
         ReminderType.breakTimeEnded,
         endedAt,
-        status.isOnBreak ||
-            (status.breakEnd != null && status.breakEnd!.isAfter(endedAt)),
+        _onBreakAt(status, endedAt),
       );
     }
     if (longerAt != null) {
       await logIfDue(
         ReminderType.longerBreak,
         longerAt,
-        status.isOnBreak ||
-            (status.breakEnd != null && status.breakEnd!.isAfter(longerAt)),
+        _onBreakAt(status, longerAt),
       );
     }
 
@@ -176,6 +181,14 @@ class ReminderEngine {
     }
 
     return dao.loadLogs(userId: userId, date: day);
+  }
+
+  /// Still on break, or ended at/after this clock — the notice should stick.
+  static bool _onBreakAt(ReminderClockStatus status, DateTime? fireAt) {
+    if (fireAt == null || status.breakStart == null) return false;
+    if (status.breakStart!.isAfter(fireAt)) return false;
+    final ended = status.breakEnd;
+    return ended == null || !ended.isBefore(fireAt);
   }
 
   static Future<void> _pruneInvalidLogs({
@@ -216,17 +229,11 @@ class ReminderEngine {
         stale.add(ReminderType.checkOutMissed);
       }
     }
-    if (!status.isOnBreak) {
-      if (status.breakEnd == null ||
-          schedule.breakEndedAt == null ||
-          !status.breakEnd!.isAfter(schedule.breakEndedAt!)) {
-        stale.add(ReminderType.breakTimeEnded);
-      }
-      if (status.breakEnd == null ||
-          schedule.longerBreakAt == null ||
-          !status.breakEnd!.isAfter(schedule.longerBreakAt!)) {
-        stale.add(ReminderType.longerBreak);
-      }
+    if (!_onBreakAt(status, schedule.breakEndedAt)) {
+      stale.add(ReminderType.breakTimeEnded);
+    }
+    if (!_onBreakAt(status, schedule.longerBreakAt)) {
+      stale.add(ReminderType.longerBreak);
     }
     final longAt = schedule.veryLongAttendanceAt;
     final reachedTwelveHoursWhileCheckedIn =

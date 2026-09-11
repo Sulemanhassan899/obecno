@@ -28,7 +28,12 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ManagerAttendanceProvider>().load();
+      final provider = context.read<ManagerAttendanceProvider>();
+      // Overview already seeded today's live list — don't wipe it with a
+      // second fetch that can miss `is_open` before dashboard merge returns.
+      if (provider.items.isEmpty && !provider.isLoading) {
+        provider.ensureLoaded();
+      }
       context.read<ManagerLocationsProvider>().load();
     });
   }

@@ -132,6 +132,8 @@ class ReminderNotificationService {
 
     if (rebuildSchedule) {
       await _cancelPending();
+    } else {
+      await _cancelUnplannedBreakReminders(planned);
     }
     for (final item in planned) {
       if (item.deliverImmediately) {
@@ -263,6 +265,34 @@ class ReminderNotificationService {
           'cancelPendingFallback',
           e2,
           stackTrace: st2,
+        );
+      }
+    }
+  }
+
+  /// Watch ticks skip a full rebuild, so a leftover break-end alarm can fire
+  /// after they already punched back in.
+  Future<void> _cancelUnplannedBreakReminders(
+    List<ScheduledReminderNotification> planned,
+  ) async {
+    final plannedTypes = {for (final item in planned) item.type};
+    for (final type in const [
+      ReminderType.breakTime,
+      ReminderType.breakTimeEnded,
+      ReminderType.longerBreak,
+    ]) {
+      if (plannedTypes.contains(type)) continue;
+      try {
+        await _plugin.cancel(id: ReminderNotificationPlan.idFor(type));
+        await _plugin.cancel(
+          id: ReminderNotificationPlan.idFor(type, dayOffset: 1),
+        );
+      } catch (e, st) {
+        AppLogger.error(
+          'ReminderNotificationService',
+          'cancelStale:${type.storageKey}',
+          e,
+          stackTrace: st,
         );
       }
     }

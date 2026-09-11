@@ -129,21 +129,24 @@ void main() {
             );
           });
 
-          test('happy: clock at permission time does not catch-up check-in', () {
-            final items = plan(
-              now: policyAt,
-              policyCheckIn: policy,
-              policyCheckOut: policyOut,
-              remindCheckIn: remind,
-              graceMinutes: graceMinutes,
-            );
-            expect(
-              ofType(items, ReminderType.checkIn).any(
-                (item) => item.deliverImmediately && item.fireAt == remindAt,
-              ),
-              isFalse,
-            );
-          });
+          test(
+            'happy: clock at permission time does not catch-up check-in',
+            () {
+              final items = plan(
+                now: policyAt,
+                policyCheckIn: policy,
+                policyCheckOut: policyOut,
+                remindCheckIn: remind,
+                graceMinutes: graceMinutes,
+              );
+              expect(
+                ofType(items, ReminderType.checkIn).any(
+                  (item) => item.deliverImmediately && item.fireAt == remindAt,
+                ),
+                isFalse,
+              );
+            },
+          );
 
           test(
             'happy: punch between reminder and permission cancels missed',
@@ -179,9 +182,10 @@ void main() {
               graceMinutes: graceMinutes,
             );
             expect(
-              ofType(items, ReminderType.checkIn).any(
-                (item) => item.fireAt == onDay(later),
-              ),
+              ofType(
+                items,
+                ReminderType.checkIn,
+              ).any((item) => item.fireAt == onDay(later)),
               isTrue,
             );
             expect(
@@ -190,20 +194,23 @@ void main() {
             );
           });
 
-          test('critical: at missed minute with no punch shows Check In Missed', () {
-            final items = plan(
-              now: missedAt,
-              policyCheckIn: policy,
-              policyCheckOut: policyOut,
-              remindCheckIn: remind,
-              graceMinutes: graceMinutes,
-            );
-            final missed = ofType(items, ReminderType.checkInMissed).single;
-            expect(missed.fireAt, missedAt);
-            expect(missed.deliverImmediately, isTrue);
-            expect(missed.title, 'Missed your check-in?');
-            expect(missed.body, "Check in now if you've started work.");
-          });
+          test(
+            'critical: at missed minute with no punch shows Check In Missed',
+            () {
+              final items = plan(
+                now: missedAt,
+                policyCheckIn: policy,
+                policyCheckOut: policyOut,
+                remindCheckIn: remind,
+                graceMinutes: graceMinutes,
+              );
+              final missed = ofType(items, ReminderType.checkInMissed).single;
+              expect(missed.fireAt, missedAt);
+              expect(missed.deliverImmediately, isTrue);
+              expect(missed.title, 'Missed your check-in?');
+              expect(missed.body, "Check in now if you've started work.");
+            },
+          );
 
           test('critical: punch after grace does not fire missed', () {
             final items = plan(
@@ -284,23 +291,26 @@ void main() {
             },
           );
 
-          test('happy: clock at permission time does not catch-up checkout', () {
-            final items = plan(
-              now: onDay(policy),
-              policyCheckIn: policyIn,
-              policyCheckOut: policy,
-              remindCheckOut: remind,
-              graceMinutes: graceMinutes,
-              punches: inPunch,
-            );
-            expect(
-              ofType(
-                items,
-                ReminderType.checkOut,
-              ).any((item) => item.deliverImmediately),
-              isFalse,
-            );
-          });
+          test(
+            'happy: clock at permission time does not catch-up checkout',
+            () {
+              final items = plan(
+                now: onDay(policy),
+                policyCheckIn: policyIn,
+                policyCheckOut: policy,
+                remindCheckOut: remind,
+                graceMinutes: graceMinutes,
+                punches: inPunch,
+              );
+              expect(
+                ofType(
+                  items,
+                  ReminderType.checkOut,
+                ).any((item) => item.deliverImmediately),
+                isFalse,
+              );
+            },
+          );
 
           test(
             'happy: checkout between reminder and permission cancels missed',
@@ -350,9 +360,10 @@ void main() {
               punches: inPunch,
             );
             expect(
-              ofType(items, ReminderType.checkOut).any(
-                (item) => item.fireAt == onDay(later),
-              ),
+              ofType(
+                items,
+                ReminderType.checkOut,
+              ).any((item) => item.fireAt == onDay(later)),
               isTrue,
             );
             expect(
@@ -434,22 +445,25 @@ void main() {
             expect(breaks.first.title, 'Break coming up');
           });
 
-          test('happy: clock at permission break time does not catch-up break', () {
-            final items = plan(
-              now: onDay(policyBreak),
-              policyCheckIn: policyCheckIn,
-              policyCheckOut: policyCheckOut,
-              remindBreak: remind,
-              punches: inPunch,
-            );
-            expect(
-              ofType(items, ReminderType.breakTime).any(
-                (item) =>
-                    item.deliverImmediately && item.fireAt == onDay(remind),
-              ),
-              isFalse,
-            );
-          });
+          test(
+            'happy: clock at permission break time does not catch-up break',
+            () {
+              final items = plan(
+                now: onDay(policyBreak),
+                policyCheckIn: policyCheckIn,
+                policyCheckOut: policyCheckOut,
+                remindBreak: remind,
+                punches: inPunch,
+              );
+              expect(
+                ofType(items, ReminderType.breakTime).any(
+                  (item) =>
+                      item.deliverImmediately && item.fireAt == onDay(remind),
+                ),
+                isFalse,
+              );
+            },
+          );
 
           test('happy: starting break before reminder cancels take-break', () {
             final items = plan(
@@ -481,9 +495,10 @@ void main() {
               punches: inPunch,
             );
             expect(
-              ofType(items, ReminderType.breakTime).any(
-                (item) => item.fireAt == onDay(later),
-              ),
+              ofType(
+                items,
+                ReminderType.breakTime,
+              ).any((item) => item.fireAt == onDay(later)),
               isTrue,
             );
           });
@@ -502,16 +517,19 @@ void main() {
             },
           );
 
-          test('critical: after permission break time does not catch-up break', () {
-            final items = plan(
-              now: onDay(policyBreak).add(const Duration(minutes: 20)),
-              policyCheckIn: policyCheckIn,
-              policyCheckOut: policyCheckOut,
-              remindBreak: remind,
-              punches: inPunch,
-            );
-            expect(ofType(items, ReminderType.breakTime), isEmpty);
-          });
+          test(
+            'critical: after permission break time does not catch-up break',
+            () {
+              final items = plan(
+                now: onDay(policyBreak).add(const Duration(minutes: 20)),
+                policyCheckIn: policyCheckIn,
+                policyCheckOut: policyCheckOut,
+                remindBreak: remind,
+                punches: inPunch,
+              );
+              expect(ofType(items, ReminderType.breakTime), isEmpty);
+            },
+          );
 
           test('critical: banner stays until the user dismisses it', () {
             expectStaysUntilDismissed(ReminderType.breakTime);
@@ -575,22 +593,26 @@ void main() {
             },
           );
 
-          test('happy: clock at permission end time does not catch-up break end', () {
-            final items = plan(
-              now: onDay(policyEnd),
-              policyCheckIn: policyCheckIn,
-              policyCheckOut: policyCheckOut,
-              remindBreakEnd: remind,
-              breakMinutes: breakMinutes,
-              punches: onBreak,
-            );
-            expect(
-              ofType(items, ReminderType.breakTimeEnded).any(
-                (item) => item.deliverImmediately && item.fireAt == onDay(remind),
-              ),
-              isFalse,
-            );
-          });
+          test(
+            'happy: clock at permission end time does not catch-up break end',
+            () {
+              final items = plan(
+                now: onDay(policyEnd),
+                policyCheckIn: policyCheckIn,
+                policyCheckOut: policyCheckOut,
+                remindBreakEnd: remind,
+                breakMinutes: breakMinutes,
+                punches: onBreak,
+              );
+              expect(
+                ofType(items, ReminderType.breakTimeEnded).any(
+                  (item) =>
+                      item.deliverImmediately && item.fireAt == onDay(remind),
+                ),
+                isFalse,
+              );
+            },
+          );
 
           test('happy: ending break on time cancels break-end notices', () {
             final items = plan(
@@ -625,9 +647,10 @@ void main() {
               punches: onBreak,
             );
             expect(
-              ofType(items, ReminderType.breakTimeEnded).any(
-                (item) => item.fireAt == onDay(later),
-              ),
+              ofType(
+                items,
+                ReminderType.breakTimeEnded,
+              ).any((item) => item.fireAt == onDay(later)),
               isTrue,
             );
             expect(
@@ -787,10 +810,64 @@ void main() {
           ),
         ],
       );
-      final ended = items.where((item) => item.type == ReminderType.breakTimeEnded);
+      final ended = items.where(
+        (item) => item.type == ReminderType.breakTimeEnded,
+      );
       expect(ended.any((item) => item.deliverImmediately), isTrue);
       expect(ended.first.title, 'Break time is over');
       expect(ended.first.body, 'Ready to get back to work?');
+    });
+
+    test(
+      'break end without a picked clock fires at the settings time like break start',
+      () {
+        const policyIn = TimeOfDay(hour: 9, minute: 0);
+        const policyOut = TimeOfDay(hour: 18, minute: 0);
+        final fireAt = DateTime(2026, 9, 9, 14, 30);
+        final items = plan(
+          now: fireAt,
+          policyCheckIn: policyIn,
+          policyCheckOut: policyOut,
+          breakMinutes: 60,
+          punches: [
+            ReminderPunch(
+              kind: ReminderPunchKind.checkIn,
+              time: onDay(policyIn),
+            ),
+            ReminderPunch(
+              kind: ReminderPunchKind.breakStart,
+              time: DateTime(2026, 9, 9, 13),
+            ),
+          ],
+        );
+        final ended = ofType(items, ReminderType.breakTimeEnded);
+        expect(ended, isNotEmpty);
+        expect(ended.first.fireAt, fireAt);
+        expect(ended.first.deliverImmediately, isTrue);
+        expect(ended.first.title, 'Break time is over');
+        expect(ended.first.body, 'Ready to get back to work?');
+      },
+    );
+
+    test('afternoon break without a picked clock uses start plus duration', () {
+      const policyIn = TimeOfDay(hour: 9, minute: 0);
+      const policyOut = TimeOfDay(hour: 18, minute: 0);
+      final breakStart = DateTime(2026, 9, 9, 15, 28);
+      final items = plan(
+        now: breakStart,
+        policyCheckIn: policyIn,
+        policyCheckOut: policyOut,
+        breakMinutes: 60,
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: onDay(policyIn)),
+          ReminderPunch(kind: ReminderPunchKind.breakStart, time: breakStart),
+        ],
+      );
+      final ended = ofType(items, ReminderType.breakTimeEnded);
+      expect(ended, isNotEmpty);
+      expect(ended.first.fireAt, DateTime(2026, 9, 9, 16, 28));
+      expect(ended.first.deliverImmediately, isFalse);
+      expect(ended.first.title, 'Break time is over');
     });
   });
 }
