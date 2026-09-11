@@ -35,43 +35,49 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
     return Scaffold(
       backgroundColor: kbackground1,
-      body: ShimmerRefreshIndicator(
-        onRefresh: () async {
-          await Future.wait([
-            provider.refresh(),
-            context.read<ManagerLocationsProvider>().refresh(),
-            context.read<ManagerEmployeesProvider>().refresh(),
-          ]);
-        },
-        child: Padding(
-          padding: AppSizes.DEFAULT,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: SizedBox(height: 40)),
-              const SliverToBoxAdapter(child: OverviewHeader()),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              if (isInitialLoad)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: ShimmerProgress()),
-                )
-              else if (provider.hasError && summary == null)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _OverviewError(
-                    message:
-                        provider.errorMessage ?? 'Failed to load overview.',
-                    onRetry: provider.load,
-                  ),
-                )
-              else if (summary != null) ...[
-                SliverToBoxAdapter(child: OverviewStatsCard(summary: summary)),
+      body: MediaQuery.removePadding(
+        context: context,
+        removeBottom: true,
+        child: ShimmerRefreshIndicator(
+          onRefresh: () async {
+            await Future.wait([
+              provider.refresh(),
+              context.read<ManagerLocationsProvider>().refresh(),
+              context.read<ManagerEmployeesProvider>().refresh(),
+            ]);
+          },
+          child: Padding(
+            padding: AppSizes.DEFAULT2,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                const SliverToBoxAdapter(child: OverviewHeader()),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                const SliverToBoxAdapter(child: OverviewActionsGrid()),
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                if (isInitialLoad)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: ShimmerProgress()),
+                  )
+                else if (provider.hasError && summary == null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _OverviewError(
+                      message:
+                          provider.errorMessage ?? 'Failed to load overview.',
+                      onRetry: provider.load,
+                    ),
+                  )
+                else if (summary != null) ...[
+                  SliverToBoxAdapter(
+                    child: OverviewStatsCard(summary: summary),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  const SliverToBoxAdapter(child: OverviewActionsGrid()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

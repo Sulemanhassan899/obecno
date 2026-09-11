@@ -7,6 +7,7 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
+import 'package:obecno/features/more/presentation/widgets/reminder_duration_picker_sheet.dart';
 import 'package:obecno/features/more/presentation/widgets/reminder_time_picker_sheet.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/widgets/back_button.dart';
@@ -130,8 +131,7 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
                       ),
                       _section(
                         title: 'Attendance Issue',
-                        caption:
-                            "You'll get a reminder if you've checked in for 12+ hours without checking out.",
+                        caption: reminders.longAttendanceCaption,
                         child: _reminderCard(
                           title: 'Very long attendance',
                           type: ReminderType.veryLongAttendance,
@@ -192,7 +192,7 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     required String detailValue,
   }) {
     final on = reminders.isEnabled(type);
-    final canPick = type.canPickTime;
+    final canPick = type.canPickTime || type.canPickDuration;
     return _card(
       children: [
         _toggleRow(label: title, type: type, reminders: reminders),
@@ -200,7 +200,11 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
           _divider(),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: canPick ? () => _pickTime(type, reminders) : null,
+            onTap: canPick
+                ? () => type.canPickDuration
+                      ? _pickDuration(reminders)
+                      : _pickTime(type, reminders)
+                : null,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
               child: Row(
@@ -241,9 +245,20 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     final picked = await ReminderTimePickerSheet.show(
       context,
       initial: reminders.reminderTimeFor(type),
+      resetTo: reminders.latestTimeFor(type),
     );
     if (!mounted || picked == null) return;
     await reminders.setReminderTime(type, picked);
+  }
+
+  Future<void> _pickDuration(ReminderSettingsProvider reminders) async {
+    final picked = await ReminderDurationPickerSheet.show(
+      context,
+      initialMinutes: reminders.longAttendanceMinutes,
+      resetMinutes: ReminderSettingsProvider.defaultLongAttendanceMinutes,
+    );
+    if (!mounted || picked == null) return;
+    await reminders.setLongAttendanceHours(picked);
   }
 
   Widget _toggleRow({

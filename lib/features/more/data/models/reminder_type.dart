@@ -55,4 +55,7 @@ enum ReminderType {
         return false;
     }
   }
+
+  /// Very long attendance waits a user-chosen duration after check-in.
+  bool get canPickDuration => this == ReminderType.veryLongAttendance;
 }

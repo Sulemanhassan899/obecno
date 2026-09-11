@@ -125,6 +125,36 @@ class ReminderDao {
     );
   }
 
+  Future<void> clearRemindMinutes({
+    required String userId,
+    required ReminderType type,
+  }) async {
+    if (userId.isEmpty) return;
+    final db = await _db.database;
+    final existing = await db.query(
+      AttendanceDb.reminderSettingsTable,
+      columns: ['enabled'],
+      where: 'user_id = ? AND reminder_type = ?',
+      whereArgs: [userId, type.storageKey],
+      limit: 1,
+    );
+    final enabled = existing.isEmpty
+        ? (_onByDefault.contains(type) ? 1 : 0)
+        : (existing.first['enabled'] as int? ?? 0);
+    await db.insert(
+      AttendanceDb.reminderSettingsTable,
+      {
+        'user_id': userId,
+        'reminder_type': type.storageKey,
+        'enabled': enabled,
+        'remind_minutes': null,
+        'updated_at': DateTime.now().toIso8601String(),
+        'synced': 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   String _dateKey(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
@@ -183,8 +213,7 @@ class ReminderDao {
     final placeholders = List.filled(types.length, '?').join(',');
     await db.delete(
       AttendanceDb.reminderLogsTable,
-      where:
-          'user_id = ? AND date = ? AND reminder_type IN ($placeholders)',
+      where: 'user_id = ? AND date = ? AND reminder_type IN ($placeholders)',
       whereArgs: [
         userId,
         _dateKey(date),
@@ -372,7 +401,9 @@ class ReminderDao {
     );
     return {
       for (final row in rows)
-        if (ReminderType.fromStorageKey(row['reminder_type']?.toString() ?? '') !=
+        if (ReminderType.fromStorageKey(
+              row['reminder_type']?.toString() ?? '',
+            ) !=
             null)
           ReminderType.fromStorageKey(row['reminder_type']!.toString())!,
     };
@@ -465,9 +496,7 @@ class ReminderDao {
       where: 'user_id = ?',
       whereArgs: [userId],
     );
-    final have = {
-      for (final row in existing) row['reminder_type']?.toString(),
-    };
+    final have = {for (final row in existing) row['reminder_type']?.toString()};
     final now = DateTime.now().toIso8601String();
     for (final type in ReminderType.values) {
       if (have.contains(type.storageKey)) continue;

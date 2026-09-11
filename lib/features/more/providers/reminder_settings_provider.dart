@@ -33,6 +33,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
   static const defaultGraceLabel = '5 mins';
   static const defaultBreakLabel = '60 mins';
   static const defaultLongerBreakLabel = '1 hour';
+  static const defaultLongAttendanceHours = 12;
+  static const defaultLongAttendanceMinutes =
+      ReminderCopy.defaultLongAttendanceMinutes;
   static const defaultLongAttendanceLabel = '12 hours';
 
   Map<ReminderType, bool> _enabled = {
@@ -55,7 +58,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
   );
   int graceMinutes = 5;
   int breakMinutes = 60;
-  int longAttendanceHours = 12;
+  int longAttendanceMinutes = defaultLongAttendanceMinutes;
+  int get longAttendanceHours =>
+      longAttendanceMinutes >= 60 ? longAttendanceMinutes ~/ 60 : 0;
   Set<int> workingWeekdays = ReminderNotificationPlan.defaultWorkingWeekdays;
 
   List<ReminderPunch> _punches = const [];
@@ -72,6 +77,15 @@ class ReminderSettingsProvider extends ChangeNotifier {
   String breakDurationLabel = defaultBreakLabel;
   String longerBreakLabel = defaultLongerBreakLabel;
   String longAttendanceLabel = defaultLongAttendanceLabel;
+
+  String get longAttendanceCaption {
+    final phrase = ReminderCopy.durationPhrase(longAttendanceMinutes);
+    final plus = phrase.replaceFirstMapped(
+      RegExp(r'^(\d+)'),
+      (match) => '${match[1]}+',
+    );
+    return "You'll get a reminder if you've checked in for $plus without checking out.";
+  }
 
   bool _loading = false;
   bool get isLoading => _loading;
@@ -159,15 +173,52 @@ class ReminderSettingsProvider extends ChangeNotifier {
 
   Future<void> setReminderTime(ReminderType type, TimeOfDay value) async {
     if (!type.canPickTime) return;
-    _customMinutes[type] = value.hour * 60 + value.minute;
+    final policy = latestTimeFor(type);
+    final matchesPolicy =
+        value.hour == policy.hour && value.minute == policy.minute;
+    if (matchesPolicy) {
+      _customMinutes.remove(type);
+    } else {
+      _customMinutes[type] = value.hour * 60 + value.minute;
+    }
     _applyCustomTimes();
     notifyListeners();
-    await _dao.setRemindMinutes(
-      userId: _userIdProvider(),
-      type: type,
-      minutes: value.hour * 60 + value.minute,
-    );
+    if (matchesPolicy) {
+      await _dao.clearRemindMinutes(userId: _userIdProvider(), type: type);
+    } else {
+      await _dao.setRemindMinutes(
+        userId: _userIdProvider(),
+        type: type,
+        minutes: value.hour * 60 + value.minute,
+      );
+    }
     await _clearOsFired(DateTime.now(), type);
+    await _persistSettingsSnapshot();
+    await _rescheduleNotifications();
+  }
+
+  Future<void> setLongAttendanceHours(int hoursOrMinutes) async {
+    final value = ReminderCopy.snapDuration(hoursOrMinutes);
+    if (value == defaultLongAttendanceMinutes) {
+      _customMinutes.remove(ReminderType.veryLongAttendance);
+    } else {
+      _customMinutes[ReminderType.veryLongAttendance] = value;
+    }
+    _applyCustomTimes();
+    notifyListeners();
+    if (value == defaultLongAttendanceMinutes) {
+      await _dao.clearRemindMinutes(
+        userId: _userIdProvider(),
+        type: ReminderType.veryLongAttendance,
+      );
+    } else {
+      await _dao.setRemindMinutes(
+        userId: _userIdProvider(),
+        type: ReminderType.veryLongAttendance,
+        minutes: value,
+      );
+    }
+    await _clearOsFired(DateTime.now(), ReminderType.veryLongAttendance);
     await _persistSettingsSnapshot();
     await _rescheduleNotifications();
   }
@@ -262,7 +313,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       breakEndedReminderTime: breakEndedReminderTime,
       graceMinutes: graceMinutes,
       breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceHours,
+      longAttendanceHours: longAttendanceMinutes,
       punches: punches,
       locationName: _locationName(locationName),
     );
@@ -314,7 +365,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       breakEndedReminderTime: breakEndedReminderTime,
       graceMinutes: graceMinutes,
       breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceHours,
+      longAttendanceHours: longAttendanceMinutes,
       punches: _punches,
       workingWeekdays: workingWeekdays,
       alreadyFired: alreadyFired,
@@ -328,26 +379,100 @@ class ReminderSettingsProvider extends ChangeNotifier {
     for (final item in result.planned) {
       if (!item.deliverImmediately) continue;
       if (!result.seenTypes.contains(item.type)) continue;
-      final log = ReminderLog(
-        type: item.type,
-        firedAt: item.fireAt,
-        title: item.title,
-        message: item.body,
-        clockStatus: status.storageValue,
-        deliveredAt: when,
-      );
-      await _dao.insertLogIfAbsent(
-        userId: _userIdProvider(),
-        date: when,
-        log: log,
-      );
-      await _dao.markDelivered(
-        userId: _userIdProvider(),
-        date: when,
-        log: log,
-        deliveredAt: when,
+      await _persistFiredLog(item: item, when: when, status: status);
+    }
+    // A zoned break alarm can show without being in [planned] (already
+    // delivered / leftover). Still write the timeline row.
+    final day = DateTime(when.year, when.month, when.day);
+    final schedule = ReminderFireSchedule.forDay(
+      day: day,
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
+      policyCheckInTime: policyCheckInTime,
+      policyCheckOutTime: policyCheckOutTime,
+      breakReminderTime: breakReminderTime,
+      breakEndedReminderTime: breakEndedReminderTime,
+      graceMinutes: graceMinutes,
+      breakMinutes: breakMinutes,
+      longAttendanceHours: longAttendanceMinutes,
+      status: status,
+    );
+    await _persistLeftoverIfShown(
+      type: ReminderType.breakTimeEnded,
+      result: result,
+      when: when,
+      status: status,
+      fireAt: schedule.breakEndedAt ?? when,
+    );
+    await _persistLeftoverIfShown(
+      type: ReminderType.breakTime,
+      result: result,
+      when: when,
+      status: status,
+      fireAt: schedule.breakAt,
+    );
+    final longAt = schedule.veryLongAttendanceAt;
+    if (longAt != null) {
+      await _persistLeftoverIfShown(
+        type: ReminderType.veryLongAttendance,
+        result: result,
+        when: when,
+        status: status,
+        fireAt: longAt,
       );
     }
+  }
+
+  Future<void> _persistLeftoverIfShown({
+    required ReminderType type,
+    required ReminderNotificationSyncResult result,
+    required DateTime when,
+    required ReminderClockStatus status,
+    required DateTime fireAt,
+  }) async {
+    final plannedNow = result.planned.any(
+      (item) => item.type == type && item.deliverImmediately,
+    );
+    if (!result.seenTypes.contains(type) || plannedNow) return;
+    if (fireAt.isAfter(when)) return;
+    await _persistFiredLog(
+      item: ScheduledReminderNotification(
+        id: ReminderNotificationPlan.idFor(type),
+        type: type,
+        fireAt: fireAt,
+        title: ReminderCopy.title(type),
+        body: ReminderCopy.message(type),
+        deliverImmediately: true,
+      ),
+      when: when,
+      status: status,
+    );
+  }
+
+  Future<void> _persistFiredLog({
+    required ScheduledReminderNotification item,
+    required DateTime when,
+    required ReminderClockStatus status,
+  }) async {
+    final log = ReminderLog(
+      type: item.type,
+      firedAt: item.fireAt,
+      title: item.title,
+      message: item.body,
+      clockStatus: status.storageValue,
+      deliveredAt: when,
+    );
+    await _dao.insertLogIfAbsent(
+      userId: _userIdProvider(),
+      date: when,
+      log: log,
+    );
+    await _dao.markDelivered(
+      userId: _userIdProvider(),
+      date: when,
+      log: log,
+      deliveredAt: when,
+    );
   }
 
   String _osFiredKey(DateTime date) {
@@ -386,7 +511,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
         type: type,
         firedAt: date,
         title: ReminderCopy.title(type),
-        message: ReminderCopy.message(type),
+        message: ReminderCopy.message(
+          type,
+          longAttendanceHours: longAttendanceMinutes,
+        ),
         clockStatus: ReminderClockStatus.fromPunches(_punches).storageValue,
         deliveredAt: date,
       ),
@@ -469,7 +597,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       policyCheckOutTime: policyCheckOutTime,
       graceMinutes: graceMinutes,
       breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceHours,
+      longAttendanceHours: longAttendanceMinutes,
     );
   }
 
@@ -558,6 +686,11 @@ class ReminderSettingsProvider extends ChangeNotifier {
     checkOutTimeLabel = _formatTime(checkOutTime);
     breakTimeLabel = _formatTime(breakReminderTime);
     breakEndedTimeLabel = _formatTime(breakEndedReminderTime);
+    final custom = _customMinutes[ReminderType.veryLongAttendance];
+    longAttendanceMinutes = custom == null
+        ? defaultLongAttendanceMinutes
+        : ReminderCopy.durationMinutes(custom);
+    longAttendanceLabel = ReminderCopy.durationPhrase(longAttendanceMinutes);
   }
 
   TimeOfDay _resolvedTime(ReminderType type, TimeOfDay fallback) {

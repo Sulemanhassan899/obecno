@@ -13,6 +13,9 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/attenda
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/more/presentation/widgets/timeline_reminder_rows.dart';
+import 'package:obecno/features/more/services/reminder_engine.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
@@ -125,6 +128,13 @@ class ManagerAttendanceDetailsData {
       (checkIn != null && checkIn!.trim().isNotEmpty) ||
       (checkOut != null && checkOut!.trim().isNotEmpty) ||
       timeline.isNotEmpty;
+
+  /// True when [currentUserId] is the person whose attendance this sheet shows.
+  bool isOwnedBy(String? currentUserId) {
+    final current = currentUserId?.trim() ?? '';
+    if (current.isEmpty || userId == null) return false;
+    return current == userId.toString();
+  }
 
   bool get hasNetworkPhoto =>
       photo != null &&
@@ -402,6 +412,7 @@ class _ManagerAttendanceDetailsSheetBodyState
   bool _loading = false;
   Timer? _hoursTimer;
   AddAttendanceSaveResult? _savedResult;
+  List<ReminderLog> _reminderLogs = const [];
 
   DateTime? _joiningDateFor(int? userId) {
     if (userId == null) return null;
@@ -447,9 +458,19 @@ class _ManagerAttendanceDetailsSheetBodyState
     });
   }
 
+  bool get _isViewingOwnAttendance =>
+      _data.isOwnedBy(bindings.authProvider.user?.id);
+
+  List<ManagerAttendanceTimelineEvent> get _punchEvents => _data.timeline
+      .where((event) => event.type != ManagerAttendanceEventType.reminder)
+      .toList();
+
   Future<void> _load({bool silent = false}) async {
     final loader = widget.loadDetails;
-    if (loader == null) return;
+    if (loader == null) {
+      await _syncReminders();
+      return;
+    }
     if (!silent) {
       setState(() => _loading = true);
     }
@@ -463,10 +484,113 @@ class _ManagerAttendanceDetailsSheetBodyState
         _loading = false;
       });
       _syncHoursTimer();
+      await _syncReminders();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      await _syncReminders();
     }
+  }
+
+  Future<void> _syncReminders() async {
+    if (!_isViewingOwnAttendance) {
+      if (_reminderLogs.isEmpty) return;
+      if (!mounted) return;
+      setState(() => _reminderLogs = const []);
+      return;
+    }
+
+    final punches = <ReminderPunch>[];
+    for (final event in _punchEvents) {
+      final kind = ReminderPunchKind.fromName(event.type.name);
+      if (kind == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: _eventDateTime(event)));
+    }
+    final logs = await bindings.reminderSettingsProvider.syncForDay(
+      day: _data.day,
+      punches: punches,
+      locationName: bindings.authProvider.selectedLocation?.name,
+    );
+    if (!mounted) return;
+    setState(() => _reminderLogs = logs);
+  }
+
+  DateTime _eventDateTime(ManagerAttendanceTimelineEvent event) {
+    final sortTime = event.sortTime;
+    if (sortTime != null && sortTime.millisecondsSinceEpoch != 0) {
+      return sortTime;
+    }
+    final parsed = _parseTimeLabel(event.timeLabel);
+    if (parsed == null) return _data.day;
+    return DateTime(
+      _data.day.year,
+      _data.day.month,
+      _data.day.day,
+      parsed.hour,
+      parsed.minute,
+    );
+  }
+
+  ReminderPunchKind? _primaryKind(
+    ManagerAttendanceTimelineEvent event,
+    List<ManagerAttendanceTimelineEvent> punches,
+  ) {
+    final kind = ReminderPunchKind.fromName(event.type.name);
+    if (kind == null) return null;
+    if (kind == ReminderPunchKind.breakEnd ||
+        kind == ReminderPunchKind.breakStart) {
+      return kind;
+    }
+    final ofType = punches.where((e) => e.type == event.type).toList()
+      ..sort((a, b) {
+        final left = a.sortTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final right = b.sortTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return left.compareTo(right);
+      });
+    if (ofType.isEmpty) return null;
+    final primary = kind == ReminderPunchKind.checkOut
+        ? ofType.last
+        : ofType.first;
+    return _isSamePunch(primary, event) ? kind : null;
+  }
+
+  bool _isSamePunch(
+    ManagerAttendanceTimelineEvent a,
+    ManagerAttendanceTimelineEvent b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.id != null && b.id != null && a.id == b.id) return true;
+    return a.type == b.type &&
+        a.timeLabel == b.timeLabel &&
+        a.sortTime == b.sortTime;
+  }
+
+  List<Widget> _timelineSkeletons() {
+    final count = _punchEvents.isEmpty ? 2 : _punchEvents.length;
+    return [for (var i = 0; i < count; i++) const _TimelineTileSkeleton()];
+  }
+
+  List<Widget> _timelineChildren(List<ManagerLocationModel> locations) {
+    final punches = _punchEvents;
+    final mixed = ReminderEngine.mixTimeline(
+      punchTimes: [for (final event in punches) _eventDateTime(event)],
+      primaryKinds: [for (final event in punches) _primaryKind(event, punches)],
+      logs: _isViewingOwnAttendance ? _reminderLogs : const [],
+    );
+    return [
+      for (final item in mixed)
+        if (item.isPunch)
+          _ManagerTimelineTile(
+            event: punches[item.punchIndex!],
+            locations: locations,
+            reminderLogs: item.attachedLogs,
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TimelineReminderRows(logs: item.standaloneLogs),
+          ),
+    ];
   }
 
   void _openProfile() {
@@ -547,6 +671,7 @@ class _ManagerAttendanceDetailsSheetBodyState
         _loading = false;
       });
       _syncHoursTimer();
+      await _syncReminders();
       bindings.managerAttendanceProvider.applySavedTimes(
         userId: _data.userId,
         employeeName: _data.name,
@@ -714,25 +839,8 @@ class _ManagerAttendanceDetailsSheetBodyState
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
                       children: [
-                        if (_loading)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 16),
-                            child: Center(
-                              child: SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: ShimmerProgress(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        _SummaryCard(
-                          data: _data,
-                          durationLabel: _durationLabel,
-                          locations: locations,
-                        ),
-                        if (hasAttendance && _data.timeline.isNotEmpty) ...[
+                        if (_loading) ...[
+                          const _SummaryCardSkeleton(),
                           const SizedBox(height: 32),
                           Row(
                             children: [
@@ -745,12 +853,30 @@ class _ManagerAttendanceDetailsSheetBodyState
                             ],
                           ),
                           const SizedBox(height: 14),
-                          ..._data.timeline.map(
-                            (e) => _ManagerTimelineTile(
-                              event: e,
-                              locations: locations,
-                            ),
+                          ..._timelineSkeletons(),
+                        ] else ...[
+                          _SummaryCard(
+                            data: _data,
+                            durationLabel: _durationLabel,
+                            locations: locations,
                           ),
+                          if ((hasAttendance && _punchEvents.isNotEmpty) ||
+                              (_isViewingOwnAttendance &&
+                                  _reminderLogs.isNotEmpty)) ...[
+                            const SizedBox(height: 32),
+                            Row(
+                              children: [
+                                CommonImageView(
+                                  imagePath: Assets.imagesClipboardClock,
+                                  height: 22,
+                                ),
+                                const SizedBox(width: 8),
+                                AppText.h5("Timeline", weight: FontWeight.w600),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            ..._timelineChildren(locations),
+                          ],
                         ],
                       ],
                     ),
@@ -762,7 +888,16 @@ class _ManagerAttendanceDetailsSheetBodyState
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: SafeArea(
                     top: false,
-                    child: hasAttendance
+                    child: _loading
+                        ? const Align(
+                            alignment: Alignment.centerRight,
+                            child: _ShimmerLine(
+                              width: 200,
+                              height: 44,
+                              radius: 22,
+                            ),
+                          )
+                        : hasAttendance
                         ? Align(
                             alignment: Alignment.centerRight,
                             child: MyButton(
@@ -886,7 +1021,6 @@ class _SummaryCard extends StatelessWidget {
                   lat: data.checkInLat,
                   lon: data.checkInLon,
                   raw: data.checkInLocation,
-                  showCoordinates: false,
                 ),
               ),
               Expanded(
@@ -901,7 +1035,6 @@ class _SummaryCard extends StatelessWidget {
                   lon: data.checkOutLon,
                   raw: data.checkOutLocation,
                   isRight: true,
-                  showCoordinates: false,
                 ),
               ),
             ],
@@ -918,17 +1051,94 @@ class _SummaryCard extends StatelessWidget {
       Container(width: 18, height: 2, color: kGreyColor.withOpacity(0.3));
 }
 
-class _ManagerTimelineTile extends StatelessWidget {
-  const _ManagerTimelineTile({required this.event, required this.locations});
+class _ShimmerLine extends StatelessWidget {
+  const _ShimmerLine({this.width = 80, this.height = 14, this.radius = 6});
 
-  final ManagerAttendanceTimelineEvent event;
-  final List<ManagerLocationModel> locations;
+  final double width;
+  final double height;
+  final double radius;
 
-  bool get _isReminder => event.type == ManagerAttendanceEventType.reminder;
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      isLoading: true,
+      height: height,
+      width: width,
+      borderRadius: BorderRadius.circular(radius),
+    );
+  }
+}
+
+class _SummaryCardSkeleton extends StatelessWidget {
+  const _SummaryCardSkeleton();
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: const Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ShimmerLine(width: 64, height: 12),
+                    SizedBox(height: 10),
+                    _ShimmerLine(width: 110, height: 26, radius: 8),
+                  ],
+                ),
+              ),
+              _ShimmerLine(width: 72, height: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _ShimmerLine(width: 72, height: 12),
+                    SizedBox(height: 10),
+                    _ShimmerLine(width: 110, height: 26, radius: 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _ShimmerLine(width: 140, height: 12),
+                ),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _ShimmerLine(width: 140, height: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineTileSkeleton extends StatelessWidget {
+  const _TimelineTileSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -936,49 +1146,98 @@ class _ManagerTimelineTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: kBorderColor),
       ),
-      child: _isReminder
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                CommonImageView(imagePath: Assets.imagesBell, height: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppText.p2(event.timeLabel, align: TextAlign.left),
-                      const SizedBox(height: 4),
-                      AppText.p4(event.label, align: TextAlign.left),
-                    ],
-                  ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ShimmerLine(width: 72, height: 14),
+          SizedBox(height: 10),
+          _ShimmerLine(width: 120, height: 18),
+          SizedBox(height: 10),
+          _ShimmerLine(width: 180, height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManagerTimelineTile extends StatelessWidget {
+  const _ManagerTimelineTile({
+    required this.event,
+    required this.locations,
+    this.reminderLogs = const [],
+  });
+
+  final ManagerAttendanceTimelineEvent event;
+  final List<ManagerLocationModel> locations;
+  final List<ReminderLog> reminderLogs;
+
+  bool get _isReminder => event.type == ManagerAttendanceEventType.reminder;
+
+  @override
+  Widget build(BuildContext context) {
+    final locationName = _officeName(
+      lat: event.lat,
+      lon: event.lon,
+      raw: event.location,
+      locations: locations,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: _isReminder
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CommonImageView(imagePath: Assets.imagesBell, height: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText.p2(event.timeLabel, align: TextAlign.left),
+                          const SizedBox(height: 4),
+                          AppText.p4(event.label, align: TextAlign.left),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText.h6(event.timeLabel, weight: FontWeight.w700),
+                    const SizedBox(height: 6),
+                    AppText.h5(
+                      event.label,
+                      color: event.color,
+                      weight: FontWeight.w700,
+                      align: TextAlign.left,
+                    ),
+                    const SizedBox(height: 6),
+                    _AttendanceLocationLine(
+                      name: locationName,
+                      lat: event.lat,
+                      lon: event.lon,
+                      raw: event.location,
+                    ),
+                  ],
                 ),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AppText.h6(event.timeLabel, weight: FontWeight.w700),
-                const SizedBox(height: 6),
-                AppText.h5(
-                  event.label,
-                  color: event.color,
-                  weight: FontWeight.w700,
-                  align: TextAlign.left,
-                ),
-                const SizedBox(height: 6),
-                _AttendanceLocationLine(
-                  name: _officeName(
-                    lat: event.lat,
-                    lon: event.lon,
-                    raw: event.location,
-                    locations: locations,
-                  ),
-                  lat: event.lat,
-                  lon: event.lon,
-                  raw: event.location,
-                ),
-              ],
-            ),
+        ),
+        if (reminderLogs.isNotEmpty) ...[
+          TimelineReminderRows(logs: reminderLogs),
+          const SizedBox(height: 12),
+        ],
+      ],
     );
   }
 }
@@ -990,7 +1249,6 @@ class _AttendanceLocationLine extends StatelessWidget {
     this.lon,
     this.raw,
     this.isRight = false,
-    this.showCoordinates = true,
   });
 
   final String? name;
@@ -998,7 +1256,6 @@ class _AttendanceLocationLine extends StatelessWidget {
   final double? lon;
   final String? raw;
   final bool isRight;
-  final bool showCoordinates;
 
   (double, double)? get _coords {
     if (lat != null && lon != null) return (lat!, lon!);
@@ -1012,24 +1269,20 @@ class _AttendanceLocationLine extends StatelessWidget {
     return (parsedLat, parsedLon);
   }
 
-  String? get _coordsLabel {
-    final coords = _coords;
-    if (coords == null) return null;
-    return '${coords.$1}, ${coords.$2}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final label = name?.trim();
-    final coords = _coordsLabel;
     final hasName = label != null && label.isNotEmpty;
-    final showCoords = showCoordinates && coords != null;
-    if (!hasName && !showCoords) {
-      return AppText.caption(
-        "--",
-        color: kGreyColor,
-        weight: FontWeight.w500,
-        align: isRight ? TextAlign.right : TextAlign.left,
+    final point = _coords;
+    if (!hasName && point == null) {
+      return Align(
+        alignment: isRight ? Alignment.centerRight : Alignment.centerLeft,
+        child: AppText.caption(
+          "--",
+          color: kGreyColor,
+          weight: FontWeight.w500,
+          align: isRight ? TextAlign.right : TextAlign.left,
+        ),
       );
     }
 
@@ -1040,31 +1293,16 @@ class _AttendanceLocationLine extends StatelessWidget {
           const SizedBox(width: 6),
         ],
         Expanded(
-          child: Wrap(
-            alignment: isRight ? WrapAlignment.end : WrapAlignment.start,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 6,
-            children: [
-              if (hasName)
-                AppText.caption(
+          child: hasName
+              ? AppText.caption(
                   label,
                   color: kGreyColor,
                   weight: FontWeight.w500,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                   align: isRight ? TextAlign.right : TextAlign.left,
-                ),
-              if (showCoords)
-                AppText.caption(
-                  coords,
-                  color: kBlue,
-                  weight: FontWeight.w500,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  align: isRight ? TextAlign.right : TextAlign.left,
-                ),
-            ],
-          ),
+                )
+              : const SizedBox.shrink(),
         ),
         if (isRight) ...[
           const SizedBox(width: 6),
@@ -1073,12 +1311,11 @@ class _AttendanceLocationLine extends StatelessWidget {
       ],
     );
 
-    final point = _coords;
     if (point == null) return row;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        MapsLauncher.open(lat: point.$1, lon: point.$2);
+        MapsLauncher.open(lat: point.$1, lon: point.$2, label: label);
       },
       child: row,
     );

@@ -143,7 +143,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       AppText.h4(
                         formatTime(firstCheckIn),
                         color: kPrimaryColor,
-                                align: TextAlign.left,
+                        align: TextAlign.left,
                       ),
                       const SizedBox(height: 6),
                       Row(
@@ -222,7 +222,11 @@ class _AttendanceCardState extends State<AttendanceCard> {
                     children: [
                       AppText.p2("Check-Out", color: kredColor),
                       const SizedBox(height: 4),
-                      AppText.h4(formatTime(lastCheckOut), color: kredColor,         align: TextAlign.right,),
+                      AppText.h4(
+                        formatTime(lastCheckOut),
+                        color: kredColor,
+                        align: TextAlign.right,
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -247,7 +251,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                                           .ellipsis, // 🔥 better UX than fade
                                       maxLines: 1, // 🔥 REQUIRED
                                       weight: FontWeight.w500,
-                                      align: TextAlign.left,
+                                      align: TextAlign.right,
                                     ),
                                   ),
                           ),

@@ -152,7 +152,7 @@ class ReminderLog {
       case ReminderType.longerBreak:
         return 'Longer break';
       case ReminderType.veryLongAttendance:
-        return 'Checked in for 12 hours.';
+        return ReminderCopy.longAttendanceTimelineFromMessage(message);
     }
   }
 
@@ -222,12 +222,66 @@ class ReminderCopy {
     }
   }
 
+  static const defaultLongAttendanceHours = 12;
+  static const defaultLongAttendanceMinutes = defaultLongAttendanceHours * 60;
+  static const minuteSteps = [10, 20, 30, 40, 50];
+  static const minHours = 1;
+  static const maxHours = 24;
+
+  static List<int> get durationOptionsInMinutes => [
+    ...minuteSteps,
+    for (var h = minHours; h <= maxHours; h++) h * 60,
+  ];
+
+  /// Picker minutes (10, 20, …, 60, 120, …) or legacy whole hours (1–24).
+  static int durationMinutes(int hoursOrMinutes) {
+    if (hoursOrMinutes <= 0) return defaultLongAttendanceMinutes;
+    if (durationOptionsInMinutes.contains(hoursOrMinutes)) {
+      return hoursOrMinutes;
+    }
+    if (hoursOrMinutes <= maxHours) return hoursOrMinutes * 60;
+    return defaultLongAttendanceMinutes;
+  }
+
+  static int snapDuration(int hoursOrMinutes) {
+    final minutes = durationMinutes(hoursOrMinutes);
+    final options = durationOptionsInMinutes;
+    return options.reduce(
+      (a, b) => (a - minutes).abs() <= (b - minutes).abs() ? a : b,
+    );
+  }
+
+  static String durationPhrase(int hoursOrMinutes) {
+    final minutes = durationMinutes(hoursOrMinutes);
+    if (minutes < 60) {
+      return minutes == 1 ? '1 minute' : '$minutes minutes';
+    }
+    final hours = minutes ~/ 60;
+    return hours == 1 ? '1 hour' : '$hours hours';
+  }
+
+  static String hoursPhrase(int hours) => durationPhrase(hours);
+
+  static String longAttendanceTimeline(int hoursOrMinutes) =>
+      'Checked in for ${durationPhrase(hoursOrMinutes)}.';
+
+  static String longAttendanceTimelineFromMessage(String message) {
+    final match = RegExp(r'(\d+)\s+(minutes?|hours?)').firstMatch(message);
+    if (match == null) {
+      return longAttendanceTimeline(defaultLongAttendanceMinutes);
+    }
+    final n = int.tryParse(match.group(1) ?? '') ?? defaultLongAttendanceHours;
+    final unit = match.group(2)!;
+    return longAttendanceTimeline(unit.startsWith('hour') ? n * 60 : n);
+  }
+
   static String message(
     ReminderType type, {
     TimeOfDay? checkInTime,
     TimeOfDay? checkOutTime,
     TimeOfDay? breakTime,
     TimeOfDay? breakEndTime,
+    int longAttendanceHours = defaultLongAttendanceHours,
   }) {
     switch (type) {
       case ReminderType.enterLocation:
@@ -249,7 +303,7 @@ class ReminderCopy {
       case ReminderType.longerBreak:
         return 'Back to work in 10 minutes.';
       case ReminderType.veryLongAttendance:
-        return "You've been checked in for 12 hours.";
+        return "You've been checked in for ${durationPhrase(longAttendanceHours)}.";
     }
   }
 }
