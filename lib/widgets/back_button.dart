@@ -1,16 +1,38 @@
-// FIXED (code-quality audit finding): this file previously carried a
-// ~65-line commented-out, superseded first draft of `BackButtonBg`
-// above the real, active class below (same pattern already removed
-// elsewhere in this tree), immediately followed by a duplicated,
-// partially self-importing import block -- `flutter/material.dart` and
-// `all_colors.dart` were each imported twice, and one of the imports
-// was this file importing itself, which is dead weight even though it
-// happened to be harmless to the compiler. Removed; kept exactly one
-// copy of each import actually used below.
 import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+
+/// 42px grey circle used for back on every screen and sheet.
+class BackCircleButton extends StatelessWidget {
+  const BackCircleButton({
+    super.key,
+    this.onTap,
+    this.icon = Icons.arrow_back,
+    this.enabled = true,
+  });
+
+  final VoidCallback? onTap;
+  final IconData icon;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return ButtonAnimations.press(
+      onTap: !enabled ? null : (onTap ?? () => Navigator.pop(context)),
+      child: Container(
+        height: 42,
+        width: 42,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: kGreyContainerColor,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 16, color: kBlack),
+      ),
+    );
+  }
+}
 
 class BackButtonBg extends StatelessWidget {
   const BackButtonBg({
@@ -45,19 +67,7 @@ class BackButtonBg extends StatelessWidget {
     return Row(
       children: [
         if (showBack)
-          ButtonAnimations.press(
-            onTap: onTap ?? () => Navigator.pop(context),
-
-            child: Container(
-              height: 42,
-              width: 42,
-              decoration: BoxDecoration(
-                color: kGreyContainerColor,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.arrow_back, size: 16),
-            ),
-          )
+          BackCircleButton(onTap: onTap)
         else
           const SizedBox(width: 42),
 

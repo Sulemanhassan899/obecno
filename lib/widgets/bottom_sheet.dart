@@ -1,6 +1,7 @@
 // ignore_for_file: non_constant_identifier_names
 
 import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:flutter/material.dart';
 
 import 'common_image_view_widget.dart';
@@ -96,6 +97,8 @@ class CommonBottomSheet extends StatelessWidget {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
+            final hasButton =
+                buttonText != null && buttonText.trim().isNotEmpty;
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
@@ -103,78 +106,77 @@ class CommonBottomSheet extends StatelessWidget {
                 left: 16,
                 right: 16,
               ),
-              child: SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: AppSheetSize.constraintsOf(context),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (imagePath != null)
-                      Center(
-                        child: CommonImageView(
-                          imagePath: imagePath,
-                          height: 150,
-                        ),
-                      ),
-                    if (imagePath != null) const SizedBox(height: 24),
-                    if (title != null)
-                      TextWidget(
-                        text: title,
-                        size: 26,
-                        weight: FontWeight.w700,
-                        color: Colors.black,
-                        textAlign: TextAlign.center,
-                      ),
-                    if (title != null) const SizedBox(height: 16),
-                    if (subtitle != null)
-                      TextWidget(
-                        text: subtitle,
-                        size: 16,
-                        weight: FontWeight.w400,
-                        color: kSubText2,
-                        textAlign: TextAlign.center,
-                      ),
-                    if (subtitle != null) const SizedBox(height: 24),
-
-                    // Dynamic Text Fields
-                    if (textControllers != null && textFieldHints != null)
-                      ...List.generate(
-                        textControllers.length,
-                        (index) => Column(
-                          children: [
-                            CustomTextField(
-                              backgroundColor: kWhite,
-                              hintTextFontColor: kSubText2,
-                              hintTextFontSize: 16,
-                              hintText: textFieldHints[index],
-                              controller: textControllers[index],
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          if (imagePath != null)
+                            Center(
+                              child: CommonImageView(
+                                imagePath: imagePath,
+                                height: 150,
+                              ),
                             ),
-                            const SizedBox(height: 12),
-                          ],
-                        ),
+                          if (imagePath != null) const SizedBox(height: 24),
+                          if (title != null)
+                            TextWidget(
+                              text: title,
+                              size: 26,
+                              weight: FontWeight.w700,
+                              color: Colors.black,
+                              textAlign: TextAlign.center,
+                            ),
+                          if (title != null) const SizedBox(height: 16),
+                          if (subtitle != null)
+                            TextWidget(
+                              text: subtitle,
+                              size: 16,
+                              weight: FontWeight.w400,
+                              color: kSubText2,
+                              textAlign: TextAlign.center,
+                            ),
+                          if (subtitle != null) const SizedBox(height: 24),
+                          if (textControllers != null && textFieldHints != null)
+                            ...List.generate(
+                              textControllers.length,
+                              (index) => Column(
+                                children: [
+                                  CustomTextField(
+                                    backgroundColor: kWhite,
+                                    hintTextFontColor: kSubText2,
+                                    hintTextFontSize: 16,
+                                    hintText: textFieldHints[index],
+                                    controller: textControllers[index],
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                              ),
+                            ),
+                          if (dropdownItems != null &&
+                              selectedDropdownValue != null)
+                            CustomDropDown(
+                              hint: "Select Option",
+                              selectedValue: selectedDropdownValue,
+                              items: dropdownItems,
+                              onChanged: (value) {
+                                if (onDropdownChanged != null) {
+                                  onDropdownChanged(value.toString());
+                                  setState(() {});
+                                }
+                              },
+                              bgColor: kWhite,
+                            ),
+                          if (dropdownItems != null) const SizedBox(height: 20),
+                          if (children != null) ...children,
+                        ],
                       ),
-
-                    // Dropdown
-                    if (dropdownItems != null &&
-                        selectedDropdownValue != null)
-                      CustomDropDown(
-                        hint: "Select Option",
-                        selectedValue: selectedDropdownValue,
-                        items: dropdownItems,
-                        onChanged: (value) {
-                          if (onDropdownChanged != null) {
-                            onDropdownChanged(value.toString());
-                            setState(() {});
-                          }
-                        },
-                        bgColor: kWhite,
-                      ),
-                    if (dropdownItems != null) const SizedBox(height: 20),
-
-                    // Additional Custom Widgets
-                    if (children != null) ...children,
-
-                    // Button
-                    if (buttonText != null &&
-                        buttonText.trim().isNotEmpty) ...[
+                    ),
+                    if (hasButton) ...[
                       MyButton(
                         onTap: onButtonTap != null
                             ? () async {
@@ -190,7 +192,6 @@ class CommonBottomSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 20),
                     ],
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),

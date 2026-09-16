@@ -8,8 +8,10 @@ import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/employee_location_assignment.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/confirm_location_change_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -239,111 +241,109 @@ class _EmployeeDefaultLocationsSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-      ),
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              child: Row(
-                children: [
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      height: 42,
-                      width: 42,
-                      decoration: const BoxDecoration(
-                        color: kGreyContainerColor,
-                        shape: BoxShape.circle,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                child: Row(
+                  children: [
+                    BackCircleButton(onTap: () => Navigator.pop(context)),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          AppText.h5(
+                            _isDefaultMode ? 'Default Locations' : 'Locations',
+                          ),
+                          const SizedBox(height: 2),
+                          AppText.p2(widget.employeeName, color: kGreyColor),
+                        ],
                       ),
-                      child: const Icon(Icons.arrow_back, size: 16),
                     ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        AppText.h5(
-                          _isDefaultMode ? 'Default Locations' : 'Locations',
-                        ),
-                        const SizedBox(height: 2),
-                        AppText.p2(widget.employeeName, color: kGreyColor),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 50),
+                    SizedBox(width: 50),
 
-                  // ButtonAnimations.press(
-                  //   onTap: () {},
-                  //   child: Padding(
-                  //     padding: EdgeInsets.all(6),
-                  //     child: Container(
-                  //       height: 42,
-                  //       width: 42,
-                  //       decoration: const BoxDecoration(
-                  //         color: kGreyContainerColor,
-                  //         shape: BoxShape.circle,
-                  //       ),
-                  //       child: Icon(Icons.more_horiz, size: 22),
-                  //     ),
-                  //   ),
-                  // ),
-                ],
+                    // ButtonAnimations.press(
+                    //   onTap: () {},
+                    //   child: Padding(
+                    //     padding: EdgeInsets.all(6),
+                    //     child: Container(
+                    //       height: 42,
+                    //       width: 42,
+                    //       decoration: const BoxDecoration(
+                    //         color: kGreyContainerColor,
+                    //         shape: BoxShape.circle,
+                    //       ),
+                    //       child: Icon(Icons.more_horiz, size: 22),
+                    //     ),
+                    //   ),
+                    // ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Expanded(
-              child: _loading
-                  ? const Center(child: ShimmerProgress())
-                  : _error != null
-                  ? Center(child: AppText.p2(_error!, color: kGreyColor))
-                  : _locations.isEmpty
-                  ? Center(
-                      child: AppText.p2(
-                        'No locations available',
-                        color: kGreyColor,
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 64),
+                        child: ShimmerProgress(),
+                      )
+                    : _error != null
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
+                        child: AppText.p2(_error!, color: kGreyColor),
+                      )
+                    : _locations.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: AppText.p2(
+                          'No locations available',
+                          color: kGreyColor,
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                        itemCount: _locations.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final option = _locations[index];
+                          final selected = _isDefaultMode
+                              ? option.id == _defaultId
+                              : _selectedIds.contains(option.id);
+                          final isDefault =
+                              _defaultId.isNotEmpty && option.id == _defaultId;
+                          return _LocationCard(
+                            option: option,
+                            selected: selected,
+                            isDefault: isDefault,
+                            singleSelect: _isDefaultMode,
+                            onTap: () => _toggleSelection(option.id),
+                          );
+                        },
                       ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      itemCount: _locations.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final option = _locations[index];
-                        final selected = _isDefaultMode
-                            ? option.id == _defaultId
-                            : _selectedIds.contains(option.id);
-                        final isDefault =
-                            _defaultId.isNotEmpty && option.id == _defaultId;
-                        return _LocationCard(
-                          option: option,
-                          selected: selected,
-                          isDefault: isDefault,
-                          singleSelect: _isDefaultMode,
-                          onTap: () => _toggleSelection(option.id),
-                        );
-                      },
-                    ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: MyButton(
-                buttonText: 'Save',
-                backgroundColor: kPrimaryButtonColor,
-                isactive: !_saving && !_loading,
-                isLoadingExternally: _saving,
-                onTap: _save,
               ),
-            ),
-          ],
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: MyButton(
+                  buttonText: 'Save',
+                  backgroundColor: kPrimaryButtonColor,
+                  isactive: !_saving && !_loading,
+                  isLoadingExternally: _saving,
+                  onTap: _save,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

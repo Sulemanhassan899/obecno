@@ -2,6 +2,7 @@ import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -112,72 +113,78 @@ class _SingleLocationSheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppText.h5(
-                      'Locations',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: AppText.h5(
+                        'Locations',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
+                      ),
                     ),
-                  ),
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 22),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Container(
-              width: double.infinity,
-              color: kWhiteF8,
-              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.folder_outlined,
-                    size: 40,
-                    color: kGreyColor.withOpacity(0.7),
-                  ),
-                  const SizedBox(height: 16),
-                  AppText.p2(
-                    "You're currently using one location",
-                    color: kGreyColor,
-                    weight: FontWeight.w500,
-                  ),
-                  const SizedBox(height: 20),
-                  MyButton(
-                    size: MyButtonSize.normal,
-                    width: 200,
-                    backgroundColor: kWhite,
-                    outlineColor: kBlack200,
-                    fontColor: kBlack,
-                    buttonText: 'Create a Location',
-                    onTap: () async {
-                      Navigator.pop(context);
-                      onCreateLocation?.call();
-                    },
-                  ),
-                ],
+              const Divider(height: 1, color: kDividerColor),
+              Container(
+                width: double.infinity,
+                color: kWhiteF8,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 48,
+                  horizontal: 24,
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 40,
+                      color: kGreyColor.withOpacity(0.7),
+                    ),
+                    const SizedBox(height: 16),
+                    AppText.p2(
+                      "You're currently using one location",
+                      color: kGreyColor,
+                      weight: FontWeight.w500,
+                    ),
+                    const SizedBox(height: 20),
+                    MyButton(
+                      size: MyButtonSize.normal,
+                      width: 200,
+                      backgroundColor: kWhite,
+                      outlineColor: kBlack200,
+                      fontColor: kBlack,
+                      buttonText: 'Create a Location',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        onCreateLocation?.call();
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -213,93 +220,93 @@ class _MultiLocationsSheetBodyState extends State<_MultiLocationsSheetBody> {
   Widget build(BuildContext context) {
     final items = [LocationFilterOption.all, ...widget.locations];
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-      ),
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppText.h5(
-                      'Locations',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: AppText.h5(
+                        'Locations',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
+                      ),
                     ),
-                  ),
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 22),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final option = items[index];
-                  final selected = option.id == _selectedId;
-                  return _LocationOptionTile(
-                    option: option,
-                    selected: selected,
-                    onTap: () => setState(() => _selectedId = option.id),
-                  );
-                },
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final option = items[index];
+                    final selected = option.id == _selectedId;
+                    return _LocationOptionTile(
+                      option: option,
+                      selected: selected,
+                      onTap: () => setState(() => _selectedId = option.id),
+                    );
+                  },
+                ),
               ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: MyButton(
-                      size: MyButtonSize.normal,
-                      backgroundColor: kWhite,
-                      outlineColor: kBorderColor,
-                      fontColor: kBlack,
-                      buttonText: 'Reset',
-                      onTap: () async {
-                        setState(
-                          () => _selectedId = LocationFilterOption.allId,
-                        );
-                      },
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: MyButton(
+                        size: MyButtonSize.normal,
+                        backgroundColor: kWhite,
+                        outlineColor: kBorderColor,
+                        fontColor: kBlack,
+                        buttonText: 'Reset',
+                        onTap: () async {
+                          setState(
+                            () => _selectedId = LocationFilterOption.allId,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: MyButton(
-                      backgroundColor: kPrimaryButtonColor,
-                      buttonText: 'Save',
-                      onTap: () async {
-                        Navigator.pop(context, _selectedId);
-                      },
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 4,
+                      child: MyButton(
+                        backgroundColor: kPrimaryButtonColor,
+                        buttonText: 'Save',
+                        onTap: () async {
+                          Navigator.pop(context, _selectedId);
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

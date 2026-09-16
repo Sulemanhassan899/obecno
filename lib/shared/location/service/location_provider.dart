@@ -131,11 +131,6 @@ class LocationProvider extends ChangeNotifier {
       errorMessage =
           'Location accuracy too low (${e.accuracyMeters.toStringAsFixed(0)}m). Move to an open area and try again.';
       _clearUserLocation();
-    } on MockLocationDetectedException {
-      errorType = LocationErrorType.mockLocationDetected;
-      errorMessage =
-          'A mock location was detected. Please disable it to continue.';
-      _clearUserLocation();
     } catch (_) {
       errorType = LocationErrorType.unknown;
       errorMessage = 'Unable to get your location. Please try again.';

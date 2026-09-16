@@ -7,6 +7,7 @@ import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
     hide AttendanceFormat;
@@ -28,6 +29,7 @@ import 'package:obecno/widgets/resolved_location_text.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
 class AttendanceDetailsSheet {
@@ -42,6 +44,7 @@ class AttendanceDetailsSheet {
     required String userEmail,
     VoidCallback? onEditAttendance,
     bool onLeave = false,
+    bool preferLocalEvents = false,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -57,6 +60,7 @@ class AttendanceDetailsSheet {
           userEmail: userEmail,
           onEditAttendance: onEditAttendance,
           onLeave: onLeave,
+          preferLocalEvents: preferLocalEvents,
         );
       },
     );
@@ -72,6 +76,7 @@ class _AttendanceDetailsSheetBody extends StatefulWidget {
   final String userEmail;
   final VoidCallback? onEditAttendance;
   final bool onLeave;
+  final bool preferLocalEvents;
 
   const _AttendanceDetailsSheetBody({
     required this.pageContext,
@@ -82,6 +87,7 @@ class _AttendanceDetailsSheetBody extends StatefulWidget {
     required this.userEmail,
     required this.onEditAttendance,
     this.onLeave = false,
+    this.preferLocalEvents = false,
   });
 
   @override
@@ -146,7 +152,24 @@ class _AttendanceDetailsSheetBodyState
       if (response.success && response.data != null) {
         final data = response.data!;
         final apiEvents = _dayOnly(data.toHistoryEvents());
-        if (apiEvents.isNotEmpty) {
+        final realEvents = [
+          for (final event in apiEvents)
+            if (!AttendanceEditRequest.isPlaceholderMint(event.time)) event,
+        ];
+        if (realEvents.isNotEmpty) {
+          await AttendanceEditRequestStore.instance.clearPendingAdd(widget.day);
+          final withLocal = await _mergeLocalFallback(realEvents);
+          if (!mounted) return;
+          setState(() {
+            _events = withLocal;
+            _summary = HistoryAttendanceEngine.compute(withLocal);
+            _attendanceId = data.attendanceId;
+            _loadingDetails = false;
+          });
+          await _syncReminders();
+          return;
+        }
+        if (apiEvents.isNotEmpty && !widget.preferLocalEvents) {
           final withLocal = await _mergeLocalFallback(apiEvents);
           if (!mounted) return;
           setState(() {
@@ -330,271 +353,281 @@ class _AttendanceDetailsSheetBodyState
         .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
         .toList();
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    AppText.h5(
-                      AttendanceFormat.fullDate(day),
-                      weight: FontWeight.w600,
-                    ),
-                    ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(30),
-                        child: const Padding(
-                          padding: EdgeInsets.all(6),
-                          child: Icon(Icons.close, size: 22),
-                        ),
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  AppText.h5(
+                    AttendanceFormat.fullDate(day),
+                    weight: FontWeight.w600,
+                  ),
+                  ButtonAnimations.press(
+                    onTap: () => Navigator.pop(context),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(30),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(Icons.close, size: 22),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
 
-              Expanded(
-                child: Container(
-                  color: kbackground2,
-                  child: _loadingDetails
-                      ? const Center(child: ShimmerProgress())
-                      : timeline.isEmpty && _reminderLogs.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                AppText.p2(
-                                  widget.onLeave
-                                      ? 'You are on leave'
-                                      : 'No attendance records',
-                                  weight: FontWeight.w600,
-                                ),
-                                if (widget.onLeave) ...[
-                                  const SizedBox(height: 6),
-                                  AppText.p2(
-                                    'No attendance recorded for this day',
-                                    color: kGreyColor,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          controller: scrollController,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 20,
-                          ),
+            Flexible(
+              child: Container(
+                color: kbackground2,
+                child: _loadingDetails
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 80),
+                        child: Center(child: ShimmerProgress()),
+                      )
+                    : timeline.isEmpty && _reminderLogs.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 40,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 18,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kWhite,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: kBorderColor),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            AppText.p2(
-                                              "Check-In",
-                                              color: kPrimaryColor,
-                                            ),
-                                            const SizedBox(height: 6),
-                                            AppText.h3(
-                                              AttendanceFormat.time(
-                                                summary.firstCheckIn,
-                                              ),
-                                              align: TextAlign.left,
-                                              color: kPrimaryColor,
-                                              weight: FontWeight.w700,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          _dot(),
-                                          _line(),
-                                          const SizedBox(width: 6),
-                                          AppText.p2(
-                                            AttendanceFormat.duration(
-                                              workingDuration,
-                                            ),
-                                            weight: FontWeight.w600,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          _line(),
-                                          _dot(),
-                                        ],
-                                      ),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            AppText.p2(
-                                              "Check-Out",
-                                              color: kredColor,
-                                            ),
-                                            const SizedBox(height: 6),
-                                            AppText.h3(
-                                              AttendanceFormat.time(
-                                                summary.lastCheckOut,
-                                              ),
-                                              align: TextAlign.right,
-                                              color: kredColor,
-                                              weight: FontWeight.w700,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(height: 14),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: summary.firstCheckIn == null
-                                            ? _location("--")
-                                            : ResolvedLocationText(
-                                                rawLocation:
-                                                    _firstCheckInLocation,
-                                                knownLocations: knownLocations,
-                                                onlyKnownLocations: true,
-                                                builder: (context, text) =>
-                                                    _location(text),
-                                              ),
-                                      ),
-                                      Expanded(
-                                        child: summary.lastCheckOut == null
-                                            ? _location("--", isRight: true)
-                                            : ResolvedLocationText(
-                                                rawLocation:
-                                                    _lastCheckOutLocation,
-                                                knownLocations: knownLocations,
-                                                onlyKnownLocations: true,
-                                                builder: (context, text) =>
-                                                    _location(
-                                                      text,
-                                                      isRight: true,
-                                                    ),
-                                              ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            AppText.p2(
+                              widget.onLeave
+                                  ? 'You are on leave'
+                                  : 'No attendance records',
+                              weight: FontWeight.w600,
                             ),
-                            const SizedBox(height: 32),
-
-                            /// ================= TIMELINE HEADER =================
-                            Row(
-                              children: [
-                                CommonImageView(
-                                  imagePath: Assets.imagesClipboardClock,
-                                  height: 24,
-                                ),
-                                const SizedBox(width: 8),
-                                AppText.h5("Timeline", weight: FontWeight.w600),
-                              ],
-                            ),
-
-                            const SizedBox(height: 14),
-
-                            ..._timelineChildren(timeline),
+                            if (widget.onLeave) ...[
+                              const SizedBox(height: 6),
+                              AppText.p2(
+                                'No attendance recorded for this day',
+                                color: kGreyColor,
+                              ),
+                            ],
                           ],
                         ),
-                ),
-              ),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 20,
+                        ),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kWhite,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: kBorderColor),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          AppText.p2(
+                                            "Check-In",
+                                            color: kPrimaryColor,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          AppText.h3(
+                                            AttendanceFormat.time(
+                                              summary.firstCheckIn,
+                                            ),
+                                            align: TextAlign.left,
+                                            color: kPrimaryColor,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        _dot(),
+                                        _line(),
+                                        const SizedBox(width: 6),
+                                        AppText.p2(
+                                          AttendanceFormat.duration(
+                                            workingDuration,
+                                          ),
+                                          weight: FontWeight.w600,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _line(),
+                                        _dot(),
+                                      ],
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          AppText.p2(
+                                            "Check-Out",
+                                            color: kredColor,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          AppText.h3(
+                                            AttendanceFormat.time(
+                                              summary.lastCheckOut,
+                                            ),
+                                            align: TextAlign.right,
+                                            color: kredColor,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 14),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: summary.firstCheckIn == null
+                                          ? _location("--")
+                                          : ResolvedLocationText(
+                                              rawLocation:
+                                                  _firstCheckInLocation,
+                                              knownLocations: knownLocations,
+                                              onlyKnownLocations: true,
+                                              builder: (context, text) =>
+                                                  _location(text),
+                                            ),
+                                    ),
+                                    Expanded(
+                                      child: summary.lastCheckOut == null
+                                          ? _location("--", isRight: true)
+                                          : ResolvedLocationText(
+                                              rawLocation:
+                                                  _lastCheckOutLocation,
+                                              knownLocations: knownLocations,
+                                              onlyKnownLocations: true,
+                                              builder: (context, text) =>
+                                                  _location(
+                                                    text,
+                                                    isRight: true,
+                                                  ),
+                                            ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
 
-              const SizedBox(height: 10),
+                          /// ================= TIMELINE HEADER =================
+                          Row(
+                            children: [
+                              CommonImageView(
+                                imagePath: Assets.imagesClipboardClock,
+                                height: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              AppText.h5("Timeline", weight: FontWeight.w600),
+                            ],
+                          ),
 
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    MyButton(
-                      size: MyButtonSize.normal,
-                      width: 200,
-                      buttonText: 'Edit Attendance',
-                      backgroundColor: kWhite,
-                      fontColor: kBlack,
-                      outlineColor: kBorderColor,
-                      hasicon: true,
-                      leftWidget: CommonImageView(
-                        imagePath: Assets.imagesPen,
-                        height: 16,
+                          const SizedBox(height: 14),
+
+                          ..._timelineChildren(timeline),
+                        ],
                       ),
-                      onTap: () async {
-                        Navigator.of(context).pop();
-
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          AddAttendanceBottomSheet.show(
-                            pageContext,
-                            day: day,
-                            apiClient: apiClient,
-                            userEmail: userEmail,
-                            attendanceId: _attendanceId,
-                            initialCheckIn: checkIn != null
-                                ? _timeOfDay(checkIn.time)
-                                : null,
-                            initialCheckOut: checkOut != null
-                                ? _timeOfDay(checkOut.time)
-                                : null,
-                            initialBreakStart: breakOut != null
-                                ? _timeOfDay(breakOut.time)
-                                : null,
-                            initialBreakEnd: breakIn != null
-                                ? _timeOfDay(breakIn.time)
-                                : null,
-                            checkInDetailId: checkIn?.id,
-                            checkOutDetailId: checkOut?.id,
-                            breakStartDetailId: breakOut?.id,
-                            breakEndDetailId: breakIn?.id,
-                          );
-
-                          onEditAttendance?.call();
-                        });
-                      },
-                    ),
-                  ],
-                ),
               ),
+            ),
 
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
+            const SizedBox(height: 10),
+
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  MyButton(
+                    size: MyButtonSize.normal,
+                    width: 200,
+                    buttonText: 'Edit Attendance',
+                    backgroundColor: kWhite,
+                    fontColor: kBlack,
+                    outlineColor: kBorderColor,
+                    hasicon: true,
+                    leftWidget: CommonImageView(
+                      imagePath: Assets.imagesPen,
+                      height: 16,
+                    ),
+                    onTap: () async {
+                      final editAttendanceId = _attendanceId;
+                      final editCheckIn = checkIn;
+                      final editCheckOut = checkOut;
+                      final editBreakOut = breakOut;
+                      final editBreakIn = breakIn;
+                      Navigator.of(context).pop();
+
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!pageContext.mounted) return;
+                        AddAttendanceBottomSheet.show(
+                          pageContext,
+                          day: day,
+                          apiClient: apiClient,
+                          userEmail: userEmail,
+                          attendanceId: editAttendanceId,
+                          initialCheckIn: editCheckIn != null
+                              ? _timeOfDay(editCheckIn.time)
+                              : null,
+                          initialCheckOut: editCheckOut != null
+                              ? _timeOfDay(editCheckOut.time)
+                              : null,
+                          initialBreakStart: editBreakOut != null
+                              ? _timeOfDay(editBreakOut.time)
+                              : null,
+                          initialBreakEnd: editBreakIn != null
+                              ? _timeOfDay(editBreakIn.time)
+                              : null,
+                          checkInDetailId: editCheckIn?.id,
+                          checkOutDetailId: editCheckOut?.id,
+                          breakStartDetailId: editBreakOut?.id,
+                          breakEndDetailId: editBreakIn?.id,
+                          hadInitialCheckIn: editCheckIn != null,
+                          hadInitialCheckOut: editCheckOut != null,
+                          hadInitialBreakStart: editBreakOut != null,
+                          hadInitialBreakEnd: editBreakIn != null,
+                        );
+
+                        onEditAttendance?.call();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
     );
   }
 

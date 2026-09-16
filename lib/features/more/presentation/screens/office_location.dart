@@ -2,7 +2,6 @@
 
 import 'dart:async';
 
-import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/widgets/back_button.dart';
@@ -44,8 +43,8 @@ class _OfficeLocationState extends State<OfficeLocation> {
         child: ListenableBuilder(
           listenable: Listenable.merge([authProvider, locationProvider]),
           builder: (context, _) {
-            final locations = authProvider.locations;
-            final selectedId = authProvider.selectedLocation?.id;
+            final locations = _orderedLocations(authProvider);
+            final defaultId = _defaultLocationId(authProvider);
 
             return ListView(
               children: [
@@ -63,9 +62,8 @@ class _OfficeLocationState extends State<OfficeLocation> {
                     if (i > 0) const SizedBox(height: 16),
                     _officeCard(
                       location: locations[i],
-                      isDefault: locations[i].id == selectedId,
-                      onTap: () => authProvider.selectLocation(locations[i]),
-                      liveStatus: locations[i].id == selectedId
+                      isDefault: locations[i].id == defaultId,
+                      liveStatus: locations[i].id == defaultId
                           ? _liveStatusFor(locationProvider)
                           : null,
                     ),
@@ -76,6 +74,25 @@ class _OfficeLocationState extends State<OfficeLocation> {
         ),
       ),
     );
+  }
+
+  String? _defaultLocationId(AuthProvider authProvider) {
+    for (final location in authProvider.locations) {
+      if (location.isDefault) return location.id;
+    }
+    return authProvider.selectedLocation?.id;
+  }
+
+  List<AuthLocationModel> _orderedLocations(AuthProvider authProvider) {
+    final locations = [...authProvider.locations];
+    final defaultId = _defaultLocationId(authProvider);
+    if (defaultId == null) return locations;
+    locations.sort((a, b) {
+      if (a.id == defaultId && b.id != defaultId) return -1;
+      if (b.id == defaultId && a.id != defaultId) return 1;
+      return 0;
+    });
+    return locations;
   }
 
   String? _liveStatusFor(LocationProvider locationProvider) {
@@ -106,91 +123,87 @@ class _OfficeLocationState extends State<OfficeLocation> {
 
   Widget _officeCard({
     required AuthLocationModel location,
-    required VoidCallback onTap,
     bool isDefault = false,
     String? liveStatus,
   }) {
     final image = location.image ?? '';
     final address = location.displayAddress;
 
-    return ButtonAnimations.press(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDefault ? kPrimaryColor : kBorderColor,
-            width: isDefault ? 1.5 : 1,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDefault ? kPrimaryColor : kBorderColor,
+          width: isDefault ? 1.5 : 1,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            /// IMAGE
-            Stack(
-              children: [
-                CommonImageView(
-                  url: image.isNotEmpty ? image : null,
-                  errorImage: Assets.imagesDummyMaps,
-                  height: 160,
-                  width: double.infinity,
-                  topLeftRadius: 16,
-                  topRightRadius: 16,
-                  fit: BoxFit.cover,
-                ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          /// IMAGE
+          Stack(
+            children: [
+              CommonImageView(
+                url: image.isNotEmpty ? image : null,
+                errorImage: Assets.imagesDummyMaps,
+                height: 160,
+                width: double.infinity,
+                topLeftRadius: 16,
+                topRightRadius: 16,
+                fit: BoxFit.cover,
+              ),
 
-                if (isDefault)
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade100,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: AppText.small("Default", color: kPrimaryColor),
+              if (isDefault)
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
                     ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: AppText.small("Default", color: kPrimaryColor),
                   ),
+                ),
+            ],
+          ),
+
+          /// TEXT
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText.h6(location.name, weight: FontWeight.w600),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    CommonImageView(
+                      imagePath: Assets.imagesLocationDot2,
+                      height: 12,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: AppText.small(
+                        address.isNotEmpty ? address : "--",
+                        align: TextAlign.left,
+                      ),
+                    ),
+                  ],
+                ),
+                if (liveStatus != null) ...[
+                  const SizedBox(height: 6),
+                  AppText.small(liveStatus, color: kGreyColor),
+                ],
               ],
             ),
-
-            /// TEXT
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppText.h6(location.name, weight: FontWeight.w600),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      CommonImageView(
-                        imagePath: Assets.imagesLocationDot2,
-                        height: 12,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: AppText.small(
-                          address.isNotEmpty ? address : "--",
-                          align: TextAlign.left,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (liveStatus != null) ...[
-                    const SizedBox(height: 6),
-                    AppText.small(liveStatus, color: kGreyColor),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

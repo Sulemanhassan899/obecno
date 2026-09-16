@@ -8,13 +8,12 @@ import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
-import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:obecno/core/services/permission_helper.dart';
 
 class EnablePermissionsScreen extends StatefulWidget {
   const EnablePermissionsScreen({super.key});
@@ -46,9 +45,9 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
     setState(() => _loading = true);
 
     try {
-      final location = await _ensurePermission(Permission.locationWhenInUse);
-      final notification = await _ensurePermission(Permission.notification);
-      final motion = await _ensurePermission(Permission.activityRecognition);
+      final location = await _ensurePermission(AppPermission.location);
+      final notification = await _ensurePermission(AppPermission.notification);
+      final motion = await _ensurePermission(AppPermission.motion);
 
       if (!mounted) return;
 
@@ -88,7 +87,9 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
             }),
           );
         } catch (e) {
-          debugPrint('[EnablePermissionsScreen] DeviceProvider unavailable: $e');
+          debugPrint(
+            '[EnablePermissionsScreen] DeviceProvider unavailable: $e',
+          );
         }
       } else {
         ToastHelper.pleaseAllowPermissions(context);
@@ -104,14 +105,14 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
     }
   }
 
-  Future<bool> _ensurePermission(Permission permission) async {
-    final status = await permission.status;
+  Future<bool> _ensurePermission(AppPermission permission) async {
+    final status = await PermissionService.status(permission);
     debugPrint('[EnablePermissionsScreen] $permission current status: $status');
-    if (status.isGranted) return true;
+    if (PermissionService.isAllowed(status, permission)) return true;
 
-    final result = await permission.request();
+    final result = await PermissionService.request(permission);
     debugPrint('[EnablePermissionsScreen] $permission request result: $result');
-    return result.isGranted;
+    return PermissionService.isAllowed(result, permission);
   }
 
   /// =========================
@@ -157,52 +158,57 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen> {
         padding: AppSizes.DEFAULT,
         child: Column(
           children: [
-            const SizedBox(height: 10),
-
-            /// BACK BUTTON
-            Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: BackButtonBg(),
-              ),
-            ),
-
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(top: 20, bottom: 16),
-                children: [
-                  CommonImageView(
-                    imagePath: Assets.imagesEnablePermission,
-                    height: 200,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 16),
-                  Center(child: AppText.h4("Enable App Permissions")),
-                  const SizedBox(height: 10),
-                  Center(
-                    child: AppText.p2(
-                      "We need a few permissions to make attendance work smoothly",
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CommonImageView(
+                              imagePath: Assets.imagesEnablePermission,
+                              height: 200,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(height: 16),
+                            AppText.h4(
+                              "Enable App Permissions",
+                              align: TextAlign.center,
+                            ),
+                            const SizedBox(height: 10),
+                            AppText.p2(
+                              "We need a few permissions to make attendance work smoothly",
+                              align: TextAlign.center,
+                            ),
+                            const SizedBox(height: 48),
+                            _permissionTile(
+                              icon: Assets.imagesLocationPin,
+                              title: "Location Access",
+                              subtitle:
+                                  "Used for office-based check-ins and reminders",
+                            ),
+                            _permissionTile(
+                              icon: Assets.imagesBell,
+                              title: "Notifications",
+                              subtitle: "Never miss a check-in or check-out",
+                            ),
+                            _permissionTile(
+                              icon: Assets.imagesLocation,
+                              title: "Motion & Fitness",
+                              subtitle:
+                                  "You detect movement to improve location accuracy\nOr auto-check-out after inactivity",
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 48),
-                  _permissionTile(
-                    icon: Assets.imagesLocationPin,
-                    title: "Location Access",
-                    subtitle: "Used for office-based check-ins and reminders",
-                  ),
-                  _permissionTile(
-                    icon: Assets.imagesBell,
-                    title: "Notifications",
-                    subtitle: "Never miss a check-in or check-out",
-                  ),
-                  _permissionTile(
-                    icon: Assets.imagesLocation,
-                    title: "Motion & Fitness",
-                    subtitle:
-                        "You detect movement to improve location accuracy\nOr auto-check-out after inactivity",
-                  ),
-                ],
+                  );
+                },
               ),
             ),
 

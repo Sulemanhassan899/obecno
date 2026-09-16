@@ -9,6 +9,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
@@ -75,10 +76,11 @@ class _SplashScreenState extends State<SplashScreen>
     _navigated = true;
     _failSafe?.cancel();
     if (!mounted) return;
+    final dest = AlertNavigation.destinationAfterSplash(path);
     try {
-      router.go(path);
+      router.go(dest);
     } catch (e) {
-      debugPrint('[SplashScreen] router.go($path) failed: $e');
+      debugPrint('[SplashScreen] router.go($dest) failed: $e');
     }
   }
 

@@ -69,8 +69,8 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
                               title: 'Check In Missed',
                               type: ReminderType.checkInMissed,
                               reminders: reminders,
-                              detailLabel: 'Remind me after',
-                              detailValue: reminders.graceLabel,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.checkInMissedLabel,
                             ),
                           ],
                         ),
@@ -91,8 +91,8 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
                               title: 'Check Out Missed',
                               type: ReminderType.checkOutMissed,
                               reminders: reminders,
-                              detailLabel: 'Remind me after',
-                              detailValue: reminders.graceLabel,
+                              detailLabel: 'Remind me at',
+                              detailValue: reminders.checkOutMissedLabel,
                             ),
                           ],
                         ),
@@ -202,7 +202,7 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
             behavior: HitTestBehavior.opaque,
             onTap: canPick
                 ? () => type.canPickDuration
-                      ? _pickDuration(reminders)
+                      ? _pickDuration(type, reminders)
                       : _pickTime(type, reminders)
                 : null,
             child: Padding(
@@ -251,14 +251,20 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     await reminders.setReminderTime(type, picked);
   }
 
-  Future<void> _pickDuration(ReminderSettingsProvider reminders) async {
+  Future<void> _pickDuration(
+    ReminderType type,
+    ReminderSettingsProvider reminders,
+  ) async {
     final picked = await ReminderDurationPickerSheet.show(
       context,
-      initialMinutes: reminders.longAttendanceMinutes,
-      resetMinutes: ReminderSettingsProvider.defaultLongAttendanceMinutes,
+      title: type == ReminderType.veryLongAttendance
+          ? 'Notify me after'
+          : 'Remind me after',
+      initialMinutes: reminders.durationMinutesFor(type),
+      resetMinutes: reminders.defaultDurationMinutesFor(type),
     );
     if (!mounted || picked == null) return;
-    await reminders.setLongAttendanceHours(picked);
+    await reminders.setDuration(type, picked);
   }
 
   Widget _toggleRow({

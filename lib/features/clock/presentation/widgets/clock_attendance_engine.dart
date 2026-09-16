@@ -54,10 +54,28 @@ class AttendanceSummary {
 class AttendanceEngine {
   AttendanceEngine._();
 
+  static List<AttendanceEvent> collapseDuplicatePunches(
+    List<AttendanceEvent> events,
+  ) {
+    final collapsed = <AttendanceEvent>[];
+    for (final event in events) {
+      final index = collapsed.indexWhere((e) => e.isSamePunchAs(event));
+      if (index >= 0) {
+        collapsed[index] = AttendanceEvent.preferAuthoritative(
+          collapsed[index],
+          event,
+        );
+      } else {
+        collapsed.add(event);
+      }
+    }
+    return collapsed;
+  }
+
   static AttendanceSummary compute(List<AttendanceEvent> events) {
     if (events.isEmpty) return AttendanceSummary.empty;
 
-    final sorted = [...events]
+    final sorted = collapseDuplicatePunches(events)
       ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
 
     // Explicit earliest check-in / latest check-out — never overwritten by
@@ -145,7 +163,11 @@ class AttendanceEngine {
   /// Events sorted newest-first, for the details timeline UI.
   static List<AttendanceEvent> sortedNewestFirst(List<AttendanceEvent> events) {
     final sorted = [...events]
-      ..sort((a, b) => b.effectiveTime.compareTo(a.effectiveTime));
+      ..sort((a, b) {
+        final byTime = b.effectiveTime.compareTo(a.effectiveTime);
+        if (byTime != 0) return byTime;
+        return _typeOrder(b.type).compareTo(_typeOrder(a.type));
+      });
     return sorted;
   }
 
@@ -154,5 +176,18 @@ class AttendanceEngine {
     final sorted = [...events]
       ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
     return sorted;
+  }
+
+  static int _typeOrder(AttendanceEventType type) {
+    switch (type) {
+      case AttendanceEventType.checkIn:
+        return 0;
+      case AttendanceEventType.breakStart:
+        return 1;
+      case AttendanceEventType.breakEnd:
+        return 2;
+      case AttendanceEventType.checkOut:
+        return 3;
+    }
   }
 }

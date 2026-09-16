@@ -10,6 +10,7 @@ analyzer:
     constant_identifier_names: ignore
     curly_braces_in_flow_control_structures: ignore
     dangling_library_doc_comments: ignore
+    dead_code: ignore
     depend_on_referenced_packages: ignore
     deprecated_member_use: ignore
     duplicate_import: ignore

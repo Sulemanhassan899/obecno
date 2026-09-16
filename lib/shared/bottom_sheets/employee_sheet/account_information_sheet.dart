@@ -5,7 +5,9 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/edit_account_field_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -164,39 +166,32 @@ class _AccountInformationSheetBodyState
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             AppText.caption('Email', align: TextAlign.left),
-            const SizedBox(width: 6),
-
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF4FF),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: AppText.caption(
-                    'Primary',
-                    color: kBlue,
-                    weight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                AppText.caption(
-                  _email,
-                  align: TextAlign.right,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-                const SizedBox(width: 6),
-                _editPen(() => _edit(AccountEditField.email, _email)),
-              ],
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF4FF),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: AppText.caption(
+                'Primary',
+                color: kBlue,
+                weight: FontWeight.w500,
+              ),
             ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: AppText.caption(
+                _email,
+                align: TextAlign.right,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            const SizedBox(width: 6),
+            _editPen(() => _edit(AccountEditField.email, _email)),
           ],
         ),
       ),
@@ -251,26 +246,23 @@ class _AccountInformationSheetBodyState
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 2,
+          SizedBox(
+            width: 110,
             child: AppText.caption(title, align: TextAlign.left),
           ),
-
-          Row(
-            children: [
-              AppText.caption(
-                value,
-                align: TextAlign.right,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
-              const SizedBox(width: 8),
-              _editPen(onEdit),
-            ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: AppText.caption(
+              value,
+              align: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 4,
+            ),
           ),
+          const SizedBox(width: 8),
+          _editPen(onEdit),
         ],
       ),
     );
@@ -278,90 +270,88 @@ class _AccountInformationSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.9,
-      decoration: const BoxDecoration(
-        color: kbackground2,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              child: Row(
-                children: [
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      height: 42,
-                      width: 42,
-                      decoration: const BoxDecoration(
-                        color: kGreyContainerColor,
-                        shape: BoxShape.circle,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kbackground2,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                child: Row(
+                  children: [
+                    BackCircleButton(onTap: () => Navigator.pop(context)),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          AppText.h5(
+                            'Account Information',
+                            weight: FontWeight.w700,
+                          ),
+                          const SizedBox(height: 2),
+                          AppText.caption(
+                            widget.employeeName,
+                            color: kGreyColor,
+                            weight: FontWeight.w400,
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.arrow_back, size: 16),
                     ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        AppText.h5(
-                          'Account Information',
-                          weight: FontWeight.w700,
-                        ),
-                        const SizedBox(height: 2),
-                        AppText.caption(
-                          widget.employeeName,
-                          color: kGreyColor,
-                          weight: FontWeight.w400,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 42),
-                ],
+                    const SizedBox(width: 42),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: ShimmerProgress())
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      children: [
-                        _emailCard(),
-                        const SizedBox(height: 12),
-                        _infoBanner(),
-                        const SizedBox(height: 18),
-                        _groupCard(
-                          children: [
-                            _settingTile(
-                              title: 'Phone Number',
-                              value: _phone,
-                              onEdit: () =>
-                                  _edit(AccountEditField.phone, _phone),
-                            ),
-                            _divider(),
-                            _settingTile(
-                              title: 'Company ID',
-                              value: _companyId,
-                              onEdit: () =>
-                                  _edit(AccountEditField.companyId, _companyId),
-                            ),
-                            _divider(),
-                            _settingTile(
-                              title: 'Address',
-                              value: _address,
-                              onEdit: () =>
-                                  _edit(AccountEditField.address, _address),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-            ),
-          ],
+              Flexible(
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 64),
+                        child: ShimmerProgress(),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        children: [
+                          _emailCard(),
+                          const SizedBox(height: 12),
+                          _infoBanner(),
+                          const SizedBox(height: 18),
+                          _groupCard(
+                            children: [
+                              _settingTile(
+                                title: 'Phone Number',
+                                value: _phone,
+                                onEdit: () =>
+                                    _edit(AccountEditField.phone, _phone),
+                              ),
+                              _divider(),
+                              _settingTile(
+                                title: 'Company ID',
+                                value: _companyId,
+                                onEdit: () => _edit(
+                                  AccountEditField.companyId,
+                                  _companyId,
+                                ),
+                              ),
+                              _divider(),
+                              _settingTile(
+                                title: 'Address',
+                                value: _address,
+                                onEdit: () =>
+                                    _edit(AccountEditField.address, _address),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

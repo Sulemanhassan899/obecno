@@ -376,10 +376,7 @@ void main() {
       final summary = AttendanceEngine.compute(events);
       expect(AttendanceFormat.time(summary.firstCheckIn), '12:25 AM');
       expect(AttendanceFormat.time(summary.lastCheckOut), '8:25 PM');
-      expect(
-        summary.totalWorkingDuration,
-        const Duration(hours: 19),
-      );
+      expect(summary.totalWorkingDuration, const Duration(hours: 19));
       expect(
         AttendanceFormat.duration(summary.totalWorkingDuration),
         '19h 00m',
@@ -407,5 +404,38 @@ void main() {
       expect(AttendanceEditRequest.hourTo24(8, isPm: true), 20);
       expect(AttendanceEditRequest.hourTo24(8, isPm: false), 8);
     });
+  });
+
+  group('Timeline order', () {
+    test(
+      'newest punch is first so 5:25 PM checkout sits above 1:20 PM check-in',
+      () {
+        final events = [
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.checkIn,
+            time: at(13, 20),
+          ),
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.breakStart,
+            time: at(13, 17),
+          ),
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.breakEnd,
+            time: at(14, 17),
+          ),
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.checkOut,
+            time: at(17, 25),
+          ),
+        ];
+        final timeline = HistoryAttendanceEngine.sortedNewestFirst(events);
+        expect(timeline.map((e) => e.type).toList(), [
+          AttendanceHisotryEventType.checkOut,
+          AttendanceHisotryEventType.breakEnd,
+          AttendanceHisotryEventType.checkIn,
+          AttendanceHisotryEventType.breakStart,
+        ]);
+      },
+    );
   });
 }

@@ -8,6 +8,7 @@ import 'package:obecno/features/manager_module/Manager_employees/domain/manager_
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -326,198 +327,218 @@ class _CheckInOutTimingSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.9,
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppText.h5(
-                      'Check In / Out Timing',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
-                    ),
-                  ),
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 22),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const Divider(height: 1, color: kDividerColor),
-            Expanded(
-              child: Container(
-                color: kbackground2,
-                child: _loading
-                    ? const Center(child: ShimmerProgress())
-                    : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
+                child: Row(
                   children: [
-                    SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: AppText.p1(
-                        'Check-in allowed from office start time, check-out at end time.',
-                        color: kGreyColor,
-                        weight: FontWeight.w400,
+                    Expanded(
+                      child: AppText.h5(
+                        'Check In / Out Timing',
+                        weight: FontWeight.w600,
                         align: TextAlign.left,
                       ),
                     ),
-                    SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: kWhite,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kBorderColor),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
                       ),
-                      child: Column(
-                        children: [
-                          _TimingRow(
-                            title: 'Check-in',
-                            value: _formatTime(_checkIn),
-                            valueColor: kPrimaryColor,
-                            isLast: false,
-                            isEditing: _editingField == 'checkin',
-                            onTap: () => setState(() {
-                              _editingField = _editingField == 'checkin'
-                                  ? null
-                                  : 'checkin';
-                            }),
-                            picker: _editingField == 'checkin'
-                                ? _TimeWheel(
-                                    value: _checkIn,
-                                    onChanged: (v) =>
-                                        setState(() => _checkIn = v),
-                                  )
-                                : null,
-                          ),
-                          _TimingRow(
-                            title: 'Check-out',
-                            value: _formatTime(_checkOut),
-                            valueColor: kredColor,
-                            isLast: true,
-                            isEditing: _editingField == 'checkout',
-                            onTap: () => setState(() {
-                              _editingField = _editingField == 'checkout'
-                                  ? null
-                                  : 'checkout';
-                            }),
-                            picker: _editingField == 'checkout'
-                                ? _TimeWheel(
-                                    value: _checkOut,
-                                    onChanged: (v) =>
-                                        setState(() => _checkOut = v),
-                                  )
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kbackground,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          AppText.p2('Working hours'),
-                          AppText.p2(_workingHoursLabel()),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: AppText.h6('Grace Period', align: TextAlign.left),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: kWhite,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kBorderColor),
-                      ),
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < _graceOptions.length; i++) ...[
-                            if (i > 0)
-                              const Divider(height: 1, color: kDividerColor),
-                            _GraceTile(
-                              label: _graceOptions[i] == 0
-                                  ? 'No grace'
-                                  : '${_graceOptions[i]} mins',
-                              selected: _graceMinutes == _graceOptions[i],
-                              onTap: () => setState(
-                                () => _graceMinutes = _graceOptions[i],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    AppText.p1(
-                      'Define grace minutes for late check-in or early check-out.',
-                      color: kGreyColor,
-                      weight: FontWeight.w400,
-                      align: TextAlign.left,
                     ),
                   ],
                 ),
               ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: MyButton(
-                      size: MyButtonSize.normal,
-                      buttonText: 'Reset',
-                      backgroundColor: kWhite,
-                      fontColor: kBlack,
-                      outlineColor: kBorderColor,
-                      onTap: () async => _reset(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: MyButton(
-                      buttonText: 'Save',
-                      backgroundColor: kPrimaryButtonColor,
-                      isactive: !_loading && !_saving,
-                      isLoadingExternally: _saving,
-                      onTap: _save,
-                    ),
-                  ),
-                ],
+
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: Container(
+                  color: kbackground2,
+                  child: _loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 64),
+                          child: ShimmerProgress(),
+                        )
+                      : ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          children: [
+                            SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: AppText.p1(
+                                'Check-in allowed from office start time, check-out at end time.',
+                                color: kGreyColor,
+                                weight: FontWeight.w400,
+                                align: TextAlign.left,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: kWhite,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: kBorderColor),
+                              ),
+                              child: Column(
+                                children: [
+                                  _TimingRow(
+                                    title: 'Check-in',
+                                    value: _formatTime(_checkIn),
+                                    valueColor: kPrimaryColor,
+                                    isLast: false,
+                                    isEditing: _editingField == 'checkin',
+                                    onTap: () => setState(() {
+                                      _editingField = _editingField == 'checkin'
+                                          ? null
+                                          : 'checkin';
+                                    }),
+                                    picker: _editingField == 'checkin'
+                                        ? _TimeWheel(
+                                            value: _checkIn,
+                                            onChanged: (v) =>
+                                                setState(() => _checkIn = v),
+                                          )
+                                        : null,
+                                  ),
+                                  _TimingRow(
+                                    title: 'Check-out',
+                                    value: _formatTime(_checkOut),
+                                    valueColor: kredColor,
+                                    isLast: true,
+                                    isEditing: _editingField == 'checkout',
+                                    onTap: () => setState(() {
+                                      _editingField =
+                                          _editingField == 'checkout'
+                                          ? null
+                                          : 'checkout';
+                                    }),
+                                    picker: _editingField == 'checkout'
+                                        ? _TimeWheel(
+                                            value: _checkOut,
+                                            onChanged: (v) =>
+                                                setState(() => _checkOut = v),
+                                          )
+                                        : null,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: kbackground,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  AppText.p2('Working hours'),
+                                  AppText.p2(_workingHoursLabel()),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: AppText.h6(
+                                'Grace Period',
+                                align: TextAlign.left,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: kWhite,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: kBorderColor),
+                              ),
+                              child: Column(
+                                children: [
+                                  for (
+                                    var i = 0;
+                                    i < _graceOptions.length;
+                                    i++
+                                  ) ...[
+                                    if (i > 0)
+                                      const Divider(
+                                        height: 1,
+                                        color: kDividerColor,
+                                      ),
+                                    _GraceTile(
+                                      label: _graceOptions[i] == 0
+                                          ? 'No grace'
+                                          : '${_graceOptions[i]} mins',
+                                      selected:
+                                          _graceMinutes == _graceOptions[i],
+                                      onTap: () => setState(
+                                        () => _graceMinutes = _graceOptions[i],
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            AppText.p1(
+                              'Define grace minutes for late check-in or early check-out.',
+                              color: kGreyColor,
+                              weight: FontWeight.w400,
+                              align: TextAlign.left,
+                            ),
+                          ],
+                        ),
+                ),
               ),
-            ),
-          ],
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: MyButton(
+                        size: MyButtonSize.normal,
+                        buttonText: 'Reset',
+                        backgroundColor: kWhite,
+                        fontColor: kBlack,
+                        outlineColor: kBorderColor,
+                        onTap: () async => _reset(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 4,
+                      child: MyButton(
+                        buttonText: 'Save',
+                        backgroundColor: kPrimaryButtonColor,
+                        isactive: !_loading && !_saving,
+                        isLoadingExternally: _saving,
+                        onTap: _save,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

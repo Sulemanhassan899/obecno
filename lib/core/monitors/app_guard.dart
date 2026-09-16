@@ -232,6 +232,7 @@
 
 import 'dart:async';
 import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/services/connectivity_service.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/notification_helper.dart';
@@ -241,6 +242,8 @@ import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/widgets/offline_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -279,6 +282,8 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   bool _internetDialogOpen = false;
 
   bool _internetDialogDismissedForOutage = false;
+  bool _isOffline = false;
+  bool _offlineToastShown = false;
 
   AuthProvider? _authProvider;
   DeviceProvider? _deviceProvider;
@@ -323,24 +328,22 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
       _deviceProvider?.addListener(_onDeviceChanged);
 
       _checkAll(trigger: 'APP_START');
+      unawaited(_hydrateConnectivity());
     });
 
-    // Listen real-time internet changes. The Retry popup used to reopen on
-    // every `false` tick and on the 10s poll -- including brief flaps while
-    // Wi-Fi was coming back -- which is the "keeps appearing after reconnect"
-    // bug. Internet UX now lives on Clock (red banner + toast). AppGuard
-    // only dismisses a leftover dialog if one is still on screen.
+    // Listen real-time internet changes. Banner + toast cover employee and
+    // manager screens; AppGuard also dismisses any leftover Retry dialog.
     _connectivitySub = ConnectivityService.stream.listen((connected) {
       _offlineDebounce?.cancel();
       if (connected) {
         _internetDialogDismissedForOutage = false;
         _dismissInternetDialogIfShowing();
+        _setOffline(false);
         return;
       }
+      _setOffline(true);
       _offlineDebounce = Timer(const Duration(seconds: 2), () {
         if (!mounted) return;
-        // Confirm we are still offline after the debounce so reconnect
-        // flaps never reopen the Retry popup.
         unawaited(_onConfirmedOffline());
       });
     });
@@ -389,6 +392,8 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     }
 
     _lastAuthenticated = isAuth;
+    if (mounted) setState(() {});
+    if (isAuth) _maybeToastOffline();
   }
 
   void _onDeviceChanged() {
@@ -533,21 +538,54 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
       if (connected) {
         _internetDialogDismissedForOutage = false;
         _dismissInternetDialogIfShowing();
+        _setOffline(false);
       }
-      // Offline: do not open the Retry popup from the periodic poll.
-      // ClockScreen shows a red "Internet not available" banner/toast.
+      // Offline: banner + toast cover employee and manager screens.
     } finally {
       _checkInProgress = false;
     }
+  }
+
+  Future<void> _hydrateConnectivity() async {
+    final online = await ConnectivityService.isConnected();
+    if (!mounted) return;
+    _setOffline(!online);
+  }
+
+  void _setOffline(bool offline) {
+    if (!mounted) return;
+    if (_isOffline == offline) {
+      if (!offline) _offlineToastShown = false;
+      return;
+    }
+    setState(() {
+      _isOffline = offline;
+      if (!offline) _offlineToastShown = false;
+    });
+    if (offline) _maybeToastOffline();
+  }
+
+  bool get _showOfflineBanner {
+    if (!_isOffline) return false;
+    if (_authProvider?.isAuthenticated != true) return false;
+    if (AppGuard.permissionOnboardingPending) return false;
+    return true;
+  }
+
+  void _maybeToastOffline() {
+    if (!_showOfflineBanner || _offlineToastShown) return;
+    _offlineToastShown = true;
+    ToastHelper.noInternet(context);
   }
 
   Future<void> _onConfirmedOffline() async {
     final stillOffline = !await ConnectivityService.isConnected();
     if (!stillOffline) {
       _dismissInternetDialogIfShowing();
+      _setOffline(false);
       return;
     }
-    // Leave a stale Retry popup dismissed; never reopen it from here.
+    _setOffline(true);
     if (_internetDialogOpen) return;
   }
 
@@ -759,5 +797,26 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    final child = widget.child;
+    if (!_showOfflineBanner) return child;
+
+    final topInset = MediaQuery.paddingOf(context).top;
+    return ColoredBox(
+      color: kbackground1,
+      child: Column(
+        children: [
+          SizedBox(height: topInset),
+          const OfflineBanner(),
+          Expanded(
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -11,6 +11,7 @@ import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/break_timing_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/check_in_out_timing_sheet.dart';
@@ -20,6 +21,7 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/deactivate_account_di
 import 'package:obecno/shared/bottom_sheets/employee_sheet/employee_default_locations_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -277,287 +279,280 @@ class _ManagerEmployeeProfileSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      minChildSize: 0.55,
-      maxChildSize: 0.96,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    _roundIconButton(
-                      icon: Icons.close,
-                      onTap: () => Navigator.pop(context),
-                    ),
-                    const Spacer(),
-                    _roundIconButton(
-                      asset: Assets.imagesSetting,
-                      onTap: () {
-                        if (widget.onSettingsTap != null) {
-                          widget.onSettingsTap!();
-                          return;
-                        }
-                        AccountInformationSheet.show(
-                          context: context,
-                          employeeName: _data.name,
-                          userId: _data.userId,
-                        );
-                      },
-                    ),
-                  ],
-                ),
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  _roundIconButton(
+                    icon: Icons.arrow_back,
+                    onTap: () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  _roundIconButton(
+                    asset: Assets.imagesSetting,
+                    onTap: () {
+                      if (widget.onSettingsTap != null) {
+                        widget.onSettingsTap!();
+                        return;
+                      }
+                      AccountInformationSheet.show(
+                        context: context,
+                        employeeName: _data.name,
+                        userId: _data.userId,
+                      );
+                    },
+                  ),
+                ],
               ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  children: [
-                    Center(
-                      child: Stack(
-                        children: [
-                          ClipOval(
-                            child: CommonImageView(
-                              file: _localPhoto,
-                              url: _localPhoto == null && _data.hasNetworkPhoto
-                                  ? _data.photo
-                                  : null,
-                              imagePath:
-                                  _localPhoto == null && !_data.hasNetworkPhoto
-                                  ? _data.photoPath
-                                  : null,
-                              height: 96,
-                              width: 96,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          if (_uploadingPhoto)
-                            const Positioned.fill(
-                              child: ColoredBox(
-                                color: Colors.black26,
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: ShimmerProgress(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (_canEditPhoto)
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: ButtonAnimations.press(
-                                onTap: _onEditPhoto,
-                                child: CommonImageView(
-                                  imagePath: Assets.imagesProfileEditPen,
-                                  height: 30,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    AppText.h5(
-                      _data.name,
-                      weight: FontWeight.w700,
-                      color: kBlack,
-                    ),
-                    if (_data.role != null &&
-                        _data.role!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      AppText.p2(
-                        _data.role!,
-                        color: kGreyColor,
-                        weight: FontWeight.w400,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    _contactButtons(),
-                    const SizedBox(height: 20),
-                    Row(
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                children: [
+                  Center(
+                    child: Stack(
                       children: [
-                        Expanded(
-                          child: _actionCard(
-                            iconAsset: Assets.imagesCalender,
-                            label: "Attendance",
-                            onTap: () {
-                              if (widget.onAttendanceTap != null) {
-                                widget.onAttendanceTap!();
-                                return;
-                              }
-                              ManagerEmployeeAttendanceSheet.show(
-                                context: context,
-                                employeeName: _data.name,
-                                userId: _data.userId,
-                                role: _data.role,
-                                photo: _data.photo,
-                                joiningDate: _joiningDateFor(_data.userId),
-                              );
-                            },
+                        ClipOval(
+                          child: CommonImageView(
+                            file: _localPhoto,
+                            url: _localPhoto == null && _data.hasNetworkPhoto
+                                ? _data.photo
+                                : null,
+                            imagePath:
+                                _localPhoto == null && !_data.hasNetworkPhoto
+                                ? _data.photoPath
+                                : null,
+                            height: 96,
+                            width: 96,
+                            fit: BoxFit.cover,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _actionCard(
-                            iconAsset: Assets.imagesAddLocationIcon,
-                            label: "Locations",
-                            onTap: () async {
-                              if (widget.onLocationsTap != null) {
-                                widget.onLocationsTap!();
-                                return;
-                              }
-                              await EmployeeDefaultLocationsSheet.show(
-                                context: context,
-                                employeeName: _data.name,
-                                userId: _data.userId,
-                                mode: EmployeeLocationsSheetMode.assigned,
-                              );
-                              if (mounted) {
-                                setState(() => _locationsRevision++);
-                              }
-                            },
+                        if (_uploadingPhoto)
+                          const Positioned.fill(
+                            child: ColoredBox(
+                              color: Colors.black26,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: ShimmerProgress(strokeWidth: 2),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                        if (_canEditPhoto)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: ButtonAnimations.press(
+                              onTap: _onEditPhoto,
+                              child: CommonImageView(
+                                imagePath: Assets.imagesProfileEditPen,
+                                height: 30,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 22),
-                    AppText.h5("Settings", align: TextAlign.left),
-                    const SizedBox(height: 12),
-                    _settingsGroup(
-                      children: [
-                        _settingsTile(
-                          iconAsset: Assets.imagesLinkDevices,
-                          title: "Linked Devices",
+                  ),
+                  const SizedBox(height: 14),
+                  AppText.h5(
+                    _data.name,
+                    weight: FontWeight.w700,
+                    color: kBlack,
+                  ),
+                  if (_data.role != null && _data.role!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    AppText.p2(
+                      _data.role!,
+                      color: kGreyColor,
+                      weight: FontWeight.w400,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _contactButtons(),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _actionCard(
+                          iconAsset: Assets.imagesCalender,
+                          label: "Attendance",
                           onTap: () {
-                            ManagerLinkedDevicesSheet.show(
+                            if (widget.onAttendanceTap != null) {
+                              widget.onAttendanceTap!();
+                              return;
+                            }
+                            ManagerEmployeeAttendanceSheet.show(
                               context: context,
                               employeeName: _data.name,
                               userId: _data.userId,
+                              role: _data.role,
+                              photo: _data.photo,
+                              joiningDate: _joiningDateFor(_data.userId),
                             );
                           },
                         ),
-                        const Divider(height: 1, color: kDividerColor),
-                        _settingsTile(
-                          iconAsset: Assets.imagesKey,
-                          title: "Reset password",
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _settingsGroup(
-                      children: [
-                        _settingsTile(
-                          iconAsset: Assets.imagesOfficeLocationIcon,
-                          title: "Default Offices & Locations",
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _actionCard(
+                          iconAsset: Assets.imagesAddLocationIcon,
+                          label: "Locations",
                           onTap: () async {
+                            if (widget.onLocationsTap != null) {
+                              widget.onLocationsTap!();
+                              return;
+                            }
                             await EmployeeDefaultLocationsSheet.show(
                               context: context,
                               employeeName: _data.name,
                               userId: _data.userId,
-                              mode: EmployeeLocationsSheetMode.defaultLocation,
+                              mode: EmployeeLocationsSheetMode.assigned,
                             );
                             if (mounted) {
                               setState(() => _locationsRevision++);
                             }
                           },
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kbackground2,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: _AttendanceRulesBanner(
-                              key: ValueKey(_locationsRevision),
-                              userId: _data.userId,
-                            ),
-                          ),
-                        ),
-                        const Divider(height: 1, color: kDividerColor),
-                        _settingsTile(
-                          iconAsset: Assets.ClockIcon,
-                          title: "Check In / Out Timing",
-                          onTap: () => CheckInOutTimingSheet.show(
-                            context,
-                            userId: _data.userId,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  AppText.h5("Settings", align: TextAlign.left),
+                  const SizedBox(height: 12),
+                  _settingsGroup(
+                    children: [
+                      _settingsTile(
+                        iconAsset: Assets.imagesLinkDevices,
+                        title: "Linked Devices",
+                        onTap: () {
+                          ManagerLinkedDevicesSheet.show(
+                            context: context,
                             employeeName: _data.name,
-                          ),
-                        ),
-                        const Divider(height: 1, color: kDividerColor),
-                        _settingsTile(
-                          iconAsset: Assets.WorkingDays,
-                          title: "Working Days",
-                          onTap: () => WorkingDaysSheet.show(
-                            context,
                             userId: _data.userId,
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, color: kDividerColor),
+                      _settingsTile(
+                        iconAsset: Assets.imagesKey,
+                        title: "Reset password",
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _settingsGroup(
+                    children: [
+                      _settingsTile(
+                        iconAsset: Assets.imagesOfficeLocationIcon,
+                        title: "Default Offices & Locations",
+                        onTap: () async {
+                          await EmployeeDefaultLocationsSheet.show(
+                            context: context,
                             employeeName: _data.name,
-                          ),
-                        ),
-                        const Divider(height: 1, color: kDividerColor),
-                        _settingsTile(
-                          iconAsset: Assets.BreakIcon,
-                          title: "Break Timing",
-                          onTap: () => BreakTimingSheet.show(
-                            context,
                             userId: _data.userId,
-                            employeeName: _data.name,
+                            mode: EmployeeLocationsSheetMode.defaultLocation,
+                          );
+                          if (mounted) {
+                            setState(() => _locationsRevision++);
+                          }
+                        },
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kbackground2,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: _AttendanceRulesBanner(
+                            key: ValueKey(_locationsRevision),
+                            userId: _data.userId,
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _settingsGroup(
-                      children: [
-                        _settingsTile(
-                          iconAsset: Assets.DeactiviateUserIcon,
-                          title:
-                              _statusFor(_data.userId) ==
-                                  ManagerEmployeeStatus.disabled
-                              ? 'Activate Account'
-                              : 'Deactivate Account',
-                          titleColor:
-                              _statusFor(_data.userId) ==
-                                  ManagerEmployeeStatus.disabled
-                              ? kPrimaryColor
-                              : kredColor,
-                          showChevron: false,
-                          onTap:
-                              _statusFor(_data.userId) ==
-                                      ManagerEmployeeStatus.deleted ||
-                                  _updatingStatus
-                              ? null
-                              : _onToggleAccount,
+                      ),
+                      const Divider(height: 1, color: kDividerColor),
+                      _settingsTile(
+                        iconAsset: Assets.ClockIcon,
+                        title: "Check In / Out Timing",
+                        onTap: () => CheckInOutTimingSheet.show(
+                          context,
+                          userId: _data.userId,
+                          employeeName: _data.name,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    _ProfileCreatedFooter(userId: _data.userId),
-                  ],
-                ),
+                      ),
+                      const Divider(height: 1, color: kDividerColor),
+                      _settingsTile(
+                        iconAsset: Assets.WorkingDays,
+                        title: "Working Days",
+                        onTap: () => WorkingDaysSheet.show(
+                          context,
+                          userId: _data.userId,
+                          employeeName: _data.name,
+                        ),
+                      ),
+                      const Divider(height: 1, color: kDividerColor),
+                      _settingsTile(
+                        iconAsset: Assets.BreakIcon,
+                        title: "Break Timing",
+                        onTap: () => BreakTimingSheet.show(
+                          context,
+                          userId: _data.userId,
+                          employeeName: _data.name,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _settingsGroup(
+                    children: [
+                      _settingsTile(
+                        iconAsset: Assets.DeactiviateUserIcon,
+                        title:
+                            _statusFor(_data.userId) ==
+                                ManagerEmployeeStatus.disabled
+                            ? 'Activate Account'
+                            : 'Deactivate Account',
+                        titleColor:
+                            _statusFor(_data.userId) ==
+                                ManagerEmployeeStatus.disabled
+                            ? kPrimaryColor
+                            : kredColor,
+                        showChevron: false,
+                        onTap:
+                            _statusFor(_data.userId) ==
+                                    ManagerEmployeeStatus.deleted ||
+                                _updatingStatus
+                            ? null
+                            : _onToggleAccount,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _ProfileCreatedFooter(userId: _data.userId),
+                ],
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -566,16 +561,20 @@ class _ManagerEmployeeProfileSheetBodyState
     String? asset,
     required VoidCallback onTap,
   }) {
+    if (icon != null && asset == null) {
+      return BackCircleButton(onTap: onTap, icon: icon);
+    }
     return ButtonAnimations.press(
       onTap: onTap,
       child: Container(
         width: 42,
         height: 42,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: kbackground2, shape: BoxShape.circle),
-        child: asset != null
-            ? CommonImageView(imagePath: asset, height: 18)
-            : Icon(icon, size: 20, color: kBlack200),
+        decoration: const BoxDecoration(
+          color: kGreyContainerColor,
+          shape: BoxShape.circle,
+        ),
+        child: CommonImageView(imagePath: asset!, height: 18),
       ),
     );
   }

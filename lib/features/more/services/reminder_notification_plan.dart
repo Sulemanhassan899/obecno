@@ -34,7 +34,8 @@ class ReminderNotificationSyncResult {
 /// When each reminder should actually notify — never the policy/permission time
 /// unless that is also the time the user chose.
 ///
-/// Check-in missed / check-out missed add [graceMinutes] to the chosen clocks.
+/// Check-in missed / check-out missed fire at a chosen clock, defaulting to
+/// the related reminder plus [graceMinutes].
 /// Longer break adds [longerBreakAfter] to the chosen (or due) break-end.
 /// Very long attendance adds the chosen duration to the actual check-in punch.
 class ReminderFireSchedule {
@@ -66,13 +67,27 @@ class ReminderFireSchedule {
     required TimeOfDay policyCheckOutTime,
     required TimeOfDay breakReminderTime,
     TimeOfDay? breakEndedReminderTime,
+    TimeOfDay? checkInMissedTime,
+    TimeOfDay? checkOutMissedTime,
     required int graceMinutes,
+    int? checkInMissedMinutes,
+    int? checkOutMissedMinutes,
+    int? longerBreakMinutes,
     required int breakMinutes,
     required int longAttendanceHours,
     required ReminderClockStatus status,
   }) {
     DateTime at(TimeOfDay time) => ReminderNotificationPlan.at(day, time);
     final grace = Duration(minutes: graceMinutes < 0 ? 0 : graceMinutes);
+    final inMissed = Duration(minutes: checkInMissedMinutes ?? grace.inMinutes);
+    final outMissed = Duration(
+      minutes: checkOutMissedMinutes ?? grace.inMinutes,
+    );
+    final longerAfter = Duration(
+      minutes:
+          longerBreakMinutes ??
+          ReminderNotificationPlan.longerBreakAfter.inMinutes,
+    );
     final attendanceMinutes = ReminderCopy.durationMinutes(longAttendanceHours);
     final minutes = breakMinutes <= 0 ? 60 : breakMinutes;
     final overnight = ReminderNotificationPlan.isOvernightShift(
@@ -109,14 +124,24 @@ class ReminderFireSchedule {
         }
       }
       breakEndedAt = endedAt;
-      longerBreakAt = endedAt.add(ReminderNotificationPlan.longerBreakAfter);
+      longerBreakAt = endedAt.add(longerAfter);
     }
 
     return ReminderFireSchedule(
       checkInAt: checkInAt,
-      checkInMissedAt: checkInAt.add(grace),
+      checkInMissedAt: checkInMissedTime == null
+          ? checkInAt.add(inMissed)
+          : ReminderNotificationPlan.clockOnOrAfter(
+              checkInAt,
+              checkInMissedTime,
+            ),
       checkOutAt: checkOutAt,
-      checkOutMissedAt: checkOutAt.add(grace),
+      checkOutMissedAt: checkOutMissedTime == null
+          ? checkOutAt.add(outMissed)
+          : ReminderNotificationPlan.clockOnOrAfter(
+              checkOutAt,
+              checkOutMissedTime,
+            ),
       breakAt: place(breakReminderTime),
       breakEndedAt: breakEndedAt,
       longerBreakAt: longerBreakAt,
@@ -185,6 +210,24 @@ class ReminderNotificationPlan {
     return TimeOfDay(hour: wrapped ~/ 60, minute: wrapped % 60);
   }
 
+  static TimeOfDay addMinutes(TimeOfDay time, int minutes) =>
+      timeFromMinutes(minutesOf(time) + minutes);
+
+  /// Same calendar day as [anchor], or the next day when the clock is earlier.
+  static DateTime clockOnOrAfter(DateTime anchor, TimeOfDay time) {
+    var dt = DateTime(
+      anchor.year,
+      anchor.month,
+      anchor.day,
+      time.hour,
+      time.minute,
+    );
+    if (dt.isBefore(anchor)) {
+      dt = dt.add(const Duration(days: 1));
+    }
+    return dt;
+  }
+
   /// Checkout at or before check-in on the clock (9 PM–6 AM, 12 PM–12 AM).
   static bool isOvernightShift(TimeOfDay checkIn, TimeOfDay checkOut) =>
       minutesOf(checkOut) <= minutesOf(checkIn);
@@ -226,7 +269,12 @@ class ReminderNotificationPlan {
     TimeOfDay? policyCheckOutTime,
     TimeOfDay? breakReminderTime,
     TimeOfDay? breakEndedReminderTime,
+    TimeOfDay? checkInMissedTime,
+    TimeOfDay? checkOutMissedTime,
     required int graceMinutes,
+    int? checkInMissedMinutes,
+    int? checkOutMissedMinutes,
+    int? longerBreakMinutes,
     required int breakMinutes,
     required int longAttendanceHours,
     required List<ReminderPunch> punches,
@@ -236,7 +284,6 @@ class ReminderNotificationPlan {
     bool allowCatchUp = false,
   }) {
     final items = <ScheduledReminderNotification>[];
-    final grace = Duration(minutes: graceMinutes < 0 ? 0 : graceMinutes);
     final weekdays = workingWeekdays.isEmpty
         ? defaultWorkingWeekdays
         : workingWeekdays;
@@ -292,34 +339,42 @@ class ReminderNotificationPlan {
 
     final status = ReminderClockStatus.fromPunches(punches);
     final today = DateTime(now.year, now.month, now.day);
-    final todaySchedule = ReminderFireSchedule.forDay(
-      day: today,
-      checkInTime: checkInTime,
-      checkOutTime: checkOutTime,
-      policyCheckInTime: policyIn,
-      policyCheckOutTime: policyOut,
-      breakReminderTime: breakAtTime,
-      breakEndedReminderTime: breakEndedAtTime,
-      graceMinutes: graceMinutes,
-      breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceHours,
-      status: status,
-    );
+    ReminderFireSchedule scheduleFor(DateTime day) =>
+        ReminderFireSchedule.forDay(
+          day: day,
+          checkInTime: checkInTime,
+          checkOutTime: checkOutTime,
+          policyCheckInTime: policyIn,
+          policyCheckOutTime: policyOut,
+          breakReminderTime: breakAtTime,
+          breakEndedReminderTime: breakEndedAtTime,
+          checkInMissedTime: checkInMissedTime,
+          checkOutMissedTime: checkOutMissedTime,
+          graceMinutes: graceMinutes,
+          checkInMissedMinutes: checkInMissedMinutes,
+          checkOutMissedMinutes: checkOutMissedMinutes,
+          longerBreakMinutes: longerBreakMinutes,
+          breakMinutes: breakMinutes,
+          longAttendanceHours: longAttendanceHours,
+          status: status,
+        );
+    final todaySchedule = scheduleFor(today);
 
     final days = [today, today.add(const Duration(days: 1))];
     for (var i = 0; i < days.length; i++) {
       final day = days[i];
       if (!weekdays.contains(day.weekday)) continue;
+      final daySchedule = i == 0 ? todaySchedule : scheduleFor(day);
       final notStartedToday = i == 0 ? status.hasNotStarted : true;
       add(
         ReminderType.checkIn,
-        at(day, checkInTime),
+        daySchedule.checkInAt,
         applicable: notStartedToday,
         dayOffset: i,
       );
       add(
         ReminderType.checkInMissed,
-        at(day, checkInTime).add(grace),
+        daySchedule.checkInMissedAt,
         applicable: notStartedToday,
         dayOffset: i,
       );

@@ -134,7 +134,10 @@ class _StatusRow extends StatelessWidget {
               padding: const EdgeInsets.only(top: 4),
               child: Row(
                 children: [
-                  CommonImageView(imagePath: Assets.imagesClockGrey, height: 16),
+                  CommonImageView(
+                    imagePath: Assets.imagesClockGrey,
+                    height: 16,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: AppText.p2(

@@ -11,6 +11,7 @@ import 'package:obecno/features/manager_module/Manager_employees/domain/add_empl
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/new_location_sheet.dart';
@@ -384,50 +385,49 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
   Widget build(BuildContext context) {
     context.watch<ManagerLocationsProvider>();
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        decoration: const BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: AppText.h5(
-                        'Add Employee',
-                        weight: FontWeight.w600,
-                        align: TextAlign.left,
+      child: ConstrainedBox(
+        constraints: AppSheetSize.constraintsOf(context),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppText.h5(
+                          'Add Employee',
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
                       ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(Icons.close, size: 22),
+                      ButtonAnimations.press(
+                        onTap: () => Navigator.pop(context),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.close, size: 22),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Flexible(
-                child: Container(
-                  color: kbackground2,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                const Divider(height: 1, color: kDividerColor),
+                Flexible(
+                  child: Container(
+                    color: kbackground2,
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                       children: [
                         _addViaLinkCard(),
                         const SizedBox(height: 22),
@@ -474,39 +474,39 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
                     ),
                   ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: MyButton(
-                        size: MyButtonSize.normal,
-                        buttonText: 'Clear',
-                        backgroundColor: kWhite,
-                        fontColor: kBlack,
-                        outlineColor: kBorderColor,
-                        isactive: !_sending,
-                        onTap: () async => _clear(),
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: MyButton(
+                          size: MyButtonSize.normal,
+                          buttonText: 'Clear',
+                          backgroundColor: kWhite,
+                          fontColor: kBlack,
+                          outlineColor: kBorderColor,
+                          isactive: !_sending,
+                          onTap: () async => _clear(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 4,
-                      child: MyButton(
-                        buttonText: 'Send Invites',
-                        backgroundColor: kPrimaryColor,
-                        isactive: !_sending,
-                        isLoadingExternally: _sending,
-                        onTap: _sendInvites,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 4,
+                        child: MyButton(
+                          buttonText: 'Send Invites',
+                          backgroundColor: kPrimaryColor,
+                          isactive: !_sending,
+                          isLoadingExternally: _sending,
+                          onTap: _sendInvites,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

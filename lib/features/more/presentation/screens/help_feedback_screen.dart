@@ -143,7 +143,7 @@ class _HelpFeedbackScreenState extends State<HelpFeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.page(context, AppSizes.DEFAULT),
         child: Column(
           children: [
             /// HEADER

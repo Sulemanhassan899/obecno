@@ -72,7 +72,9 @@ class ScheduledAttendanceTimes {
 
     final policyFuture = _policyFor(employeeUserId);
     final detailsFuture = employeeUserId == null
-        ? AttendanceService(apiClient).getAttendanceDetails(date: _yyyyMMdd(day))
+        ? AttendanceService(
+            apiClient,
+          ).getAttendanceDetails(date: _yyyyMMdd(day))
         : null;
 
     if (detailsFuture != null) {
@@ -84,19 +86,19 @@ class ScheduledAttendanceTimes {
           data,
           checkIn: (t, id) {
             checkIn ??= t;
-            checkInDetailId ??= id;
+            checkInDetailId ??= AttendanceDetailItem.serverDetailId(id);
           },
           checkOut: (t, id) {
             checkOut ??= t;
-            checkOutDetailId ??= id;
+            checkOutDetailId ??= AttendanceDetailItem.serverDetailId(id);
           },
           breakStart: (t, id) {
             breakStart ??= t;
-            breakStartDetailId ??= id;
+            breakStartDetailId ??= AttendanceDetailItem.serverDetailId(id);
           },
           breakEnd: (t, id) {
             breakEnd ??= t;
-            breakEndDetailId ??= id;
+            breakEndDetailId ??= AttendanceDetailItem.serverDetailId(id);
           },
         );
       } catch (_) {}

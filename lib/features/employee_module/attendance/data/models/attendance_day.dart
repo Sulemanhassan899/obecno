@@ -124,9 +124,18 @@ class AttendanceDay {
   }
 
   factory AttendanceDay.fromApiHistoryItem(Map<String, dynamic> json) {
-    final date = _parseDate(json['date']) ?? DateTime.now();
+    final nestedRaw = json['attendance'];
+    final nested = nestedRaw is Map
+        ? Map<String, dynamic>.from(nestedRaw)
+        : const <String, dynamic>{};
+    final merged = {...nested, ...json};
 
-    final detailsRaw = json['attendance_details'];
+    final date =
+        _parseDate(merged['date'] ?? merged['attendance_date']) ??
+        DateTime.now();
+
+    final detailsRaw =
+        merged['attendance_details'] ?? nested['attendance_details'];
     final hasDetails = detailsRaw is List && detailsRaw.isNotEmpty;
 
     final checkIns = <String>[];
@@ -142,24 +151,32 @@ class AttendanceDay {
       for (final raw in detailsRaw) {
         if (raw is! Map) continue;
         final detail = Map<String, dynamic>.from(raw);
-        final time = _normalizedTime(detail['attendance_time']);
+        final time = _normalizedTime(
+          detail['attendance_time'] ?? detail['time'],
+        );
         if (time == null) continue;
         final location = _normalizedLocation(detail['current_location']);
 
-        switch ((detail['type'] as String?)?.trim().toLowerCase()) {
+        switch (_eventKind(detail['type'])) {
           case 'check in':
+          case 'checkin':
             checkIns.add(time);
             checkInLocations.add(location);
             break;
           case 'check out':
+          case 'checkout':
             checkOuts.add(time);
             checkOutLocations.add(location);
             break;
           case 'break out':
+          case 'breakout':
+          case 'break start':
             pendingBreakOutTime = time;
             pendingBreakOutLocation = location;
             break;
           case 'break in':
+          case 'breakin':
+          case 'break end':
             if (pendingBreakOutTime != null) {
               breaks.add(
                 BreakSession(
@@ -175,14 +192,22 @@ class AttendanceDay {
             break;
         }
       }
-    } else {
-      // No per-event breakdown (e.g. "today_attendance") -- fall back to the
-      // single top-level fields, all sharing the one reported location.
-      final checkin = _normalizedTime(json['checkin']);
-      final checkout = _normalizedTime(json['checkout']);
-      final breakin = _normalizedTime(json['breakin']);
-      final breakout = _normalizedTime(json['breakout']);
-      final location = _normalizedLocation(json['current_location']);
+    }
+
+    // Fall back to the flattened day fields when details are missing or
+    // used an unrecognized type, so history rows still get check-in/out.
+    if (checkIns.isEmpty && checkOuts.isEmpty && breaks.isEmpty) {
+      final checkin = _normalizedTime(
+        merged['checkin'] ?? merged['check_in'] ?? merged['check_in_time'],
+      );
+      final checkout = _normalizedTime(
+        merged['checkout'] ?? merged['check_out'] ?? merged['check_out_time'],
+      );
+      final breakin = _normalizedTime(merged['breakin'] ?? merged['break_in']);
+      final breakout = _normalizedTime(
+        merged['breakout'] ?? merged['break_out'],
+      );
+      final location = _normalizedLocation(merged['current_location']);
 
       if (checkin != null) {
         checkIns.add(checkin);
@@ -209,27 +234,36 @@ class AttendanceDay {
     _sortTimeLocationPairs(checkIns, checkInLocations);
     _sortTimeLocationPairs(checkOuts, checkOutLocations);
 
-    final dayStatus = (json['day_status'] ?? json['status'] ?? '')
+    final dayStatus = (merged['day_status'] ?? merged['status'] ?? '')
         .toString()
         .trim()
         .toLowerCase();
     final holidayTitle = _normalizedTime(
-      json['holiday_name'] ?? json['holiday_title'] ?? json['holiday'],
+      merged['holiday_name'] ?? merged['holiday_title'] ?? merged['holiday'],
     );
 
     return AttendanceDay(
       date: DateTime(date.year, date.month, date.day),
-      recordId: _parseId(json['id']),
+      recordId: _parseId(merged['attendance_id'] ?? merged['id']),
       checkIns: checkIns,
       checkOuts: checkOuts,
       checkInLocations: checkInLocations,
       checkOutLocations: checkOutLocations,
       breaks: breaks,
       isEdited: false,
-      isHoliday: _asBool(json['is_holiday']) || dayStatus == 'holiday',
-      isLeave: _asBool(json['is_leave']) || dayStatus == 'leave',
+      isHoliday: _asBool(merged['is_holiday']) || dayStatus == 'holiday',
+      isLeave: _asBool(merged['is_leave']) || dayStatus == 'leave',
       holidayName: holidayTitle,
     );
+  }
+
+  static String _eventKind(dynamic raw) {
+    return raw
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ');
   }
 
   static bool _asBool(dynamic raw) {
@@ -256,7 +290,9 @@ class AttendanceDay {
   static int? _parseId(dynamic raw) {
     if (raw == null) return null;
     if (raw is int) return raw;
-    return int.tryParse(raw.toString());
+    if (raw is double && raw == raw.roundToDouble()) return raw.toInt();
+    return int.tryParse(raw.toString()) ??
+        double.tryParse(raw.toString())?.round();
   }
 
   static DateTime? _parseDate(dynamic raw) {
@@ -312,7 +348,7 @@ class AttendanceHistoryData {
     final today = AttendanceDay._parseDate(json['today']);
 
     AttendanceDay? todayAttendance;
-    final todayRaw = json['today_attendance'];
+    final todayRaw = json['today_attendance'] ?? json['todayAttendance'];
     if (todayRaw is Map) {
       todayAttendance = AttendanceDay.fromApiHistoryItem(
         Map<String, dynamic>.from(todayRaw),
@@ -320,16 +356,44 @@ class AttendanceHistoryData {
     }
 
     final history = <AttendanceDay>[];
-    final historyRaw = json['history'];
-    if (historyRaw is List) {
-      for (final item in historyRaw) {
-        if (item is Map) {
-          try {
-            history.add(
-              AttendanceDay.fromApiHistoryItem(Map<String, dynamic>.from(item)),
-            );
-          } catch (_) {}
-        }
+    final seen = <String>{};
+
+    void addDays(dynamic raw) {
+      if (raw is! List) return;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        try {
+          final day = AttendanceDay.fromApiHistoryItem(
+            Map<String, dynamic>.from(item),
+          );
+          final key =
+              '${day.date.year}-${day.date.month.toString().padLeft(2, '0')}-${day.date.day.toString().padLeft(2, '0')}';
+          if (!seen.add(key)) continue;
+          history.add(day);
+        } catch (_) {}
+      }
+    }
+
+    addDays(json['history']);
+    addDays(json['attendances']);
+    addDays(json['records']);
+    addDays(json['days']);
+
+    if (todayAttendance != null) {
+      final key =
+          '${todayAttendance.date.year}-${todayAttendance.date.month.toString().padLeft(2, '0')}-${todayAttendance.date.day.toString().padLeft(2, '0')}';
+      final index = history.indexWhere(
+        (day) =>
+            day.date.year == todayAttendance!.date.year &&
+            day.date.month == todayAttendance.date.month &&
+            day.date.day == todayAttendance.date.day,
+      );
+      if (index < 0) {
+        seen.add(key);
+        history.insert(0, todayAttendance);
+      } else if (history[index].checkIns.isEmpty &&
+          todayAttendance.checkIns.isNotEmpty) {
+        history[index] = todayAttendance;
       }
     }
 

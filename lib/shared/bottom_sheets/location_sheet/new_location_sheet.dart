@@ -8,6 +8,7 @@ import 'package:obecno/features/manager_module/Manager_locations/domain/add_loca
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -105,10 +106,7 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
       statusCode: result.statusCode,
       message: result.firstFieldMessage ?? result.message,
       fieldErrors: result.fieldErrors,
-      extra: {
-        'id': result.data?.id,
-        'name': result.data?.name,
-      },
+      extra: {'id': result.data?.id, 'name': result.data?.name},
     );
 
     if (!result.success || result.data == null) {
@@ -140,84 +138,87 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: AppText.h5(
-                        'New Location',
-                        weight: FontWeight.w600,
-                        align: TextAlign.left,
+      child: ConstrainedBox(
+        constraints: AppSheetSize.constraintsOf(context),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppText.h5(
+                          'New Location',
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
                       ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(Icons.close, size: 22),
+                      ButtonAnimations.press(
+                        onTap: () => Navigator.pop(context),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.close, size: 22),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-                child: CustomTextField(
-                  controller: _nameController,
-                  hintText: '',
-                  labelText: 'Office / Location Name',
-                  haveLebelText: true,
-                  hasStar: true,
-                  backgroundColor: kWhite,
-                  enabledBorderColor: kBorderColor,
-                  focusedBorderColor: kBorderColor,
-                  radius: 14,
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+                  child: CustomTextField(
+                    controller: _nameController,
+                    hintText: '',
+                    labelText: 'Office / Location Name',
+                    haveLebelText: true,
+                    hasStar: true,
+                    backgroundColor: kWhite,
+                    enabledBorderColor: kBorderColor,
+                    focusedBorderColor: kBorderColor,
+                    radius: 14,
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: MyButton(
-                        size: MyButtonSize.normal,
-                        buttonText: 'Clear',
-                        backgroundColor: kWhite,
-                        fontColor: kBlack,
-                        outlineColor: kBorderColor,
-                        isactive: !_saving,
-                        onTap: () async => _nameController.clear(),
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: MyButton(
+                          size: MyButtonSize.normal,
+                          buttonText: 'Clear',
+                          backgroundColor: kWhite,
+                          fontColor: kBlack,
+                          outlineColor: kBorderColor,
+                          isactive: !_saving,
+                          onTap: () async => _nameController.clear(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 3,
-                      child: MyButton(
-                        buttonText: 'Create',
-                        backgroundColor: kPrimaryButtonColor,
-                        isactive: !_saving,
-                        isLoadingExternally: _saving,
-                        onTap: _onCreate,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 3,
+                        child: MyButton(
+                          buttonText: 'Create',
+                          backgroundColor: kPrimaryButtonColor,
+                          isactive: !_saving,
+                          isLoadingExternally: _saving,
+                          onTap: _onCreate,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

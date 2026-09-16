@@ -385,6 +385,11 @@ class Assets {
   static const String navigationActiveAlertsIcon =
       "assets/navigation/active_alerts_icon.png";
 
+  /// Assets for navigationActiveAlertsBadgeIcon
+  /// assets/navigation/active_alerts_badge_icon.png
+  static const String navigationActiveAlertsBadgeIcon =
+      "assets/navigation/active_alerts_badge_icon.png";
+
   /// Assets for navigationActiveAttendenceIcon
   /// assets/navigation/active_attendence_icon.png
   static const String navigationActiveAttendenceIcon =

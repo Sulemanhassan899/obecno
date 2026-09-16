@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -27,6 +29,7 @@ class ReminderNotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  void Function(String? payload)? onNotificationTap;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -42,7 +45,12 @@ class ReminderNotificationService {
           requestSoundPermission: false,
         ),
       );
-      await _plugin.initialize(settings: settings);
+      await _plugin.initialize(
+        settings: settings,
+        onDidReceiveNotificationResponse: (response) {
+          onNotificationTap?.call(response.payload);
+        },
+      );
       await _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
@@ -56,8 +64,55 @@ class ReminderNotificationService {
             ),
           );
       _initialized = true;
+      unawaited(_dispatchLaunchPayload());
     } catch (e, st) {
       AppLogger.error('ReminderNotificationService', 'init', e, stackTrace: st);
+    }
+  }
+
+  Future<void> _dispatchLaunchPayload() async {
+    try {
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      final payload = launch?.notificationResponse?.payload;
+      if (launch?.didNotificationLaunchApp != true || payload == null) return;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      onNotificationTap?.call(payload);
+    } catch (e, st) {
+      AppLogger.error(
+        'ReminderNotificationService',
+        'launchPayload',
+        e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<bool> showCustom({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    await init();
+    if (!_initialized) return false;
+    await _ensurePermission();
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _details,
+        payload: payload,
+      );
+      return true;
+    } catch (e, st) {
+      AppLogger.error(
+        'ReminderNotificationService',
+        'showCustom',
+        e,
+        stackTrace: st,
+      );
+      return false;
     }
   }
 
@@ -86,7 +141,12 @@ class ReminderNotificationService {
     TimeOfDay? policyCheckOutTime,
     TimeOfDay? breakReminderTime,
     TimeOfDay? breakEndedReminderTime,
+    TimeOfDay? checkInMissedTime,
+    TimeOfDay? checkOutMissedTime,
     required int graceMinutes,
+    int? checkInMissedMinutes,
+    int? checkOutMissedMinutes,
+    int? longerBreakMinutes,
     required int breakMinutes,
     required int longAttendanceHours,
     required List<ReminderPunch> punches,
@@ -121,7 +181,12 @@ class ReminderNotificationService {
       policyCheckOutTime: policyCheckOutTime,
       breakReminderTime: breakReminderTime,
       breakEndedReminderTime: breakEndedReminderTime,
+      checkInMissedTime: checkInMissedTime,
+      checkOutMissedTime: checkOutMissedTime,
       graceMinutes: graceMinutes,
+      checkInMissedMinutes: checkInMissedMinutes,
+      checkOutMissedMinutes: checkOutMissedMinutes,
+      longerBreakMinutes: longerBreakMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceHours,
       punches: punches,
@@ -153,9 +218,7 @@ class ReminderNotificationService {
           body: item.body,
         );
         if (shown) seen.add(item.type);
-      } else if (rebuildSchedule ||
-          item.type == ReminderType.breakTime ||
-          item.type == ReminderType.veryLongAttendance) {
+      } else {
         await _schedule(item);
       }
     }
@@ -201,9 +264,25 @@ class ReminderNotificationService {
   }
 
   Future<void> _schedule(ScheduledReminderNotification item) async {
-    final scheduledDate = localScheduleTime(item.fireAt);
-    // Future items only. Never dump a past/mis-converted time as a banner.
-    if (!scheduledDate.isAfter(tz.TZDateTime.now(tz.local))) return;
+    var scheduledDate = localScheduleTime(item.fireAt);
+    final nowTz = tz.TZDateTime.now(tz.local);
+    if (!scheduledDate.isAfter(nowTz)) {
+      final deviceNow = DateTime.now();
+      if (item.fireAt.isAfter(deviceNow.add(const Duration(seconds: 2)))) {
+        scheduledDate = localScheduleTime(item.fireAt);
+      }
+      if (!scheduledDate.isAfter(tz.TZDateTime.now(tz.local))) {
+        if (!item.fireAt.isAfter(deviceNow)) {
+          await showNow(
+            type: item.type,
+            id: item.id,
+            title: item.title,
+            body: item.body,
+          );
+        }
+        return;
+      }
+    }
 
     Future<void> scheduleWith(AndroidScheduleMode mode) {
       return _plugin.zonedSchedule(
@@ -227,14 +306,24 @@ class ReminderNotificationService {
         stackTrace: st,
       );
       try {
-        await scheduleWith(AndroidScheduleMode.inexactAllowWhileIdle);
-      } catch (e2, st2) {
+        await scheduleWith(AndroidScheduleMode.alarmClock);
+      } catch (eAlarm, stAlarm) {
         AppLogger.error(
           'ReminderNotificationService',
-          'scheduleInexact:${item.type.storageKey}',
-          e2,
-          stackTrace: st2,
+          'scheduleAlarm:${item.type.storageKey}',
+          eAlarm,
+          stackTrace: stAlarm,
         );
+        try {
+          await scheduleWith(AndroidScheduleMode.inexactAllowWhileIdle);
+        } catch (e2, st2) {
+          AppLogger.error(
+            'ReminderNotificationService',
+            'scheduleInexact:${item.type.storageKey}',
+            e2,
+            stackTrace: st2,
+          );
+        }
       }
     }
   }
@@ -331,6 +420,12 @@ class ReminderNotificationService {
             >();
         await android?.requestNotificationsPermission();
         await android?.requestExactAlarmsPermission();
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = _plugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >();
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
       }
     } catch (e, st) {
       AppLogger.error(
@@ -385,7 +480,7 @@ class ReminderNotificationService {
   }) {
     final loc = location ?? tz.local;
     final local = fireAt.isUtc ? fireAt.toLocal() : fireAt;
-    return tz.TZDateTime(
+    var scheduled = tz.TZDateTime(
       loc,
       local.year,
       local.month,
@@ -394,6 +489,15 @@ class ReminderNotificationService {
       local.minute,
       local.second,
     );
+    // When tz.local didn't initialize (some OEM clocks stay on UTC), keep the
+    // phone's wall-clock time so 8:00 still fires at 8:00.
+    if (location == null) {
+      final skew = DateTime.now().timeZoneOffset - scheduled.timeZoneOffset;
+      if (skew != Duration.zero) {
+        scheduled = scheduled.subtract(skew);
+      }
+    }
+    return scheduled;
   }
 
   static const _details = NotificationDetails(

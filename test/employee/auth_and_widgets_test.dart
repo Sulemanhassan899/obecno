@@ -1,6 +1,5 @@
 import 'package:obecno/core/validators/validators.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/widgets/custom_checkbox_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,11 +30,6 @@ void main() {
   });
 
   group('Employee widgets', () {
-    testWidgets('alerts placeholder is visible for employees', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: AlertsScreen()));
-      expect(find.textContaining('Coming soon'), findsOneWidget);
-    });
-
     testWidgets('remember-me checkbox toggles without crashing', (tester) async {
       var value = false;
       await tester.pumpWidget(

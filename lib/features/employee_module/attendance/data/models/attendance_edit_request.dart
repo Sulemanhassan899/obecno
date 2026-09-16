@@ -25,6 +25,18 @@ class AttendanceEditRequest {
   bool get isApproved => status == AttendanceEditRequestStatus.approved;
   bool get isRejected => status == AttendanceEditRequestStatus.rejected;
 
+  /// Employee add-attendance request for a previously empty/absent day.
+  bool get isPendingAdd {
+    if (!isPending) return false;
+    final original = originalTime.trim();
+    return original.isEmpty || original == '--';
+  }
+
+  /// 00:00–00:03 punches used only to mint an attendance id for edit requests.
+  static bool isPlaceholderMint(DateTime time) {
+    return time.hour == 0 && time.minute <= 3;
+  }
+
   /// Parses a clock label onto [date]'s calendar day.
   ///
   /// 12:25 AM → 00:25, 12:00 PM → 12:00, 8:00 PM → 20:00.
@@ -70,24 +82,43 @@ class AttendanceEditRequest {
         same(parseClockTime(newTime, date: dt));
   }
 
-  /// Latest approved `new_time` on [original]'s date, or [original] if none.
+  /// Follows approved old→new edits in order so 12:20 → 1:20 lands on 1:20.
   static DateTime applyApprovedTime(
     DateTime original,
     List<AttendanceEditRequest> requests,
   ) {
-    AttendanceEditRequest? latest;
-    for (final request in requests) {
-      if (!request.isApproved) continue;
-      if (latest == null) {
-        latest = request;
-        continue;
+    final approved = requests.where((r) => r.isApproved).toList();
+    if (approved.isEmpty) return original;
+
+    DateTime current = original;
+    var progressed = true;
+    var steps = 0;
+    while (progressed && steps < approved.length) {
+      progressed = false;
+      steps++;
+      for (final request in approved) {
+        final next = parseClockTime(request.newTime, date: original);
+        if (next == null) continue;
+        if (next.hour == current.hour && next.minute == current.minute) {
+          continue;
+        }
+        final from = parseClockTime(request.originalTime, date: original);
+        final fromMatches = from != null &&
+            from.hour == current.hour &&
+            from.minute == current.minute;
+        if (!fromMatches && !request.matchesClock(current)) continue;
+        current = next;
+        progressed = true;
       }
-      final requestAt = request.actionedAt ?? request.requestedAt;
-      final latestAt = latest.actionedAt ?? latest.requestedAt;
-      if (requestAt.isAfter(latestAt)) latest = request;
     }
-    if (latest == null) return original;
-    return parseClockTime(latest.newTime, date: original) ?? original;
+    if (current != original) return current;
+
+    approved.sort((a, b) {
+      final aAt = a.actionedAt ?? a.requestedAt;
+      final bAt = b.actionedAt ?? b.requestedAt;
+      return bAt.compareTo(aAt);
+    });
+    return parseClockTime(approved.first.newTime, date: original) ?? original;
   }
 
   AttendanceEditRequest copyWith({
@@ -132,10 +163,15 @@ class AttendanceEditRequest {
             .trim();
 
     final status = switch (statusRaw) {
-      'approved' || 'approve' || 'accepted' || 'done' || 'completed' =>
-        AttendanceEditRequestStatus.approved,
-      'rejected' || 'reject' || 'declined' || 'denied' =>
-        AttendanceEditRequestStatus.rejected,
+      'approved' ||
+      'approve' ||
+      'accepted' ||
+      'done' ||
+      'completed' => AttendanceEditRequestStatus.approved,
+      'rejected' ||
+      'reject' ||
+      'declined' ||
+      'denied' => AttendanceEditRequestStatus.rejected,
       _ => AttendanceEditRequestStatus.pending,
     };
 
@@ -159,7 +195,8 @@ class AttendanceEditRequest {
       }
 
       final asDt = parseDt(s);
-      if (asDt != null && (s.contains('-') || s.contains('T') || s.contains(' '))) {
+      if (asDt != null &&
+          (s.contains('-') || s.contains('T') || s.contains(' '))) {
         return _formatClock(asDt);
       }
 
@@ -269,7 +306,9 @@ class AttendanceEditRequest {
     if (raw is! List) return const [];
     return raw
         .whereType<Map>()
-        .map((e) => AttendanceEditRequest.fromJson(Map<String, dynamic>.from(e)))
+        .map(
+          (e) => AttendanceEditRequest.fromJson(Map<String, dynamic>.from(e)),
+        )
         .toList(growable: false);
   }
 

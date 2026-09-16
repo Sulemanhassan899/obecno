@@ -42,12 +42,14 @@ enum ReminderType {
     return null;
   }
 
-  /// Check-in, check-out, and break clocks are editable. Missed / longer
-  /// reminders are derived from those clocks plus grace or duration.
+  /// Check-in, check-out, missed clocks, and break clocks are editable.
+  /// Longer break and very long attendance still use a duration picker.
   bool get canPickTime {
     switch (this) {
       case ReminderType.checkIn:
+      case ReminderType.checkInMissed:
       case ReminderType.checkOut:
+      case ReminderType.checkOutMissed:
       case ReminderType.breakTime:
       case ReminderType.breakTimeEnded:
         return true;
@@ -56,6 +58,15 @@ enum ReminderType {
     }
   }
 
-  /// Very long attendance waits a user-chosen duration after check-in.
-  bool get canPickDuration => this == ReminderType.veryLongAttendance;
+  /// Longer break and very long attendance wait a user-chosen duration after
+  /// the related clock or punch.
+  bool get canPickDuration {
+    switch (this) {
+      case ReminderType.longerBreak:
+      case ReminderType.veryLongAttendance:
+        return true;
+      default:
+        return false;
+    }
+  }
 }

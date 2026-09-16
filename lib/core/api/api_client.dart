@@ -325,10 +325,16 @@ class ApiClient {
   }) {
     final uri = _resolve(path, queryParameters);
 
-    return _guard('GET', uri, () async {
-      final headers = await _headers(uri);
-      return _http.get(uri, headers: headers);
-    }, skipAuthInterceptor: skipAuthInterceptor, cancelToken: cancelToken);
+    return _guard(
+      'GET',
+      uri,
+      () async {
+        final headers = await _headers(uri);
+        return _http.get(uri, headers: headers);
+      },
+      skipAuthInterceptor: skipAuthInterceptor,
+      cancelToken: cancelToken,
+    );
   }
 
   Future<RawApiResponse> post(
@@ -336,6 +342,7 @@ class ApiClient {
     dynamic data,
     Map<String, dynamic>? queryParameters,
     ApiCancelToken? cancelToken,
+    bool skipAuthInterceptor = false,
   }) {
     final uri = _resolve(path, queryParameters);
 
@@ -350,6 +357,7 @@ class ApiClient {
           body: data != null ? jsonEncode(data) : null,
         );
       },
+      skipAuthInterceptor: skipAuthInterceptor,
       cancelToken: cancelToken,
       data: data,
     );

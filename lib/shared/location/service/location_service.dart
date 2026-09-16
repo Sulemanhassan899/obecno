@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:obecno/shared/location/data/location_model.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:obecno/shared/location/data/location_model.dart';
 
 class LocationServiceDisabledException implements Exception {
   const LocationServiceDisabledException();
@@ -50,12 +51,14 @@ class GpsReading {
 abstract class LocationService {
   Future<LocationModel> getCurrentLocation();
   Future<GpsReading> getCurrentReading();
+  Future<GpsReading?> getLastKnownReading();
 }
 
 class LocationServiceImpl implements LocationService {
   static const double maxAcceptableAccuracyMeters = 50;
 
   static const Duration _positionTimeout = Duration(seconds: 15);
+  static const Duration _fallbackTimeout = Duration(seconds: 10);
 
   @override
   Future<LocationModel> getCurrentLocation() async {
@@ -65,6 +68,43 @@ class LocationServiceImpl implements LocationService {
 
   @override
   Future<GpsReading> getCurrentReading() async {
+    await _ensureLocationReady();
+
+    try {
+      return await _readCurrent(
+        forceLocationManager: false,
+        timeLimit: _positionTimeout,
+      );
+    } on TimeoutException {
+      final fallback =
+          await _androidGpsFallback() ?? await getLastKnownReading();
+      if (fallback != null) return fallback;
+      throw const LocationTimeoutException();
+    } on LocationAccuracyTooLowException {
+      final fallback =
+          await _androidGpsFallback() ?? await getLastKnownReading();
+      if (fallback != null) return fallback;
+      rethrow;
+    } on LocationTimeoutException {
+      final fallback =
+          await _androidGpsFallback() ?? await getLastKnownReading();
+      if (fallback != null) return fallback;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<GpsReading?> getLastKnownReading() async {
+    try {
+      final position = await Geolocator.getLastKnownPosition();
+      if (position == null) return null;
+      return _readingFrom(position, enforceAccuracy: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _ensureLocationReady() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       throw const LocationServiceDisabledException();
@@ -79,22 +119,43 @@ class LocationServiceImpl implements LocationService {
         permission == LocationPermission.deniedForever) {
       throw const LocationPermissionDeniedException();
     }
+  }
 
+  Future<GpsReading?> _androidGpsFallback() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return null;
+    try {
+      return await _readCurrent(
+        forceLocationManager: true,
+        timeLimit: _fallbackTimeout,
+        enforceAccuracy: false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<GpsReading> _readCurrent({
+    required bool forceLocationManager,
+    required Duration timeLimit,
+    bool enforceAccuracy = true,
+  }) async {
     final Position position;
     try {
       position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: _positionTimeout,
+        locationSettings: _settings(
+          timeLimit: timeLimit,
+          forceLocationManager: forceLocationManager,
+        ),
       );
     } on TimeoutException {
       throw const LocationTimeoutException();
     }
 
-    if (position.isMocked) {
-      throw const MockLocationDetectedException();
-    }
+    return _readingFrom(position, enforceAccuracy: enforceAccuracy);
+  }
 
-    if (position.accuracy > maxAcceptableAccuracyMeters) {
+  GpsReading _readingFrom(Position position, {required bool enforceAccuracy}) {
+    if (enforceAccuracy && position.accuracy > maxAcceptableAccuracyMeters) {
       throw LocationAccuracyTooLowException(position.accuracy);
     }
 
@@ -103,5 +164,29 @@ class LocationServiceImpl implements LocationService {
       accuracyMeters: position.accuracy,
       isMocked: position.isMocked,
     );
+  }
+
+  LocationSettings _settings({
+    required Duration timeLimit,
+    bool forceLocationManager = false,
+  }) {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          forceLocationManager: forceLocationManager,
+          timeLimit: timeLimit,
+        );
+      case TargetPlatform.iOS:
+        return AppleSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: timeLimit,
+        );
+      default:
+        return LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: timeLimit,
+        );
+    }
   }
 }

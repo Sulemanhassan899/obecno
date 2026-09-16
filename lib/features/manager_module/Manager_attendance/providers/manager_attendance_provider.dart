@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/api/base_provider.dart';
-import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/manager_attendance_filters.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';

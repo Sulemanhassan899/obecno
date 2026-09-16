@@ -18,7 +18,6 @@ class ForgotPasswordSheet extends StatelessWidget {
   static void show(BuildContext context, String email) {
     CommonBottomSheet.show(
       context: context,
-      height: 520,
       buttonText: "",
       onButtonTap: () async {
         Navigator.pop(context);

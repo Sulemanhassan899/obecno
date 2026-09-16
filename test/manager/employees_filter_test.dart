@@ -1,6 +1,8 @@
-import 'package:obecno/demo/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fixtures.dart';
 
 void main() {
   group('ManagerEmployeeFilters', () {

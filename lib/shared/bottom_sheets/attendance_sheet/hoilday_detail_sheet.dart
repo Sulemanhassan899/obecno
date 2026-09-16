@@ -4,6 +4,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -33,18 +34,21 @@ class HolidayBottomSheet extends StatefulWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: kWhite,
-      isScrollControlled: false,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: HolidayBottomSheet(
-            day: day,
-            title: title,
-            apiClient: apiClient,
-            userEmail: userEmail,
+        return ConstrainedBox(
+          constraints: AppSheetSize.constraintsOf(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: HolidayBottomSheet(
+              day: day,
+              title: title,
+              apiClient: apiClient,
+              userEmail: userEmail,
+            ),
           ),
         );
       },
@@ -103,6 +107,7 @@ class _HolidayBottomSheetState extends State<HolidayBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           children: [

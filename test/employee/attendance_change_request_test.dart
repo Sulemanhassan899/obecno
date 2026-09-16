@@ -1,3 +1,4 @@
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
@@ -8,17 +9,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AttendanceChangeRequestPayload', () {
-    test('serializes attendancedetail_id with 12-hour old/new values', () {
+    test('converts 12-hour labels to HH:mm:ss for the changes array', () {
       final payload = AttendanceChangeRequestPayload(
         attendanceDetailId: '56',
         oldValue: '9:00 AM',
         newValue: '9:30 AM',
+        type: 'check in',
       );
 
-      expect(payload.toJson(), {
+      expect(payload.toChangesJson(), {
         'attendancedetail_id': 56,
-        'old_value': '9:00 AM',
-        'new_value': '9:30 AM',
+        'old_value': '09:00:00',
+        'new_value': '09:30:00',
+      });
+      expect(payload.toChangeRequestJson(), {
+        'attendance_detail_id': 56,
+        'type': 'check in',
+        'original_time': '09:00:00',
+        'requested_time': '09:30:00',
       });
     });
 
@@ -37,54 +45,67 @@ void main() {
               attendanceDetailId: '56',
               oldValue: '11:50 AM',
               newValue: '10:00 AM',
+              type: 'check in',
             ),
             AttendanceChangeRequestPayload(
               attendanceDetailId: '57',
               oldValue: '1:00 PM',
               newValue: '12:00 PM',
+              type: 'break out',
             ),
             AttendanceChangeRequestPayload(
               attendanceDetailId: '58',
               oldValue: '2:00 PM',
               newValue: '1:00 PM',
+              type: 'break in',
             ),
             AttendanceChangeRequestPayload(
               attendanceDetailId: '59',
               oldValue: '5:00 PM',
               newValue: '6:00 PM',
+              type: 'check out',
             ),
           ],
         );
 
-        expect(body, {
-          'id': 42,
-          'device_details': 'Vivo e23 | Android 13.5',
-          'lat': 33.570435,
-          'lon': 73.1407564,
-          'changes': [
-            {
-              'attendancedetail_id': 56,
-              'old_value': '11:50 AM',
-              'new_value': '10:00 AM',
-            },
-            {
-              'attendancedetail_id': 57,
-              'old_value': '1:00 PM',
-              'new_value': '12:00 PM',
-            },
-            {
-              'attendancedetail_id': 58,
-              'old_value': '2:00 PM',
-              'new_value': '1:00 PM',
-            },
-            {
-              'attendancedetail_id': 59,
-              'old_value': '5:00 PM',
-              'new_value': '6:00 PM',
-            },
-          ],
-        });
-        expect((body['changes'] as List), hasLength(4));
+        expect(body['id'], 42);
+        expect(body['attendance_id'], 42);
+        expect(body['device_details'], 'Vivo e23 | Android 13.5');
+        expect(body['lat'], 33.570435);
+        expect(body['lon'], 73.1407564);
+        expect(body['changes'], [
+          {
+            'attendancedetail_id': 56,
+            'old_value': '11:50:00',
+            'new_value': '10:00:00',
+          },
+          {
+            'attendancedetail_id': 57,
+            'old_value': '13:00:00',
+            'new_value': '12:00:00',
+          },
+          {
+            'attendancedetail_id': 58,
+            'old_value': '14:00:00',
+            'new_value': '13:00:00',
+          },
+          {
+            'attendancedetail_id': 59,
+            'old_value': '17:00:00',
+            'new_value': '18:00:00',
+          },
+        ]);
+        expect((body['change_requests'] as List), hasLength(4));
+        expect(
+          (body['changes'] as List).every(
+            (row) =>
+                !row['old_value'].toString().contains('AM') &&
+                !row['old_value'].toString().contains('PM') &&
+                !row['new_value'].toString().contains('AM') &&
+                !row['new_value'].toString().contains('PM'),
+          ),
+          isTrue,
+        );
       },
     );
 
@@ -107,7 +128,7 @@ void main() {
       expect(body['changes'], isEmpty);
     });
 
-    test('create-day change requests omit id and detail ids', () {
+    test('drops change rows that have no attendance detail id', () {
       final body = AttendanceService.editRequestBody(
         attendanceId: null,
         deviceDetails: 'iPhone',
@@ -132,11 +153,8 @@ void main() {
 
       expect(body.containsKey('id'), isFalse);
       expect(body['date'], '2026-09-03');
-      expect(body['change_requests'], hasLength(2));
-      expect(
-        (body['changes'] as List).first.containsKey('attendancedetail_id'),
-        isFalse,
-      );
+      expect(body['changes'], isEmpty);
+      expect(body.containsKey('change_requests'), isFalse);
     });
   });
 
@@ -170,6 +188,98 @@ void main() {
       expect(body['events'], [
         {'type': 'checkin', 'time': '09:00:00'},
         {'type': 'checkout', 'time': '19:00:00'},
+      ]);
+    });
+
+    test('parses check_in type aliases and attendance_detail_id', () {
+      final data = AttendanceDetailsData.fromJson({
+        'date': '2026-09-02',
+        'attendance_id': 90,
+        'attendance_details': [
+          {
+            'attendance_detail_id': 701,
+            'type': 'check_in',
+            'attendance_date': '2026-09-02',
+            'attendance_time': '14:00:00',
+          },
+          {
+            'id': 702,
+            'type': 'break_out',
+            'attendance_date': '2026-09-02',
+            'attendance_time': '15:00:00',
+          },
+          {
+            'id': 703,
+            'type': 'break_in',
+            'attendance_date': '2026-09-02',
+            'attendance_time': '16:30:00',
+          },
+          {
+            'id': 704,
+            'type': 'check_out',
+            'attendance_date': '2026-09-02',
+            'attendance_time': '21:00:00',
+          },
+        ],
+      });
+
+      expect(data.details, hasLength(4));
+      expect(data.details.map((d) => d.id).toList(), [
+        '701',
+        '702',
+        '703',
+        '704',
+      ]);
+      expect(data.details.first.type, AttendanceHisotryEventType.checkIn);
+      expect(data.details[1].type, AttendanceHisotryEventType.breakStart);
+      expect(data.details[2].type, AttendanceHisotryEventType.breakEnd);
+      expect(data.details.last.type, AttendanceHisotryEventType.checkOut);
+    });
+
+    test('ignores local/clock placeholder ids for edit payloads', () {
+      expect(AttendanceDetailItem.serverDetailId('701'), '701');
+      expect(AttendanceDetailItem.serverDetailId('701.0'), '701');
+      expect(AttendanceDetailItem.serverDetailId('server_checkIn_12'), isNull);
+      expect(AttendanceDetailItem.serverDetailId('local_123'), isNull);
+      expect(AttendanceDetailItem.serverDetailId(''), isNull);
+    });
+
+    test('edit payload drops rows without a detail id from changes', () {
+      final body = AttendanceService.editRequestBody(
+        attendanceId: 90,
+        deviceDetails: 'iPhone',
+        lat: 33.57,
+        lon: 73.14,
+        date: '2026-09-02',
+        checkIn: '14:00:00',
+        checkOut: '21:00:00',
+        breakStart: '15:00:00',
+        breakEnd: '16:30:00',
+        changes: const [
+          AttendanceChangeRequestPayload(
+            attendanceDetailId: '701',
+            oldValue: '2:00 PM',
+            newValue: '1:29 AM',
+            type: 'check in',
+          ),
+          AttendanceChangeRequestPayload(
+            oldValue: '10:00 AM',
+            newValue: '7:59 PM',
+            type: 'break out',
+          ),
+        ],
+      );
+
+      expect(body['id'], 90);
+      expect(body['attendance_id'], 90);
+      expect(body['date'], '2026-09-02');
+      expect(body['check_in'], '14:00:00');
+      expect(body['changes'], [
+        {
+          'attendancedetail_id': 701,
+          'old_value': '14:00:00',
+          'new_value': '01:29:00',
+        },
       ]);
     });
 
@@ -255,8 +365,10 @@ void main() {
 
       expect(scheduled.checkIn, const TimeOfDay(hour: 9, minute: 0));
       expect(scheduled.checkOut, const TimeOfDay(hour: 18, minute: 0));
-      expect(scheduled.breakEnd.hour * 60 + scheduled.breakEnd.minute,
-          scheduled.breakStart.hour * 60 + scheduled.breakStart.minute + 30);
+      expect(
+        scheduled.breakEnd.hour * 60 + scheduled.breakEnd.minute,
+        scheduled.breakStart.hour * 60 + scheduled.breakStart.minute + 30,
+      );
     });
   });
 }

@@ -313,6 +313,10 @@ class AppText {
     return TextWidget(
       text: text,
       size: 80,
+      lineHeight: 1.3,
+      maxLines: 1,
+      textOverflow: TextOverflow.visible,
+      paddingTop: 6,
       fontFamily: fontFamily ?? AppFonts.Poppins,
       weight: weight,
       color: color ?? kBlack,
