@@ -26,7 +26,6 @@ import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
-import 'package:obecno/features/clock/services/sync_service.dart';
 
 import 'package:obecno/widgets/check_in_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -50,13 +49,10 @@ class ClockScreenState extends State<ClockScreen>
 
   StreamSubscription<bool>? _connectivitySub;
   bool _isOffline = false;
-  bool _offlineToastShown = false;
   Timer? _permissionPollTimer;
   Timer? _statusSyncTimer;
   bool _permissionDialogShowing = false;
   bool _notificationNudgeShown = false;
-  SyncState? _lastHandledSyncState;
-  void Function(SyncState)? _previousSyncStateHandler;
 
   /// How often the open Clock screen re-fetches today's attendance status
   /// so actions done on another device (web/PC) appear without a manual refresh.
@@ -125,13 +121,10 @@ class ClockScreenState extends State<ClockScreen>
 
     unawaited(_controller.loadPolicyFrom(bindings.companyPolicyService));
 
-    // Header follows the phone clock. Punch timestamps still come from
-    // trusted time so a changed device clock cannot rewrite attendance.
-    _ticker.now = () => _controller.phoneNow;
+    // Header follows trusted/monotonic time (login + elapsed realtime).
+    // Punch timestamps already use the same source.
+    _ticker.now = () => _controller.clockNow;
     _ticker.start();
-
-    _previousSyncStateHandler = bindings.clockSyncService.onStateChanged;
-    bindings.clockSyncService.onStateChanged = _onSyncStateChanged;
 
     _startMonitoring();
     _entranceController.forward();
@@ -139,34 +132,6 @@ class ClockScreenState extends State<ClockScreen>
       unawaited(bindings.reminderSettingsProvider.activateFromClock());
     }
     if (mounted) setState(() {});
-  }
-
-  void _onSyncStateChanged(SyncState state) {
-    _previousSyncStateHandler?.call(state);
-    if (!mounted || !_isActive) return;
-    if (state == _lastHandledSyncState) return;
-
-    if (state == SyncState.syncing) {
-      _lastHandledSyncState = state;
-      ToastHelper.syncing(context);
-      return;
-    }
-
-    if (state == SyncState.success &&
-        _lastHandledSyncState == SyncState.syncing) {
-      _lastHandledSyncState = state;
-      ToastHelper.synced(context, success: true);
-      return;
-    }
-
-    if (state == SyncState.failure &&
-        _lastHandledSyncState == SyncState.syncing) {
-      _lastHandledSyncState = state;
-      ToastHelper.synced(context, success: false);
-      return;
-    }
-
-    _lastHandledSyncState = state;
   }
 
   void _maybeShowLocationAlert() {
@@ -205,10 +170,10 @@ class ClockScreenState extends State<ClockScreen>
   Future<void> _hydrateConnectivity() async {
     final online = await ConnectivityService.isConnected();
     if (!mounted) return;
-    _applyConnectivity(online, announce: false);
+    _applyConnectivity(online);
   }
 
-  void _applyConnectivity(bool online, {bool announce = true}) {
+  void _applyConnectivity(bool online) {
     if (!mounted) return;
 
     if (!online) {
@@ -217,17 +182,12 @@ class ClockScreenState extends State<ClockScreen>
         _isOffline = true;
         setState(() {});
       }
-      if (announce && becameOffline && !_offlineToastShown) {
-        _offlineToastShown = true;
-        ToastHelper.noInternet(context);
-      }
       return;
     }
 
     final wasOffline = _isOffline;
     if (wasOffline) {
       _isOffline = false;
-      _offlineToastShown = false;
       setState(() {});
     }
     // Syncing / synced toasts are driven by SyncService.onStateChanged.
@@ -437,18 +397,12 @@ class ClockScreenState extends State<ClockScreen>
     _connectivitySub?.cancel();
     _permissionPollTimer?.cancel();
     _statusSyncTimer?.cancel();
-    if (identical(
-      bindings.clockSyncService.onStateChanged,
-      _onSyncStateChanged,
-    )) {
-      bindings.clockSyncService.onStateChanged = _previousSyncStateHandler;
-    }
     _entranceController.dispose();
     _companyGlowController.dispose();
     super.dispose();
   }
 
-  /// Header clock: 8:17 — AM/PM is drawn separately so it is not clipped.
+  /// Header clock: 8:17 (AM/PM lives on the date / punch times, not here).
   String _formattedClock(DateTime now) {
     final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
     final minute = now.minute.toString().padLeft(2, '0');
@@ -575,40 +529,25 @@ class ClockScreenState extends State<ClockScreen>
     }
   }
 
+  void _showTapFailureMessage(SyncedClockScreenController syncedController) {
+    final msg = syncedController.lastServerMessage;
+    if (msg == null || msg.isEmpty) return;
+    syncedController.lastServerMessage = null;
+    ToastHelper.error(context, message: msg);
+  }
+
   Future<void> _onMainTap() async {
     final result = await _controller.handleMainTap();
     if (!mounted) return;
     _showResultToast(result);
-
-    final syncedController = _controller as SyncedClockScreenController;
-    if (syncedController.lastServerMessage != null) {
-      final msg = syncedController.lastServerMessage!;
-      syncedController.lastServerMessage = null;
-      if (msg == AppStrings.locationPermissionRequired ||
-          msg == AppStrings.turnOnLocationServices ||
-          msg == AppStrings.permissionsRequired ||
-          msg.contains('Unable to get your location')) {
-        ToastHelper.error(context, message: msg);
-      }
-    }
+    _showTapFailureMessage(_controller as SyncedClockScreenController);
   }
 
   Future<void> _onBreakTap() async {
     final result = await _controller.handleBreakTap();
     if (!mounted) return;
     _showResultToast(result);
-
-    final syncedController = _controller as SyncedClockScreenController;
-    if (syncedController.lastServerMessage != null) {
-      final msg = syncedController.lastServerMessage!;
-      syncedController.lastServerMessage = null;
-      if (msg == AppStrings.locationPermissionRequired ||
-          msg == AppStrings.turnOnLocationServices ||
-          msg == AppStrings.permissionsRequired ||
-          msg.contains('Unable to get your location')) {
-        ToastHelper.error(context, message: msg);
-      }
-    }
+    _showTapFailureMessage(_controller as SyncedClockScreenController);
   }
 
   ({Color color, String text, bool showBreakBadge}) _configFor(
@@ -642,7 +581,7 @@ class ClockScreenState extends State<ClockScreen>
         return Opacity(
           opacity: animation.value,
           child: Transform.translate(
-            offset: Offset(0, (1 - animation.value) * -18),
+            offset: Offset(0, (1 - animation.value) * 18),
             child: child,
           ),
         );
@@ -693,192 +632,166 @@ class ClockScreenState extends State<ClockScreen>
 
     return Scaffold(
       backgroundColor: kbackground1,
-      body: Column(
-        children: [
-          if (_isOffline) ...[
-            SizedBox(height: MediaQuery.paddingOf(context).top),
-            _offlineBanner(),
-          ],
-          Expanded(
-            child: Padding(
-              padding: AppSizes.DEFAULT2,
-              child: ListenableBuilder(
-                listenable: _controller,
-                builder: (context, _) {
-                  final status = _controller.effectiveStatus;
-                  final config = _configFor(status);
-                  final isOnBreak = _controller.isOnBreak;
-                  final syncedController =
-                      _controller as SyncedClockScreenController;
-                  final companyLabel =
-                      _controller.selectedCompanyName.isNotEmpty
-                      ? _controller.selectedCompanyName
-                      : bindings.authProvider.companyName;
+      body: Padding(
+        padding: AppSizes.page(context),
+        child: ListenableBuilder(
+          listenable: _controller,
+          builder: (context, _) {
+            final status = _controller.effectiveStatus;
+            final config = _configFor(status);
+            final isOnBreak = _controller.isOnBreak;
+            final syncedController = _controller as SyncedClockScreenController;
+            final companyLabel = _controller.selectedCompanyName.isNotEmpty
+                ? _controller.selectedCompanyName
+                : bindings.authProvider.companyName;
 
-                  final List<Widget> items = [
-                    ButtonAnimations.press(
-                      onTap: () {},
-                      child: Row(
-                        spacing: 5,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          AppText.p3(
-                            companyLabel.isNotEmpty ? companyLabel : 'Company',
-                            color: kBlack,
-                            weight: FontWeight.w600,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-                    if (isOnBreak) ...[
-                      const SizedBox(height: 40),
-                      AppText.p1(
-                        "Break started at ${_formattedTime(syncedController.breakStartedAt ?? _ticker.value)}",
-                        color: kYellowColorLight,
-                        weight: FontWeight.w400,
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-
-                    ValueListenableBuilder<DateTime>(
-                      valueListenable: _ticker,
-                      builder: (context, now, _) => Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              AppText.bigNumber3(
-                                _formattedClock(now),
-                                weight: FontWeight.w400,
-                              ),
-                            ],
-                          ),
-                          if (syncedController.rebootDetected ||
-                              syncedController.sessionEndedByReboot) ...[
-                            const SizedBox(height: 8),
-                            AppText.p2(
-                              TrustedTimeMessages.sessionEnded,
-                              color: kredColor,
-                              weight: FontWeight.w500,
-                              align: TextAlign.center,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    if (!isOnBreak) ...[
-                      const SizedBox(height: 8),
-                      ValueListenableBuilder<DateTime>(
-                        valueListenable: _ticker,
-                        builder: (context, now, _) => AppText.p3(
-                          AttendanceFormat.weekdayDate(now),
-                          color: kGreyColor,
-                          weight: FontWeight.w500,
+            final List<Widget> items = [
+              SizedBox(
+                height: 42,
+                child: Center(
+                  child: ButtonAnimations.press(
+                    onTap: () {},
+                    child: Row(
+                      spacing: 5,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AppText.p3(
+                          companyLabel.isNotEmpty ? companyLabel : 'Company',
+                          color: kBlack,
+                          weight: FontWeight.w600,
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    CheckInButton(
-                      size: 250,
-                      color: config.color,
-                      text: config.text,
-                      enabled: _controller.isButtonEnabled,
-                      showBreakBadge: config.showBreakBadge,
-                      breakBadgeText: "Break",
-                      breakBadgeColor: kYellowColor,
-                      onTap: _onMainTap,
-                      onBreakTap: _onBreakTap,
-                      isOnBreak: status == AttendanceDayStatus.onBreak,
-                      isActive: _isActive,
-                      isLoading: _controller.isProcessing,
+                      ],
                     ),
-                    const SizedBox(height: 30),
-
-                    if (isOnBreak) _buildBreakDurationInfo(syncedController),
-                    if (!isOnBreak) ...[
-                      ButtonAnimations.press(
-                        onTap: _openLocationSheet,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CommonImageView(
-                              imagePath: Assets.imagesLocationDot,
-                              height: 12,
-                            ),
-                            const SizedBox(width: 6),
-                            AppText.p2("Location:", color: kGreyColor),
-                            const SizedBox(width: 6),
-                            AppText.p2(
-                              _controller.isInRange
-                                  ? _controller.selectedLocationName
-                                  : _controller.selectedLocationName.isNotEmpty
-                                  ? "Not in [${_controller.selectedLocationName}] range"
-                                  : "Not in range",
-                              color: _controller.isInRange
-                                  ? kPrimaryColor
-                                  : kredColor,
-                              weight: FontWeight.w600,
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(
-                              size: 20,
-                              weight: 3,
-                              CupertinoIcons.chevron_down,
-                              color: isOnBreak
-                                  ? kGreyContainerGreyColor2
-                                  : kBlack,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 30),
-                    (!isOnBreak && _controller.hasAnyEventToday)
-                        ? AttendanceCard(
-                            day: syncedController.phoneNow,
-                            events: _controller.events,
-                            apiClient: bindings.apiClient,
-                            userEmail: bindings.userEmail,
-                            clockNow: () => syncedController.phoneNow,
-                            onEditAttendance: () {},
-                            onTodayEventsLoaded: _controller.mergeTodayEvents,
-                          )
-                        : const SizedBox.shrink(),
-                    const SizedBox(height: 30),
-                  ];
-
-                  return ListView(
-                    children: [
-                      for (int i = 0; i < items.length; i++)
-                        _staggered(i, items.length, items[i]),
-                    ],
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _offlineBanner() {
-    return ColoredBox(
-      color: const Color(0xFFFFE6A1),
-      child: SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          child: AppText.p2(
-            'No internet connection',
-            color: kredColor,
-            weight: FontWeight.w500,
-            align: TextAlign.center,
-          ),
+              const SizedBox(height: 20),
+              if (isOnBreak) ...[
+                const SizedBox(height: 30),
+                AppText.p1(
+                  "Break started at ${_formattedTime(syncedController.breakStartedAt ?? _ticker.value)}",
+                  color: kYellowColorLight,
+                  weight: FontWeight.w400,
+                ),
+                const SizedBox(height: 4),
+              ],
+
+              ValueListenableBuilder<DateTime>(
+                valueListenable: _ticker,
+                builder: (context, now, _) => Column(
+                  children: [
+                    // Baseline Rows clip large Poppins glyphs; keep the
+                    // clock as a standalone text widget with room to paint.
+                    AppText.bigNumber3(
+                      _formattedClock(now),
+                      weight: FontWeight.w400,
+                    ),
+                    if (syncedController.rebootDetected ||
+                        syncedController.sessionEndedByReboot) ...[
+                      const SizedBox(height: 8),
+                      AppText.p2(
+                        TrustedTimeMessages.sessionEnded,
+                        color: kredColor,
+                        weight: FontWeight.w500,
+                        align: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!isOnBreak) ...[
+                const SizedBox(height: 8),
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _ticker,
+                  builder: (context, now, _) => AppText.p3(
+                    AttendanceFormat.weekdayDate(now),
+                    color: kGreyColor,
+                    weight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+              CheckInButton(
+                size: 250,
+                color: config.color,
+                text: config.text,
+                enabled: _controller.isButtonEnabled,
+                showBreakBadge: config.showBreakBadge,
+                breakBadgeText: "Break",
+                breakBadgeColor: kYellowColor,
+                onTap: _onMainTap,
+                onBreakTap: _onBreakTap,
+                isOnBreak: status == AttendanceDayStatus.onBreak,
+                isActive: _isActive,
+                isLoading: _controller.isProcessing,
+              ),
+              const SizedBox(height: 30),
+
+              if (isOnBreak) _buildBreakDurationInfo(syncedController),
+              if (!isOnBreak) ...[
+                ButtonAnimations.press(
+                  onTap: _openLocationSheet,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CommonImageView(
+                        imagePath: Assets.imagesLocationDot,
+                        height: 12,
+                      ),
+                      const SizedBox(width: 6),
+                      AppText.p2("Location:", color: kGreyColor),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: AppText.p2(
+                          _controller.isInRange
+                              ? _controller.selectedLocationName
+                              : _controller.selectedLocationName.isNotEmpty
+                              ? "Not in [${_controller.selectedLocationName}] range"
+                              : "Not in range",
+                          color: _controller.isInRange
+                              ? kPrimaryColor
+                              : kredColor,
+                          weight: FontWeight.w600,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        size: 20,
+                        weight: 3,
+                        CupertinoIcons.chevron_down,
+                        color: isOnBreak ? kGreyContainerGreyColor2 : kBlack,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 30),
+              (!isOnBreak && _controller.hasAnyEventToday)
+                  ? AttendanceCard(
+                      day: syncedController.phoneNow,
+                      events: _controller.events,
+                      apiClient: bindings.apiClient,
+                      userEmail: bindings.userEmail,
+                      clockNow: () => syncedController.phoneNow,
+                      onEditAttendance: () {},
+                      onTodayEventsLoaded: _controller.mergeTodayEvents,
+                    )
+                  : const SizedBox.shrink(),
+              const SizedBox(height: 30),
+            ];
+
+            return ListView(
+              clipBehavior: Clip.none,
+              padding: EdgeInsets.zero,
+              children: [
+                for (int i = 0; i < items.length; i++)
+                  _staggered(i, items.length, items[i]),
+              ],
+            );
+          },
         ),
       ),
     );

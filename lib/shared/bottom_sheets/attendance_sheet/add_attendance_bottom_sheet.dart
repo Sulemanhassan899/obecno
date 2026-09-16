@@ -9,8 +9,10 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/employee_module/attendance/services/scheduled_attendance_times.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/widgets/bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -68,16 +70,26 @@ class AddAttendanceBottomSheet {
     var resolvedBreakStartId = breakStartDetailId;
     var resolvedBreakEndId = breakEndDetailId;
 
-    if (isCreating) {
+    final needsDetails =
+        isCreating ||
+        resolvedAttendanceId == null ||
+        AttendanceDetailItem.serverDetailId(resolvedCheckInId) == null ||
+        AttendanceDetailItem.serverDetailId(resolvedCheckOutId) == null ||
+        AttendanceDetailItem.serverDetailId(resolvedBreakStartId) == null ||
+        AttendanceDetailItem.serverDetailId(resolvedBreakEndId) == null;
+
+    if (needsDetails) {
       final scheduled = await ScheduledAttendanceTimes.load(
         apiClient: apiClient,
         day: day,
         employeeUserId: employeeUserId,
       );
-      resolvedCheckIn ??= scheduled.checkIn;
-      resolvedCheckOut ??= scheduled.checkOut;
-      resolvedBreakStart ??= scheduled.breakStart;
-      resolvedBreakEnd ??= scheduled.breakEnd;
+      if (isCreating) {
+        resolvedCheckIn ??= scheduled.checkIn;
+        resolvedCheckOut ??= scheduled.checkOut;
+        resolvedBreakStart ??= scheduled.breakStart;
+        resolvedBreakEnd ??= scheduled.breakEnd;
+      }
       resolvedAttendanceId ??= scheduled.attendanceId;
       resolvedCheckInId ??= scheduled.checkInDetailId;
       resolvedCheckOutId ??= scheduled.checkOutDetailId;
@@ -85,11 +97,14 @@ class AddAttendanceBottomSheet {
       resolvedBreakEndId ??= scheduled.breakEndDetailId;
     }
 
+    final applyNow =
+        applyImmediately ||
+        bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+
     final contentKey = GlobalKey<_AttendanceContentState>();
 
     return CommonBottomSheet.show<AddAttendanceSaveResult>(
       context: context,
-      height: MediaQuery.of(context).size.height * 0.8,
       buttonText: "Save",
       buttonColor: kBlack,
       buttonFontColor: kWhite,
@@ -103,21 +118,30 @@ class AddAttendanceBottomSheet {
           day: day,
           apiClient: apiClient,
           userEmail: userEmail,
-          initialCheckIn: resolvedCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
+          initialCheckIn:
+              resolvedCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
           initialCheckOut:
               resolvedCheckOut ?? const TimeOfDay(hour: 17, minute: 0),
           initialBreakStart:
               resolvedBreakStart ?? const TimeOfDay(hour: 10, minute: 0),
           initialBreakEnd:
               resolvedBreakEnd ?? const TimeOfDay(hour: 10, minute: 30),
-          checkInDetailId: resolvedCheckInId,
-          checkOutDetailId: resolvedCheckOutId,
-          breakStartDetailId: resolvedBreakStartId,
-          breakEndDetailId: resolvedBreakEndId,
+          checkInDetailId: AttendanceDetailItem.serverDetailId(
+            resolvedCheckInId,
+          ),
+          checkOutDetailId: AttendanceDetailItem.serverDetailId(
+            resolvedCheckOutId,
+          ),
+          breakStartDetailId: AttendanceDetailItem.serverDetailId(
+            resolvedBreakStartId,
+          ),
+          breakEndDetailId: AttendanceDetailItem.serverDetailId(
+            resolvedBreakEndId,
+          ),
           attendanceId: resolvedAttendanceId,
           employeeUserId: employeeUserId,
           employeeName: employeeName,
-          applyImmediately: applyImmediately,
+          applyImmediately: applyNow,
           isCreating: isCreating,
           hadInitialCheckIn: hadInitialCheckIn || initialCheckIn != null,
           hadInitialCheckOut: hadInitialCheckOut || initialCheckOut != null,
@@ -182,8 +206,6 @@ class _AttendanceContent extends StatefulWidget {
 
 class _AttendanceContentState extends State<_AttendanceContent>
     with TickerProviderStateMixin {
-  final ScrollController _scrollController = ScrollController();
-
   final Map<String, GlobalKey> _itemKeys = {
     "checkin": GlobalKey(),
     "checkout": GlobalKey(),
@@ -210,17 +232,16 @@ class _AttendanceContentState extends State<_AttendanceContent>
     breakEnd = widget.initialBreakEnd;
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   String formatTime(TimeOfDay t) {
     final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
     final min = t.minute.toString().padLeft(2, '0');
     final period = t.period == DayPeriod.am ? "AM" : "PM";
     return "$hour:$min $period";
+  }
+
+  String clockHms(TimeOfDay t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}:00';
   }
 
   /// 12:25 AM → hour 0, 8:00 PM → hour 20, 12:00 PM → hour 12.
@@ -262,24 +283,9 @@ class _AttendanceContentState extends State<_AttendanceContent>
     final contextKey = _itemKeys[fieldKey]?.currentContext;
     if (contextKey == null || !contextKey.mounted) return;
 
-    final renderObject = contextKey.findRenderObject();
-    if (renderObject == null || renderObject is! RenderBox) return;
-
-    final box = renderObject;
-    final position = box.localToGlobal(Offset.zero);
-
-    final screenHeight = MediaQuery.of(context).size.height;
-    final itemCenter = position.dy + (box.size.height / 2);
-
-    final offset = _scrollController.offset + (itemCenter - screenHeight / 2);
-
-    if (!_scrollController.hasClients) return;
-
-    _scrollController.animateTo(
-      offset.clamp(
-        _scrollController.position.minScrollExtent,
-        _scrollController.position.maxScrollExtent,
-      ),
+    await Scrollable.ensureVisible(
+      contextKey,
+      alignment: 0.35,
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
     );
@@ -357,14 +363,37 @@ class _AttendanceContentState extends State<_AttendanceContent>
     }
   }
 
-  Future<int?> _resolveAttendanceId() async {
+  Future<
+    ({
+      int? attendanceId,
+      String? checkInDetailId,
+      String? checkOutDetailId,
+      String? breakStartDetailId,
+      String? breakEndDetailId,
+    })
+  >
+  _resolveDayDetails() async {
     try {
-      final response = await AttendanceService(
-        widget.apiClient,
-      ).getAttendanceDetails(date: _yyyyMMdd(widget.day));
-      return response.data?.attendanceId;
+      final scheduled = await ScheduledAttendanceTimes.load(
+        apiClient: widget.apiClient,
+        day: widget.day,
+        employeeUserId: widget.employeeUserId,
+      );
+      return (
+        attendanceId: scheduled.attendanceId,
+        checkInDetailId: scheduled.checkInDetailId,
+        checkOutDetailId: scheduled.checkOutDetailId,
+        breakStartDetailId: scheduled.breakStartDetailId,
+        breakEndDetailId: scheduled.breakEndDetailId,
+      );
     } catch (_) {
-      return null;
+      return (
+        attendanceId: null,
+        checkInDetailId: null,
+        checkOutDetailId: null,
+        breakStartDetailId: null,
+        breakEndDetailId: null,
+      );
     }
   }
 
@@ -408,42 +437,136 @@ class _AttendanceContentState extends State<_AttendanceContent>
     final payloads = <AttendanceChangeRequestPayload>[];
     final localRequests = <AttendanceEditRequest>[];
 
+    var checkInId = AttendanceDetailItem.serverDetailId(widget.checkInDetailId);
+    var checkOutId = AttendanceDetailItem.serverDetailId(
+      widget.checkOutDetailId,
+    );
+    var breakStartId = AttendanceDetailItem.serverDetailId(
+      widget.breakStartDetailId,
+    );
+    var breakEndId = AttendanceDetailItem.serverDetailId(
+      widget.breakEndDetailId,
+    );
+    var attendanceId = widget.attendanceId;
+    var checkInHms = clockHms(widget.initialCheckIn);
+    var checkOutHms = clockHms(widget.initialCheckOut);
+    var breakStartHms = clockHms(widget.initialBreakStart);
+    var breakEndHms = clockHms(widget.initialBreakEnd);
+
+    final attendanceService = AttendanceService(widget.apiClient);
+    try {
+      final snapshot = await attendanceService.loadPunchSnapshot(
+        _yyyyMMdd(widget.day),
+      );
+      attendanceId ??= snapshot.attendanceId;
+      checkInId ??= snapshot.checkInId;
+      checkOutId ??= snapshot.checkOutId;
+      breakStartId ??= snapshot.breakStartId;
+      breakEndId ??= snapshot.breakEndId;
+      checkInHms = snapshot.checkInHms ?? checkInHms;
+      checkOutHms = snapshot.checkOutHms ?? checkOutHms;
+      breakStartHms = snapshot.breakStartHms ?? breakStartHms;
+      breakEndHms = snapshot.breakEndHms ?? breakEndHms;
+    } catch (_) {}
+
+    if (attendanceId == null ||
+        checkInId == null ||
+        checkOutId == null ||
+        ((widget.hadInitialBreakStart ||
+                _timeChanged(widget.initialBreakStart, breakStart)) &&
+            breakStartId == null) ||
+        ((widget.hadInitialBreakEnd ||
+                _timeChanged(widget.initialBreakEnd, breakEnd)) &&
+            breakEndId == null)) {
+      final resolved = await _resolveDayDetails();
+      attendanceId ??= resolved.attendanceId;
+      checkInId ??= resolved.checkInDetailId;
+      checkOutId ??= resolved.checkOutDetailId;
+      breakStartId ??= resolved.breakStartDetailId;
+      breakEndId ??= resolved.breakEndDetailId;
+    }
+
+    // Employee edit/add requests need a root attendance `id` and a detail id
+    // on every `changes` row. Previous-day edits often have punches but no
+    // numeric detail ids from the month list — mint those rows too.
+    if (!widget.applyImmediately) {
+      try {
+        final deviceDetails =
+            (await bindings.deviceInfoService.collect()).deviceDetails;
+        final gps = await _currentLatLon();
+        final mint = <String>[];
+        final mintCheckIn =
+            widget.isCreating ||
+            widget.hadInitialCheckIn ||
+            _timeChanged(widget.initialCheckIn, checkIn);
+        final mintCheckOut =
+            widget.isCreating ||
+            widget.hadInitialCheckOut ||
+            _timeChanged(widget.initialCheckOut, checkOut);
+        final mintBreakStart =
+            widget.isCreating ||
+            widget.hadInitialBreakStart ||
+            _timeChanged(widget.initialBreakStart, breakStart);
+        final mintBreakEnd =
+            widget.isCreating ||
+            widget.hadInitialBreakEnd ||
+            _timeChanged(widget.initialBreakEnd, breakEnd);
+        if (checkInId == null && mintCheckIn) mint.add('checkin');
+        if (checkOutId == null && mintCheckOut) mint.add('checkout');
+        if (breakStartId == null && mintBreakStart) mint.add('breakout');
+        if (breakEndId == null && mintBreakEnd) mint.add('breakin');
+        if (attendanceId == null || mint.isNotEmpty) {
+          final ensured = await attendanceService.ensureAttendanceRecord(
+            date: _yyyyMMdd(widget.day),
+            deviceDetails: deviceDetails,
+            lat: gps.lat,
+            lon: gps.lon,
+            attendanceId: attendanceId,
+            mintActions: mint,
+          );
+          attendanceId = ensured.attendanceId ?? attendanceId;
+          checkInId = ensured.checkInId ?? checkInId;
+          checkOutId = ensured.checkOutId ?? checkOutId;
+          breakStartId = ensured.breakStartId ?? breakStartId;
+          breakEndId = ensured.breakEndId ?? breakEndId;
+          checkInHms = ensured.checkInHms ?? checkInHms;
+          checkOutHms = ensured.checkOutHms ?? checkOutHms;
+          breakStartHms = ensured.breakStartHms ?? breakStartHms;
+          breakEndHms = ensured.breakEndHms ?? breakEndHms;
+        }
+      } catch (_) {}
+    }
+
     void maybeAdd({
       required String eventType,
       required String? detailId,
       required TimeOfDay initial,
       required TimeOfDay updated,
+      required String fallbackHms,
       bool force = false,
     }) {
       if (!force && !_timeChanged(initial, updated)) return;
+
+      final serverId = AttendanceDetailItem.serverDetailId(detailId);
+      // `/edit` rejects the whole `changes` array if any row is missing
+      // `attendancedetail_id` (e.g. default break times on a day with none).
+      if (serverId == null) return;
 
       localRequests.add(
         AttendanceEditRequest(
           status: AttendanceEditRequestStatus.pending,
           requestedAt: now,
-          originalTime: formatTime(initial),
+          originalTime: widget.isCreating ? '--' : formatTime(initial),
           newTime: formatTime(updated),
           eventType: eventType,
         ),
       );
 
-      if (detailId == null || detailId.isEmpty) {
-        if (!widget.isCreating) return;
-        payloads.add(
-          AttendanceChangeRequestPayload(
-            oldValue: '--',
-            newValue: formatTime(updated),
-            type: _apiEventType(eventType),
-          ),
-        );
-        return;
-      }
-
       payloads.add(
         AttendanceChangeRequestPayload(
-          attendanceDetailId: detailId,
-          oldValue: formatTime(initial),
-          newValue: formatTime(updated),
+          attendanceDetailId: serverId,
+          oldValue: fallbackHms,
+          newValue: clockHms(updated),
           type: _apiEventType(eventType),
         ),
       );
@@ -451,27 +574,31 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
     maybeAdd(
       eventType: 'checkIn',
-      detailId: widget.checkInDetailId,
+      detailId: checkInId,
       initial: widget.initialCheckIn,
       updated: checkIn,
+      fallbackHms: checkInHms,
     );
     maybeAdd(
       eventType: 'breakStart',
-      detailId: widget.breakStartDetailId,
+      detailId: breakStartId,
       initial: widget.initialBreakStart,
       updated: breakStart,
+      fallbackHms: breakStartHms,
     );
     maybeAdd(
       eventType: 'breakEnd',
-      detailId: widget.breakEndDetailId,
+      detailId: breakEndId,
       initial: widget.initialBreakEnd,
       updated: breakEnd,
+      fallbackHms: breakEndHms,
     );
     maybeAdd(
       eventType: 'checkOut',
-      detailId: widget.checkOutDetailId,
+      detailId: checkOutId,
       initial: widget.initialCheckOut,
       updated: checkOut,
+      fallbackHms: checkOutHms,
     );
 
     if (widget.isCreating) {
@@ -479,18 +606,20 @@ class _AttendanceContentState extends State<_AttendanceContent>
       if (!added.contains('checkIn')) {
         maybeAdd(
           eventType: 'checkIn',
-          detailId: widget.checkInDetailId,
+          detailId: checkInId,
           initial: widget.initialCheckIn,
           updated: checkIn,
+          fallbackHms: checkInHms,
           force: true,
         );
       }
       if (!added.contains('checkOut')) {
         maybeAdd(
           eventType: 'checkOut',
-          detailId: widget.checkOutDetailId,
+          detailId: checkOutId,
           initial: widget.initialCheckOut,
           updated: checkOut,
+          fallbackHms: checkOutHms,
           force: true,
         );
       }
@@ -503,58 +632,49 @@ class _AttendanceContentState extends State<_AttendanceContent>
         case 'checkout':
           maybeAdd(
             eventType: 'checkOut',
-            detailId: widget.checkOutDetailId,
+            detailId: checkOutId,
             initial: widget.initialCheckOut,
             updated: checkOut,
+            fallbackHms: checkOutHms,
             force: true,
           );
           break;
         case 'breakstart':
           maybeAdd(
             eventType: 'breakStart',
-            detailId: widget.breakStartDetailId,
+            detailId: breakStartId,
             initial: widget.initialBreakStart,
             updated: breakStart,
+            fallbackHms: breakStartHms,
             force: true,
           );
           break;
         case 'breakend':
           maybeAdd(
             eventType: 'breakEnd',
-            detailId: widget.breakEndDetailId,
+            detailId: breakEndId,
             initial: widget.initialBreakEnd,
             updated: breakEnd,
+            fallbackHms: breakEndHms,
             force: true,
           );
           break;
         default:
           maybeAdd(
             eventType: 'checkIn',
-            detailId: widget.checkInDetailId,
+            detailId: checkInId,
             initial: widget.initialCheckIn,
             updated: checkIn,
+            fallbackHms: checkInHms,
             force: true,
           );
       }
     }
 
     try {
-      if (payloads.isEmpty && !widget.applyImmediately && !widget.isCreating) {
-        if (!mounted) return;
-        ToastHelper.error(
-          context,
-          message:
-              'No attendance detail found to update. Reopen the day and try again.',
-        );
-        setState(() => _isSaving = false);
-        return;
-      }
-
       final deviceDetails =
           (await bindings.deviceInfoService.collect()).deviceDetails;
       final gps = await _currentLatLon();
-      final attendanceId =
-          widget.attendanceId ?? await _resolveAttendanceId();
 
       String clock(TimeOfDay t) =>
           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
@@ -581,12 +701,30 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
       debugPrint(
         '[ManagerAttendance] handleSave userId=${widget.employeeUserId} '
-        'attendanceId=${widget.attendanceId} day=${widget.day} '
+        'attendanceId=$attendanceId day=${widget.day} '
         'dirty in=$checkInDirty out=$checkOutDirty '
         'break=$breakStartDirty/$breakEndDirty '
         'send in=$sendCheckIn(${checkIn.hour}:${checkIn.minute}) '
         'out=$sendCheckOut(${checkOut.hour}:${checkOut.minute})',
       );
+
+      final validPayloads = [
+        for (final payload in payloads)
+          if (payload.hasDetailId) payload,
+      ];
+
+      if (!widget.applyImmediately &&
+          (attendanceId == null || validPayloads.isEmpty)) {
+        if (!mounted) return;
+        ToastHelper.attendanceRequestSent(
+          context,
+          ok: false,
+          message:
+              'Could not submit this attendance request. Please try again.',
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
 
       final result = widget.applyImmediately
           ? await bindings.managerAttendanceService.saveEmployeeAttendance(
@@ -600,38 +738,25 @@ class _AttendanceContentState extends State<_AttendanceContent>
               checkOut: clockIf(checkOut, include: sendCheckOut),
               breakStart: clockIf(breakStart, include: sendBreakStart),
               breakEnd: clockIf(breakEnd, include: sendBreakEnd),
-              checkInDetailId: widget.checkInDetailId,
-              checkOutDetailId: widget.checkOutDetailId,
-              breakStartDetailId: widget.breakStartDetailId,
-              breakEndDetailId: widget.breakEndDetailId,
+              checkInDetailId: checkInId,
+              checkOutDetailId: checkOutId,
+              breakStartDetailId: breakStartId,
+              breakEndDetailId: breakEndId,
               changes: payloads,
             )
-          : (widget.isCreating && attendanceId == null)
-          ? await AttendanceService(widget.apiClient)
-                .submitCreateAttendanceRequest(
-                  date: _yyyyMMdd(widget.day),
-                  deviceDetails: deviceDetails,
-                  lat: gps.lat,
-                  lon: gps.lon,
-                  checkIn: clockIf(checkIn, include: sendCheckIn),
-                  checkOut: clockIf(checkOut, include: sendCheckOut),
-                  breakStart: clockIf(breakStart, include: sendBreakStart),
-                  breakEnd: clockIf(breakEnd, include: sendBreakEnd),
-                  userId: int.tryParse(bindings.authProvider.user?.id ?? ''),
-                )
-          : await AttendanceService(
-              widget.apiClient,
-            ).submitAttendanceChangeRequests(
+          : await attendanceService.submitAttendanceChangeRequests(
               attendanceId: attendanceId,
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
-              changes: payloads,
+              changes: validPayloads,
               date: _yyyyMMdd(widget.day),
-              checkIn: clockIf(checkIn, include: sendCheckIn),
-              checkOut: clockIf(checkOut, include: sendCheckOut),
-              breakStart: clockIf(breakStart, include: sendBreakStart),
-              breakEnd: clockIf(breakEnd, include: sendBreakEnd),
+              // Request only — punch fields would write the times onto the
+              // day before a manager approves.
+              checkIn: null,
+              checkOut: null,
+              breakStart: null,
+              breakEnd: null,
             );
 
       if (!mounted) return;
@@ -934,131 +1059,125 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _scrollController,
-      child: Column(
-        children: [
-          Row(
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            AppText.h5(_sheetTitle, weight: FontWeight.w600),
+            ButtonAnimations.press(
+              onTap: () => Navigator.pop(context),
+              child: const Icon(Icons.close),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              AppText.h5(_sheetTitle, weight: FontWeight.w600),
-              ButtonAnimations.press(
-                onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close),
-              ),
+              AppText.h5(_dateLabel(widget.day), weight: FontWeight.w600),
+              CommonImageView(imagePath: Assets.imagesCalendarDay, height: 16),
             ],
           ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: kWhite,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderColor),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                AppText.h5(_dateLabel(widget.day), weight: FontWeight.w600),
-                CommonImageView(
-                  imagePath: Assets.imagesCalendarDay,
-                  height: 16,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
+        ),
+        const SizedBox(height: 10),
 
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: kWhite,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderColor),
-            ),
-            child: Column(
-              children: [
-                timelineItem(
-                  title: "Check-in",
-                  value: formatTime(checkIn),
-                  fieldKey: "checkin",
-                  valueColor: Colors.green,
-                  onTap: () => openPicker("checkin"),
-                ),
-                timelineItem(
-                  title: "Check-out",
-                  value: formatTime(checkOut),
-                  fieldKey: "checkout",
-                  isLast: true,
-                  valueColor: Colors.red,
-                  onTap: () => openPicker("checkout"),
-                ),
-              ],
-            ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: kBorderColor),
           ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: kbackground,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                AppText.p2("Working hours", weight: FontWeight.w400),
-                AppText.p2(
-                  _calculateWorkingHours(), // ✅ FIX
-                  weight: FontWeight.w400,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            spacing: 5,
+          child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7, left: 6),
-                child: CommonImageView(
-                  imagePath: Assets.imagesMugHotYellow,
-                  height: 24,
-                ),
+              timelineItem(
+                title: "Check-in",
+                value: formatTime(checkIn),
+                fieldKey: "checkin",
+                valueColor: Colors.green,
+                onTap: () => openPicker("checkin"),
               ),
-              AppText.h5("Break"),
+              timelineItem(
+                title: "Check-out",
+                value: formatTime(checkOut),
+                fieldKey: "checkout",
+                isLast: true,
+                valueColor: Colors.red,
+                onTap: () => openPicker("checkout"),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: kWhite,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: kBorderColor),
-            ),
-            child: Column(
-              children: [
-                timelineItem(
-                  title: "Break start",
-                  value: formatTime(breakStart),
-                  fieldKey: "breakstart",
-                  valueColor: kYellowColor,
-                  onTap: () => openPicker("breakstart"),
-                ),
-                timelineItem(
-                  title: "Break end",
-                  value: formatTime(breakEnd),
-                  fieldKey: "breakend",
-                  isLast: true,
-                  valueColor: kBlack,
-                  onTap: () => openPicker("breakend"),
-                ),
-              ],
-            ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: kbackground,
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 30),
-        ],
-      ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppText.p2("Working hours", weight: FontWeight.w400),
+              AppText.p2(
+                _calculateWorkingHours(), // ✅ FIX
+                weight: FontWeight.w400,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          spacing: 5,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7, left: 6),
+              child: CommonImageView(
+                imagePath: Assets.imagesMugHotYellow,
+                height: 24,
+              ),
+            ),
+            AppText.h5("Break"),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            children: [
+              timelineItem(
+                title: "Break start",
+                value: formatTime(breakStart),
+                fieldKey: "breakstart",
+                valueColor: kYellowColor,
+                onTap: () => openPicker("breakstart"),
+              ),
+              timelineItem(
+                title: "Break end",
+                value: formatTime(breakEnd),
+                fieldKey: "breakend",
+                isLast: true,
+                valueColor: kBlack,
+                onTap: () => openPicker("breakend"),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
+      ],
     );
   }
 }

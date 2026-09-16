@@ -141,7 +141,6 @@ class SyncService {
       return;
     }
     final epochAtStart = _sessionEpochProvider?.call();
-    _setState(SyncState.syncing, epochAtStart);
 
     final stopwatch = Stopwatch()..start();
     var syncedCount = 0;
@@ -151,6 +150,9 @@ class SyncService {
     try {
       final pending = await _queueService.getPending();
       final queueSize = pending.length;
+      if (queueSize == 0) return;
+
+      _setState(SyncState.syncing, epochAtStart);
 
       _logEvent(
         'SYNC_START',

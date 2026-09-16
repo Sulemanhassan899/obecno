@@ -34,6 +34,8 @@ class ProfileField {
       value: (json['value'] ?? json['display'] ?? '—').toString(),
     );
   }
+
+  Map<String, dynamic> toJson() => {'label': label, 'value': value};
 }
 
 class EmployeeProfileModel {
@@ -120,7 +122,10 @@ class EmployeeProfileModel {
       if (raw == null) return null;
       if (raw is Map) {
         return fromRaw(
-          raw['name'] ?? raw['title'] ?? raw['label'] ?? raw['department_title'],
+          raw['name'] ??
+              raw['title'] ??
+              raw['label'] ??
+              raw['department_title'],
         );
       }
       final asString = raw.toString().trim();
@@ -197,6 +202,23 @@ class EmployeeProfileModel {
       departments: departments,
       profileFields: profileFields,
     );
+  }
+
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'photo_url': photoUrl,
+      'job_title': designation,
+      'department': department,
+      'department_id': departmentId,
+      'country_id': countryId,
+      'city_id': cityId,
+      'company': {'id': employeeCode, 'address': address},
+      'profile_fields': [for (final field in profileFields) field.toJson()],
+    };
   }
 
   static List<ProfileField> _buildProfileFields({

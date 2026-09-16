@@ -1,6 +1,21 @@
-export 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
-
+import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+
+final List<ManagerAttendanceModel> dummyManagerAttendance = [
+  const ManagerAttendanceModel(
+    name: 'Armando Predovic',
+    role: 'Owner',
+    team: 'Team',
+    checkIn: '09:02 AM',
+    checkOut: '05:07 PM',
+    status: 'working',
+  ),
+  const ManagerAttendanceModel(
+    name: 'Freddy Jast',
+    checkIn: '09:40 AM',
+    status: 'late',
+  ),
+];
 
 final List<ManagerEmployeeModel> dummyManagerEmployees = [
   const ManagerEmployeeModel(

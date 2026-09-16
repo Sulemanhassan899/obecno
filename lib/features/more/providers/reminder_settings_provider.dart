@@ -56,8 +56,13 @@ class ReminderSettingsProvider extends ChangeNotifier {
     hour: 14,
     minute: 30,
   );
+  TimeOfDay checkInMissedTime = const TimeOfDay(hour: 9, minute: 5);
+  TimeOfDay checkOutMissedTime = const TimeOfDay(hour: 18, minute: 5);
   int graceMinutes = 5;
+  int checkInMissedMinutes = 5;
+  int checkOutMissedMinutes = 5;
   int breakMinutes = 60;
+  int longerBreakMinutes = 60;
   int longAttendanceMinutes = defaultLongAttendanceMinutes;
   int get longAttendanceHours =>
       longAttendanceMinutes >= 60 ? longAttendanceMinutes ~/ 60 : 0;
@@ -74,6 +79,8 @@ class ReminderSettingsProvider extends ChangeNotifier {
   String breakTimeLabel = '01:25 PM';
   String breakEndedTimeLabel = '02:30 PM';
   String graceLabel = defaultGraceLabel;
+  String checkInMissedLabel = '09:05 AM';
+  String checkOutMissedLabel = '06:05 PM';
   String breakDurationLabel = defaultBreakLabel;
   String longerBreakLabel = defaultLongerBreakLabel;
   String longAttendanceLabel = defaultLongAttendanceLabel;
@@ -197,28 +204,55 @@ class ReminderSettingsProvider extends ChangeNotifier {
     await _rescheduleNotifications();
   }
 
-  Future<void> setLongAttendanceHours(int hoursOrMinutes) async {
+  Future<void> setLongAttendanceHours(int hoursOrMinutes) {
+    return setDuration(ReminderType.veryLongAttendance, hoursOrMinutes);
+  }
+
+  int defaultDurationMinutesFor(ReminderType type) {
+    switch (type) {
+      case ReminderType.veryLongAttendance:
+        return defaultLongAttendanceMinutes;
+      case ReminderType.longerBreak:
+        return 60;
+      case ReminderType.checkInMissed:
+      case ReminderType.checkOutMissed:
+        return graceMinutes <= 0 ? 5 : graceMinutes;
+      default:
+        return 60;
+    }
+  }
+
+  int durationMinutesFor(ReminderType type) {
+    final custom = _customMinutes[type];
+    if (custom == null) return defaultDurationMinutesFor(type);
+    if (type == ReminderType.veryLongAttendance) {
+      return ReminderCopy.durationMinutes(custom);
+    }
+    if (ReminderCopy.durationOptionsInMinutes.contains(custom)) return custom;
+    return custom;
+  }
+
+  Future<void> setDuration(ReminderType type, int hoursOrMinutes) async {
+    if (!type.canPickDuration) return;
     final value = ReminderCopy.snapDuration(hoursOrMinutes);
-    if (value == defaultLongAttendanceMinutes) {
-      _customMinutes.remove(ReminderType.veryLongAttendance);
+    final fallback = defaultDurationMinutesFor(type);
+    if (value == fallback) {
+      _customMinutes.remove(type);
     } else {
-      _customMinutes[ReminderType.veryLongAttendance] = value;
+      _customMinutes[type] = value;
     }
     _applyCustomTimes();
     notifyListeners();
-    if (value == defaultLongAttendanceMinutes) {
-      await _dao.clearRemindMinutes(
-        userId: _userIdProvider(),
-        type: ReminderType.veryLongAttendance,
-      );
+    if (value == fallback) {
+      await _dao.clearRemindMinutes(userId: _userIdProvider(), type: type);
     } else {
       await _dao.setRemindMinutes(
         userId: _userIdProvider(),
-        type: ReminderType.veryLongAttendance,
+        type: type,
         minutes: value,
       );
     }
-    await _clearOsFired(DateTime.now(), ReminderType.veryLongAttendance);
+    await _clearOsFired(DateTime.now(), type);
     await _persistSettingsSnapshot();
     await _rescheduleNotifications();
   }
@@ -233,6 +267,16 @@ class ReminderSettingsProvider extends ChangeNotifier {
         return policyBreakReminderTime;
       case ReminderType.breakTimeEnded:
         return policyBreakEndedReminderTime;
+      case ReminderType.checkInMissed:
+        return ReminderNotificationPlan.addMinutes(
+          checkInTime,
+          graceMinutes <= 0 ? 5 : graceMinutes,
+        );
+      case ReminderType.checkOutMissed:
+        return ReminderNotificationPlan.addMinutes(
+          checkOutTime,
+          graceMinutes <= 0 ? 5 : graceMinutes,
+        );
       default:
         return const TimeOfDay(hour: 23, minute: 59);
     }
@@ -248,6 +292,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
         return breakReminderTime;
       case ReminderType.breakTimeEnded:
         return breakEndedReminderTime;
+      case ReminderType.checkInMissed:
+        return checkInMissedTime;
+      case ReminderType.checkOutMissed:
+        return checkOutMissedTime;
       default:
         return latestTimeFor(type);
     }
@@ -263,6 +311,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
         return breakTimeLabel;
       case ReminderType.breakTimeEnded:
         return breakEndedTimeLabel;
+      case ReminderType.checkInMissed:
+        return checkInMissedLabel;
+      case ReminderType.checkOutMissed:
+        return checkOutMissedLabel;
       default:
         return '';
     }
@@ -311,7 +363,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
       policyCheckOutTime: policyCheckOutTime,
       breakReminderTime: breakReminderTime,
       breakEndedReminderTime: breakEndedReminderTime,
+      checkInMissedTime: checkInMissedTime,
+      checkOutMissedTime: checkOutMissedTime,
       graceMinutes: graceMinutes,
+      checkInMissedMinutes: checkInMissedMinutes,
+      checkOutMissedMinutes: checkOutMissedMinutes,
+      longerBreakMinutes: longerBreakMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceMinutes,
       punches: punches,
@@ -363,7 +420,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
       policyCheckOutTime: policyCheckOutTime,
       breakReminderTime: breakReminderTime,
       breakEndedReminderTime: breakEndedReminderTime,
+      checkInMissedTime: checkInMissedTime,
+      checkOutMissedTime: checkOutMissedTime,
       graceMinutes: graceMinutes,
+      checkInMissedMinutes: checkInMissedMinutes,
+      checkOutMissedMinutes: checkOutMissedMinutes,
+      longerBreakMinutes: longerBreakMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceMinutes,
       punches: _punches,
@@ -392,7 +454,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
       policyCheckOutTime: policyCheckOutTime,
       breakReminderTime: breakReminderTime,
       breakEndedReminderTime: breakEndedReminderTime,
+      checkInMissedTime: checkInMissedTime,
+      checkOutMissedTime: checkOutMissedTime,
       graceMinutes: graceMinutes,
+      checkInMissedMinutes: checkInMissedMinutes,
+      checkOutMissedMinutes: checkOutMissedMinutes,
+      longerBreakMinutes: longerBreakMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceMinutes,
       status: status,
@@ -686,17 +753,47 @@ class ReminderSettingsProvider extends ChangeNotifier {
     checkOutTimeLabel = _formatTime(checkOutTime);
     breakTimeLabel = _formatTime(breakReminderTime);
     breakEndedTimeLabel = _formatTime(breakEndedReminderTime);
+    checkInMissedTime = _resolvedTime(
+      ReminderType.checkInMissed,
+      ReminderNotificationPlan.addMinutes(
+        checkInTime,
+        graceMinutes <= 0 ? 5 : graceMinutes,
+      ),
+    );
+    checkOutMissedTime = _resolvedTime(
+      ReminderType.checkOutMissed,
+      ReminderNotificationPlan.addMinutes(
+        checkOutTime,
+        graceMinutes <= 0 ? 5 : graceMinutes,
+      ),
+    );
+    checkInMissedLabel = _formatTime(checkInMissedTime);
+    checkOutMissedLabel = _formatTime(checkOutMissedTime);
     final custom = _customMinutes[ReminderType.veryLongAttendance];
     longAttendanceMinutes = custom == null
         ? defaultLongAttendanceMinutes
         : ReminderCopy.durationMinutes(custom);
     longAttendanceLabel = ReminderCopy.durationPhrase(longAttendanceMinutes);
+    checkInMissedMinutes = _offsetMinutes(checkInTime, checkInMissedTime);
+    checkOutMissedMinutes = _offsetMinutes(checkOutTime, checkOutMissedTime);
+    longerBreakMinutes = durationMinutesFor(ReminderType.longerBreak);
+    longerBreakLabel = _customMinutes[ReminderType.longerBreak] == null
+        ? defaultLongerBreakLabel
+        : ReminderCopy.durationPhrase(longerBreakMinutes);
   }
 
   TimeOfDay _resolvedTime(ReminderType type, TimeOfDay fallback) {
     final custom = _customMinutes[type];
     if (custom == null) return fallback;
     return _minutesToTime(custom);
+  }
+
+  static int _offsetMinutes(TimeOfDay start, TimeOfDay end) {
+    var span =
+        ReminderNotificationPlan.minutesOf(end) -
+        ReminderNotificationPlan.minutesOf(start);
+    if (span < 0) span += 24 * 60;
+    return span;
   }
 
   static TimeOfDay _minutesToTime(int minutes) {

@@ -224,7 +224,7 @@ class ReminderCopy {
 
   static const defaultLongAttendanceHours = 12;
   static const defaultLongAttendanceMinutes = defaultLongAttendanceHours * 60;
-  static const minuteSteps = [10, 20, 30, 40, 50];
+  static const minuteSteps = [5, 10, 20, 30, 40, 50];
   static const minHours = 1;
   static const maxHours = 24;
 

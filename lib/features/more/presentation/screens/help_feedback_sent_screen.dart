@@ -25,7 +25,7 @@ class HelpFeedbackSentScreen extends StatelessWidget {
       },
       child: Scaffold(
         body: Padding(
-          padding: AppSizes.DEFAULT,
+          padding: AppSizes.page(context, AppSizes.DEFAULT),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

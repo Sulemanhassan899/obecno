@@ -39,7 +39,7 @@ class _TermsScreenState extends State<TermsScreen> {
           return ShimmerRefreshIndicator(
             onRefresh: () => termsProvider.load(),
             child: ListView(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.page(context, AppSizes.DEFAULT),
               children: [
                 const SizedBox(height: 20),
                 BackButtonBg(),

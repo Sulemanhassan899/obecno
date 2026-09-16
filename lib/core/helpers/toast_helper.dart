@@ -247,6 +247,7 @@ class ToastHelper {
       context,
       message: success ? AppStrings.synced : 'Sync failed',
       backgroundColor: success ? kBlack : kredColor,
+      imagePath: success ? Assets.imagesCircleCheckTick : null,
     );
   }
 

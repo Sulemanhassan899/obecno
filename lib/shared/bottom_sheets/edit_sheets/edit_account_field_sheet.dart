@@ -1,10 +1,11 @@
-import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/add_employee_payload.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -248,117 +249,110 @@ class _EditAccountFieldSheetBodyState
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        height: MediaQuery.sizeOf(context).height * 0.9,
-        decoration: const BoxDecoration(
-          color: kbackground2,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                child: Row(
-                  children: [
-                    ButtonAnimations.press(
-                      onTap: _saving ? null : () => Navigator.pop(context),
-                      child: Container(
-                        height: 42,
-                        width: 42,
-                        decoration: const BoxDecoration(
-                          color: kGreyContainerColor,
-                          shape: BoxShape.circle,
+      child: ConstrainedBox(
+        constraints: AppSheetSize.constraintsOf(context),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kbackground2,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Row(
+                    children: [
+                      BackCircleButton(enabled: !_saving),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            AppText.h5('Edit', weight: FontWeight.w700),
+                            const SizedBox(height: 2),
+                            AppText.caption(
+                              widget.employeeName,
+                              color: kGreyColor,
+                              weight: FontWeight.w400,
+                            ),
+                          ],
                         ),
-                        child: const Icon(Icons.arrow_back, size: 16),
                       ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          AppText.h5('Edit', weight: FontWeight.w700),
-                          const SizedBox(height: 2),
-                          AppText.caption(
-                            widget.employeeName,
-                            color: kGreyColor,
-                            weight: FontWeight.w400,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 42),
-                  ],
+                      const SizedBox(width: 42),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-                  children: [
-                    CustomTextField(
-                      controller: _controller,
-                      hintText: '',
-                      labelText: widget.field.label,
-                      haveLebelText: true,
-                      hasStar: true,
-                      backgroundColor: kWhite,
-                      enabledBorderColor: kBorderColor,
-                      focusedBorderColor: kBorderColor,
-                      radius: 14,
-                      keyboardType: widget.field.keyboardType,
-                      maxlines: widget.field.maxLines,
-                      errorText: _error,
-                      enabled: !_saving,
-                      onChanged: (_) {
-                        if (_error == null) return;
-                        setState(() => _error = null);
-                      },
-                    ),
-                    if (help.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      AppText.caption(
-                        help,
-                        color: kGreyColor,
-                        weight: FontWeight.w400,
-                        align: TextAlign.left,
+                const Divider(height: 1, color: kDividerColor),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+                    children: [
+                      CustomTextField(
+                        controller: _controller,
+                        hintText: '',
+                        labelText: widget.field.label,
+                        haveLebelText: true,
+                        hasStar: true,
+                        backgroundColor: kWhite,
+                        enabledBorderColor: kBorderColor,
+                        focusedBorderColor: kBorderColor,
+                        radius: 14,
+                        keyboardType: widget.field.keyboardType,
+                        maxlines: widget.field.maxLines,
+                        errorText: _error,
+                        enabled: !_saving,
+                        onChanged: (_) {
+                          if (_error == null) return;
+                          setState(() => _error = null);
+                        },
+                      ),
+                      if (help.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        AppText.caption(
+                          help,
+                          color: kGreyColor,
+                          weight: FontWeight.w400,
+                          align: TextAlign.left,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: MyButton(
+                          size: MyButtonSize.normal,
+                          buttonText: 'Cancel',
+                          backgroundColor: kWhite,
+                          fontColor: kBlack,
+                          outlineColor: kBorderColor,
+                          isactive: !_saving,
+                          onTap: () async => Navigator.pop(context),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 3,
+                        child: MyButton(
+                          buttonText: 'Save',
+                          backgroundColor: kPrimaryButtonColor,
+                          isactive: !_saving,
+                          isLoadingExternally: _saving,
+                          onTap: _save,
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: MyButton(
-                        size: MyButtonSize.normal,
-                        buttonText: 'Cancel',
-                        backgroundColor: kWhite,
-                        fontColor: kBlack,
-                        outlineColor: kBorderColor,
-                        isactive: !_saving,
-                        onTap: () async => Navigator.pop(context),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 3,
-                      child: MyButton(
-                        buttonText: 'Save',
-                        backgroundColor: kPrimaryButtonColor,
-                        isactive: !_saving,
-                        isLoadingExternally: _saving,
-                        onTap: _save,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

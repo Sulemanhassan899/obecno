@@ -7,6 +7,7 @@ import 'package:obecno/features/manager_module/Manager_employees/domain/manager_
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/customswitch2.dart';
 import 'package:flutter/material.dart';
@@ -395,201 +396,221 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.9,
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppText.h5(
-                      'Working Days',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: AppText.h5(
+                        'Working Days',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
+                      ),
                     ),
-                  ),
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 22),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            const Divider(height: 1, color: kDividerColor),
-            Expanded(
-              child: Container(
-                color: kbackground2,
-                child: _loading
-                    ? const Center(child: ShimmerProgress())
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                        children: [
-                          SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: AppText.p1(
-                              widget.employeeName != null &&
-                                      widget.employeeName!.trim().isNotEmpty
-                                  ? 'Set working days for ${widget.employeeName!.trim()}.'
-                                  : 'Set working days for this ${widget.userId != null ? 'employee' : 'location'}.',
-                              color: kGreyColor,
-                              align: TextAlign.left,
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: Container(
+                  color: kbackground2,
+                  child: _loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 64),
+                          child: ShimmerProgress(),
+                        )
+                      : ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          children: [
+                            SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: AppText.p1(
+                                widget.employeeName != null &&
+                                        widget.employeeName!.trim().isNotEmpty
+                                    ? 'Set working days for ${widget.employeeName!.trim()}.'
+                                    : 'Set working days for this ${widget.userId != null ? 'employee' : 'location'}.',
+                                color: kGreyColor,
+                                align: TextAlign.left,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 10),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: kWhite,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kBorderColor),
-                            ),
-                            child: Column(
-                              children: [
-                                for (var i = 0; i < _days.length; i++) ...[
-                                  if (i > 0)
-                                    const Divider(
-                                      height: 1,
-                                      color: kDividerColor,
+                            SizedBox(height: 10),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: kWhite,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: kBorderColor),
+                              ),
+                              child: Column(
+                                children: [
+                                  for (var i = 0; i < _days.length; i++) ...[
+                                    if (i > 0)
+                                      const Divider(
+                                        height: 1,
+                                        color: kDividerColor,
+                                      ),
+                                    _DayTile(
+                                      label: _days[i],
+                                      selected: _selectedDays.contains(
+                                        _days[i],
+                                      ),
+                                      onTap: () {
+                                        setState(() {
+                                          if (_selectedDays.contains(
+                                            _days[i],
+                                          )) {
+                                            _selectedDays.remove(_days[i]);
+                                          } else {
+                                            _selectedDays.add(_days[i]);
+                                          }
+                                        });
+                                      },
                                     ),
-                                  _DayTile(
-                                    label: _days[i],
-                                    selected: _selectedDays.contains(_days[i]),
-                                    onTap: () {
-                                      setState(() {
-                                        if (_selectedDays.contains(_days[i])) {
-                                          _selectedDays.remove(_days[i]);
-                                        } else {
-                                          _selectedDays.add(_days[i]);
-                                        }
-                                      });
-                                    },
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            AppText.h5('Working Week', align: TextAlign.left),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                              decoration: BoxDecoration(
+                                color: kWhite,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: kBorderColor),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _ToggleRow(
+                                    label: 'Working Days',
+                                    value: _workingWeekEnabled,
+                                    onChanged: (v) =>
+                                        setState(() => _workingWeekEnabled = v),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: kDividerColor,
+                                  ),
+                                  _DropdownRow(
+                                    label: 'Workweek Start Day',
+                                    value: _startDay,
+                                    onTap: () => _pickOption(
+                                      title: 'Workweek Start Day',
+                                      options: _days,
+                                      current: _startDay,
+                                      onSelected: (v) =>
+                                          setState(() => _startDay = v),
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: kDividerColor,
+                                  ),
+                                  _DropdownRow(
+                                    label: 'Hours in a Week',
+                                    value: _hoursInWeek,
+                                    onTap: () => _pickOption(
+                                      title: 'Hours in a Week',
+                                      options: const [
+                                        '35:00',
+                                        '37:30',
+                                        '40:00',
+                                        '45:00',
+                                      ],
+                                      current: _hoursInWeek,
+                                      onSelected: (v) =>
+                                          setState(() => _hoursInWeek = v),
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: kDividerColor,
+                                  ),
+                                  _DropdownRow(
+                                    label: 'Hours in a Day',
+                                    value: _hoursInDay,
+                                    onTap: () => _pickOption(
+                                      title: 'Hours in a Day',
+                                      options: const [
+                                        '07:00',
+                                        '07:30',
+                                        '08:00',
+                                        '09:00',
+                                      ],
+                                      current: _hoursInDay,
+                                      onSelected: (v) =>
+                                          setState(() => _hoursInDay = v),
+                                    ),
                                   ),
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          AppText.h5('Working Week', align: TextAlign.left),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                            decoration: BoxDecoration(
-                              color: kWhite,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kBorderColor),
+                            const SizedBox(height: 10),
+                            AppText.p1(
+                              "When enabled, this location's working week will overwrite the global working week.",
+                              color: kGreyColor,
+                              weight: FontWeight.w400,
+                              align: TextAlign.left,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _ToggleRow(
-                                  label: 'Working Days',
-                                  value: _workingWeekEnabled,
-                                  onChanged: (v) =>
-                                      setState(() => _workingWeekEnabled = v),
-                                ),
-                                const Divider(height: 1, color: kDividerColor),
-                                _DropdownRow(
-                                  label: 'Workweek Start Day',
-                                  value: _startDay,
-                                  onTap: () => _pickOption(
-                                    title: 'Workweek Start Day',
-                                    options: _days,
-                                    current: _startDay,
-                                    onSelected: (v) =>
-                                        setState(() => _startDay = v),
-                                  ),
-                                ),
-                                const Divider(height: 1, color: kDividerColor),
-                                _DropdownRow(
-                                  label: 'Hours in a Week',
-                                  value: _hoursInWeek,
-                                  onTap: () => _pickOption(
-                                    title: 'Hours in a Week',
-                                    options: const [
-                                      '35:00',
-                                      '37:30',
-                                      '40:00',
-                                      '45:00',
-                                    ],
-                                    current: _hoursInWeek,
-                                    onSelected: (v) =>
-                                        setState(() => _hoursInWeek = v),
-                                  ),
-                                ),
-                                const Divider(height: 1, color: kDividerColor),
-                                _DropdownRow(
-                                  label: 'Hours in a Day',
-                                  value: _hoursInDay,
-                                  onTap: () => _pickOption(
-                                    title: 'Hours in a Day',
-                                    options: const [
-                                      '07:00',
-                                      '07:30',
-                                      '08:00',
-                                      '09:00',
-                                    ],
-                                    current: _hoursInDay,
-                                    onSelected: (v) =>
-                                        setState(() => _hoursInDay = v),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          AppText.p1(
-                            "When enabled, this location's working week will overwrite the global working week.",
-                            color: kGreyColor,
-                            weight: FontWeight.w400,
-                            align: TextAlign.left,
-                          ),
-                        ],
+                          ],
+                        ),
+                ),
+              ),
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: MyButton(
+                        size: MyButtonSize.normal,
+                        buttonText: 'Reset',
+                        backgroundColor: kWhite,
+                        fontColor: kBlack,
+                        outlineColor: kBorderColor,
+                        onTap: () async => _reset(),
                       ),
-              ),
-            ),
-            const Divider(height: 1, color: kDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: MyButton(
-                      size: MyButtonSize.normal,
-                      buttonText: 'Reset',
-                      backgroundColor: kWhite,
-                      fontColor: kBlack,
-                      outlineColor: kBorderColor,
-                      onTap: () async => _reset(),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 4,
-                    child: MyButton(
-                      buttonText: 'Save',
-                      backgroundColor: kPrimaryButtonColor,
-                      isactive: !_saving && !_loading,
-                      isLoadingExternally: _saving,
-                      onTap: _save,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 4,
+                      child: MyButton(
+                        buttonText: 'Save',
+                        backgroundColor: kPrimaryButtonColor,
+                        isactive: !_saving && !_loading,
+                        isLoadingExternally: _saving,
+                        onTap: _save,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

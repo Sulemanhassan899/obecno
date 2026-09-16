@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_day.dart'
     hide MonthSummary, AttendanceDayRecord;
-import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
@@ -146,26 +144,44 @@ class MonthlyAttendanceController extends ChangeNotifier {
     _clampSelectedMonthToJoining();
     _logJoiningBounds();
 
-    final hasCache = await _repository.hasAnyCachedData();
-    if (_disposed || _staleSession(epochAtStart)) {
-      return; // FIXED (issue #1) + Fix (Issue 2)
-    }
+    // Show cache / empty day cards immediately so offline never sits on
+    // an infinite shimmer while the network hangs.
+    await _applyLocalMonth(selectedMonth);
+    if (_disposed || _staleSession(epochAtStart)) return;
+    await _mergeTodayFromClock();
 
-    if (!hasCache) {
-      isLoading = true;
-      error = null;
-      notifyListeners();
+    final online = await bindings.networkChecker.isConnected;
+    if (_disposed || _staleSession(epochAtStart)) return;
+    if (!online) return;
 
+    unawaited(_syncFromNetworkInBackground(epochAtStart));
+  }
+
+  Future<void> _applyLocalMonth(DateTime month) async {
+    final fallback = await _repository.localMonthFallback(month);
+    if (_disposed) return;
+    summary = fallback.summary;
+    records = fallback.records;
+    rawDays = fallback.rawDays;
+    isLoading = false;
+    error = null;
+    notifyListeners();
+  }
+
+  Future<void> _syncFromNetworkInBackground(int epochAtStart) async {
+    // Always refresh the visible month from the network first. Waiting for
+    // the 120-day backfill (and then reading cache via loadMonthSmart) left
+    // the screen on empty local day cards plus today's clock punch.
+    await _loadMonth(preferCache: true, silent: true);
+    if (_disposed || _staleSession(epochAtStart)) return;
+    await _mergeTodayFromClock();
+
+    try {
       await _repository.syncInitialRange();
-      if (_disposed || _staleSession(epochAtStart)) return; // Fix (Issue 2)
-      await _loadMonth(preferCache: true, silent: false);
-    } else {
-      await _loadMonth(preferCache: true, silent: true);
-      if (_disposed || _staleSession(epochAtStart)) {
-        return; // FIXED (issue #1) + Fix (Issue 2)
-      }
-      unawaited(_syncLatestMonthInBackground());
-    }
+    } catch (_) {}
+    if (_disposed || _staleSession(epochAtStart)) return;
+    await _applyLocalMonth(selectedMonth);
+    await _mergeTodayFromClock();
   }
 
   /// Loads working_days from CompanyPolicyService and updates the repository.
@@ -183,30 +199,6 @@ class MonthlyAttendanceController extends ChangeNotifier {
     } catch (_) {
       // Silently fall back to default Mon–Fri.
     }
-  }
-
-  Future<void> _syncLatestMonthInBackground() async {
-    final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
-    isSyncing = true;
-
-    final response = await _repository.syncLatestMonth();
-    if (_disposed || _staleSession(epochAtStart)) {
-      return; // FIXED (issue #1) + Fix (Issue 2)
-    }
-
-    isSyncing = false;
-
-    final currentMonth = _monthOnly(DateTime.now());
-    if (selectedMonth == currentMonth &&
-        response.success &&
-        response.data != null) {
-      final result = response.data!;
-      summary = result.summary;
-      records = result.records;
-      rawDays = result.rawDays;
-    }
-
-    notifyListeners();
   }
 
   // -----------------------------------------------------------------------
@@ -260,23 +252,24 @@ class MonthlyAttendanceController extends ChangeNotifier {
     final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
 
     if (preferCache) {
-      final cached = await _repository.loadMonthFromCache(requestedMonth);
+      final cached = await _repository.localMonthFallback(requestedMonth);
       if (_disposed || _staleSession(epochAtStart)) {
         return; // FIXED (issue #1) + Fix (Issue 2)
       }
-      if (cached != null) {
-        if (requestedMonth != selectedMonth) return;
+      if (requestedMonth != selectedMonth) return;
 
-        summary = cached.summary;
-        records = cached.records;
-        rawDays = cached.rawDays;
-        isLoading = false;
-        isPaginating = false;
-        error = null;
-        notifyListeners();
-        return;
-      }
+      summary = cached.summary;
+      records = cached.records;
+      rawDays = cached.rawDays;
+      isLoading = false;
+      isPaginating = false;
+      error = null;
+      notifyListeners();
     }
+
+    final online = await bindings.networkChecker.isConnected;
+    if (_disposed || _staleSession(epochAtStart)) return;
+    if (!online) return;
 
     if (silent) {
       isSyncing = true;
@@ -289,26 +282,39 @@ class MonthlyAttendanceController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _repository.loadMonthSmart(requestedMonth);
-      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+      final response = await _repository.loadMonth(requestedMonth);
+      if (_disposed || _staleSession(epochAtStart))
+        return; // FIXED (issue #1) + Fix (Issue 2)
 
       if (requestedMonth != selectedMonth) return;
 
       if (response.success && response.data != null) {
+        await _repository.cacheMonth(requestedMonth, response.data!);
+        if (_disposed || _staleSession(epochAtStart)) return;
+        if (requestedMonth != selectedMonth) return;
         final result = response.data!;
         summary = result.summary;
         records = result.records;
         rawDays = result.rawDays;
+        error = null;
       } else {
         error = response.message ?? 'Failed to load attendance.';
+        if (summary == null || records.isEmpty) {
+          await _applyLocalMonth(requestedMonth);
+        }
       }
     } catch (e) {
-      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+      if (_disposed || _staleSession(epochAtStart))
+        return; // FIXED (issue #1) + Fix (Issue 2)
       if (requestedMonth != selectedMonth) return;
       error = e.toString();
+      if (summary == null || records.isEmpty) {
+        await _applyLocalMonth(requestedMonth);
+      }
     }
 
-    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+    if (_disposed || _staleSession(epochAtStart))
+      return; // FIXED (issue #1) + Fix (Issue 2)
     isLoading = false;
     isPaginating = false;
     isSyncing = false;
@@ -317,15 +323,24 @@ class MonthlyAttendanceController extends ChangeNotifier {
 
   Future<void> refresh() async {
     final epochAtStart = _currentSessionEpoch; // Fix (Issue 2)
+    final online = await bindings.networkChecker.isConnected;
+    if (!online) {
+      await _applyLocalMonth(selectedMonth);
+      await _mergeTodayFromClock();
+      return;
+    }
+
     isPaginating = summary != null;
     isLoading = !isPaginating;
     notifyListeners();
 
     final response = await _repository.loadMonth(selectedMonth);
-    if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+    if (_disposed || _staleSession(epochAtStart))
+      return; // FIXED (issue #1) + Fix (Issue 2)
     if (response.success && response.data != null) {
       await _repository.cacheMonth(selectedMonth, response.data!);
-      if (_disposed || _staleSession(epochAtStart)) return; // FIXED (issue #1) + Fix (Issue 2)
+      if (_disposed || _staleSession(epochAtStart))
+        return; // FIXED (issue #1) + Fix (Issue 2)
       final result = response.data!;
       summary = result.summary;
       records = result.records;
@@ -333,6 +348,9 @@ class MonthlyAttendanceController extends ChangeNotifier {
       error = null;
     } else {
       error = response.message ?? 'Failed to load attendance.';
+      if (summary == null || records.isEmpty) {
+        await _applyLocalMonth(selectedMonth);
+      }
     }
 
     isLoading = false;
@@ -345,7 +363,13 @@ class MonthlyAttendanceController extends ChangeNotifier {
   /// shows without a pull-to-refresh.
   Future<void> reloadVisibleMonth() async {
     await _mergeTodayFromClock();
-    await _loadMonth(preferCache: false, silent: true);
+    final online = await bindings.networkChecker.isConnected;
+    if (!online) {
+      await _applyLocalMonth(selectedMonth);
+      await _mergeTodayFromClock();
+      return;
+    }
+    await _loadMonth(preferCache: true, silent: true);
     await _mergeTodayFromClock();
   }
 
@@ -440,26 +464,13 @@ class MonthlyAttendanceController extends ChangeNotifier {
         rawDays = [...rawDays, merged];
       }
 
-      if (!(existing?.isLeave ?? false)) {
-        records = [
-          for (final record in records)
-            if (record.date.year == dateOnly.year &&
-                record.date.month == dateOnly.month &&
-                record.date.day == dateOnly.day)
-              AttendanceDayRecord(
-                day: record.day,
-                weekday: record.weekday,
-                date: record.date,
-                checkIn: _format12h(merged.firstCheckIn),
-                checkOut: _format12h(merged.lastCheckOut),
-                status: merged.lastCheckOut == null
-                    ? AttendanceDayStatus.missingCheckOut
-                    : AttendanceDayStatus.normal,
-              )
-            else
-              record,
-        ];
-      }
+      final rebuilt = _repository.monthFromLocalDays(
+        selectedMonth,
+        days: rawDays,
+        today: today,
+      );
+      summary = rebuilt.summary;
+      records = rebuilt.records;
       notifyListeners();
     } catch (_) {}
   }
@@ -468,17 +479,4 @@ class MonthlyAttendanceController extends ChangeNotifier {
       '${time.hour.toString().padLeft(2, '0')}:'
       '${time.minute.toString().padLeft(2, '0')}:'
       '${time.second.toString().padLeft(2, '0')}';
-
-  static String? _format12h(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    final parsed = AttendanceEditRequest.parseClockTime(
-      raw,
-      date: DateTime(2000, 1, 1),
-    );
-    if (parsed == null) return null;
-    final hour = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
-    final minute = parsed.minute.toString().padLeft(2, '0');
-    final ampm = parsed.hour >= 12 ? 'PM' : 'AM';
-    return '${hour.toString().padLeft(2, '0')}:$minute $ampm';
-  }
 }

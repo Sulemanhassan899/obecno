@@ -44,51 +44,59 @@ class AttendanceMonthHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Opacity(
-          opacity: isPreviousEnabled ? 1 : 0.3,
-          child: IgnorePointer(
-            ignoring: !isPreviousEnabled,
-            child: ButtonAnimations.press(
-              onTap: () {
-                onPrevious();
-              },
-              child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
-            ),
-          ),
-        ),
-        ButtonAnimations.press(
-          onTap: onTapDropdown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CommonImageView(imagePath: Assets.imagesCalender, height: 18),
-              const SizedBox(width: 8),
-              AppText.p3(
-                "${_monthNames[month.month - 1]} ${month.year}",
-                weight: FontWeight.w400,
-                color: kSubText,
+    return SizedBox(
+      height: 42,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Opacity(
+            opacity: isPreviousEnabled ? 1 : 0.3,
+            child: IgnorePointer(
+              ignoring: !isPreviousEnabled,
+              child: ButtonAnimations.press(
+                onTap: () {
+                  onPrevious();
+                },
+                child: const Icon(CupertinoIcons.left_chevron, color: kBlack),
               ),
-              const SizedBox(width: 8),
-              const Icon(CupertinoIcons.chevron_down, size: 20, color: kBlack),
-            ],
-          ),
-        ),
-        Opacity(
-          opacity: isNextEnabled ? 1 : 0.3,
-          child: IgnorePointer(
-            ignoring: !isNextEnabled,
-            child: ButtonAnimations.press(
-              onTap: () {
-                onNext();
-              },
-              child: const Icon(CupertinoIcons.chevron_right, color: kBlack),
             ),
           ),
-        ),
-      ],
+          ButtonAnimations.press(
+            onTap: onTapDropdown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CommonImageView(imagePath: Assets.imagesCalender, height: 18),
+                const SizedBox(width: 8),
+                AppText.p3(
+                  "${_monthNames[month.month - 1]} ${month.year}",
+                  weight: FontWeight.w400,
+                  color: kSubText,
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  CupertinoIcons.chevron_down,
+                  size: 20,
+                  color: kBlack,
+                ),
+              ],
+            ),
+          ),
+          Opacity(
+            opacity: isNextEnabled ? 1 : 0.3,
+            child: IgnorePointer(
+              ignoring: !isNextEnabled,
+              child: ButtonAnimations.press(
+                onTap: () {
+                  onNext();
+                },
+                child: const Icon(CupertinoIcons.chevron_right, color: kBlack),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

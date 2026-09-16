@@ -21,18 +21,10 @@ class AttendanceDetailsData {
   final List<AttendanceDetailItem> details;
 
   factory AttendanceDetailsData.fromJson(Map<String, dynamic> json) {
-    final detailsRaw = json['attendance_details'];
-    final details = <AttendanceDetailItem>[];
-    if (detailsRaw is List) {
-      for (final raw in detailsRaw) {
-        if (raw is Map) {
-          final item = AttendanceDetailItem.tryParse(
-            Map<String, dynamic>.from(raw),
-          );
-          if (item != null) details.add(item);
-        }
-      }
-    }
+    final nestedRaw = json['attendance'];
+    final nested = nestedRaw is Map
+        ? Map<String, dynamic>.from(nestedRaw)
+        : const <String, dynamic>{};
 
     DateTime? parseDate(dynamic raw) {
       if (raw == null) return null;
@@ -47,30 +39,48 @@ class AttendanceDetailsData {
       return int.tryParse(raw.toString());
     }
 
+    final detailsRaw =
+        json['attendance_details'] ?? nested['attendance_details'];
+    final details = <AttendanceDetailItem>[];
+    if (detailsRaw is List) {
+      for (final raw in detailsRaw) {
+        if (raw is Map) {
+          final item = AttendanceDetailItem.tryParse(
+            Map<String, dynamic>.from(raw),
+          );
+          if (item != null) details.add(item);
+        }
+      }
+    }
+
     return AttendanceDetailsData(
-      userId: parseInt(json['user_id']),
-      date: parseDate(json['date']),
-      attendanceId: parseInt(json['attendance_id']) ?? parseInt(json['id']),
+      userId: parseInt(json['user_id'] ?? nested['user_id']),
+      date: parseDate(json['date'] ?? nested['date']),
+      attendanceId:
+          parseInt(json['attendance_id'] ?? nested['attendance_id']) ??
+          parseInt(json['id'] ?? nested['id']),
       total: parseInt(json['total']) ?? details.length,
       details: details,
     );
   }
 
   List<HistoryAttendanceEvent> toHistoryEvents() {
-    final events = details
-        .map((d) => d.toHistoryEvent())
-        .whereType<HistoryAttendanceEvent>()
-        .toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
+    final events =
+        details
+            .map((d) => d.toHistoryEvent())
+            .whereType<HistoryAttendanceEvent>()
+            .toList()
+          ..sort((a, b) => a.time.compareTo(b.time));
     return events;
   }
 
   List<AttendanceEvent> toClockEvents() {
-    final events = details
-        .map((d) => d.toClockEvent())
-        .whereType<AttendanceEvent>()
-        .toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
+    final events =
+        details
+            .map((d) => d.toClockEvent())
+            .whereType<AttendanceEvent>()
+            .toList()
+          ..sort((a, b) => a.time.compareTo(b.time));
     return events;
   }
 }
@@ -111,13 +121,33 @@ class AttendanceDetailItem {
       changes: json['changes'],
     );
 
+    final rawId =
+        json['id'] ??
+        json['attendance_detail_id'] ??
+        json['attendancedetail_id'] ??
+        json['detail_id'];
+    final serverId = serverDetailId(rawId?.toString().trim()) ?? '';
+
     return AttendanceDetailItem(
-      id: json['id']?.toString() ?? '${time.microsecondsSinceEpoch}',
+      id: serverId.isNotEmpty
+          ? serverId
+          : 'local_${time.microsecondsSinceEpoch}',
       type: type,
       time: AttendanceEditRequest.applyApprovedTime(time, editRequests),
       location: location,
       editRequests: editRequests,
     );
+  }
+
+  /// Numeric server row id, or null when the value is a local/clock placeholder.
+  static String? serverDetailId(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final parsed = int.tryParse(raw);
+    if (parsed != null) return parsed.toString();
+    final asDouble = double.tryParse(raw);
+    if (asDouble == null || asDouble != asDouble.roundToDouble()) return null;
+    if (asDouble < 0) return null;
+    return asDouble.toInt().toString();
   }
 
   static AttendanceDetailItem? tryParse(Map<String, dynamic> json) {
@@ -156,7 +186,11 @@ class AttendanceDetailItem {
   }
 
   static AttendanceHisotryEventType? _typeFromApi(String? raw) {
-    switch (raw?.trim().toLowerCase()) {
+    switch (raw
+        ?.trim()
+        .toLowerCase()
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ')) {
       case 'check in':
       case 'checkin':
         return AttendanceHisotryEventType.checkIn;
@@ -207,8 +241,9 @@ class AttendanceDetailItem {
 
     final created = json['created_at']?.toString();
     if (created != null && created.isNotEmpty) {
-      final normalized =
-          created.contains('T') ? created : created.replaceFirst(' ', 'T');
+      final normalized = created.contains('T')
+          ? created
+          : created.replaceFirst(' ', 'T');
       final parsed = DateTime.tryParse(normalized);
       if (parsed != null) return asLocalWall(parsed);
     }

@@ -1,6 +1,15 @@
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 
 class OverviewSummary {
+  static const OverviewSummary empty = OverviewSummary(
+    presentToday: 0,
+    totalTeamMembers: 0,
+    active: 0,
+    onBreak: 0,
+    lateCheckIn: 0,
+    absent: 0,
+  );
+
   const OverviewSummary({
     required this.presentToday,
     required this.totalTeamMembers,

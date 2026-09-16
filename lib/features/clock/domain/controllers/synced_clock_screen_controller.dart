@@ -411,7 +411,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
     final companyPoint = GeoPoint.tryParse(selectedLoc?.latLon);
 
-    final GpsReading reading;
+    GpsReading? reading;
     try {
       reading = await _locationService.getCurrentReading();
     } on LocationPermissionDeniedException {
@@ -423,20 +423,23 @@ class SyncedClockScreenController extends ClockScreenController {
       lastServerMessage = AppStrings.turnOnLocationServices;
       return false;
     } on LocationAccuracyTooLowException catch (e) {
-      isInRange = false;
-      lastServerMessage =
-          'Location accuracy too low (${e.accuracyMeters.toStringAsFixed(0)}m). Move to an open area and try again.';
-      return false;
+      reading = await _locationService.getLastKnownReading();
+      if (reading == null) {
+        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
+        isInRange = false;
+        lastServerMessage =
+            'Location accuracy too low (${e.accuracyMeters.toStringAsFixed(0)}m). Move to an open area and try again.';
+        return false;
+      }
     } on LocationTimeoutException {
-      isInRange = false;
-      lastServerMessage =
-          'Getting your location is taking too long. Check your GPS signal and try again.';
-      return false;
-    } on MockLocationDetectedException {
-      isInRange = false;
-      lastServerMessage =
-          'A mock location was detected. Please disable it to continue.';
-      return false;
+      reading = await _locationService.getLastKnownReading();
+      if (reading == null) {
+        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
+        isInRange = false;
+        lastServerMessage =
+            'Getting your location is taking too long. Check your GPS signal and try again.';
+        return false;
+      }
     } catch (e, st) {
       AppLogger.error(
         'SyncedClockScreenController',
@@ -444,6 +447,17 @@ class SyncedClockScreenController extends ClockScreenController {
         e,
         stackTrace: st,
       );
+      reading = await _locationService.getLastKnownReading();
+      if (reading == null) {
+        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
+        isInRange = false;
+        lastServerMessage = 'Unable to get your location. Please try again.';
+        return false;
+      }
+    }
+
+    if (reading == null) {
+      if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
       isInRange = false;
       lastServerMessage = 'Unable to get your location. Please try again.';
       return false;
@@ -466,6 +480,16 @@ class SyncedClockScreenController extends ClockScreenController {
       );
     }
     _geofenceSampled = true;
+    return true;
+  }
+
+  /// Offline GPS (especially A-GPS / fused location) often fails. Keep the
+  /// last cached geofence result so the punch can still be queued.
+  bool _allowOfflinePunchWithoutFix() {
+    debugPrint(
+      '[SyncedClockScreenController] GPS unavailable offline — '
+      'keeping cached geofence (inRange=$isInRange)',
+    );
     return true;
   }
 
@@ -496,8 +520,9 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   Future<void> _refreshPolicyBeforeAction() async {
-    // Throttle guard: skip network if we refreshed recently.
-    if (!_isPolicyRefreshThrottled) {
+    final online = trustedNetworkOnline;
+    // Throttle guard: skip network if we refreshed recently or are offline.
+    if (online && !_isPolicyRefreshThrottled) {
       try {
         await Future.wait([
           _companyPolicyService.refreshFromNetwork().catchError((_) {}),
@@ -687,7 +712,7 @@ class SyncedClockScreenController extends ClockScreenController {
     }
 
     merged.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
-    return merged;
+    return AttendanceEngine.collapseDuplicatePunches(merged);
   }
 
   bool _lastSubmitWasConflict = false;

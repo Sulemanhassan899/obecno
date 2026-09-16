@@ -160,6 +160,51 @@ void main() {
     });
 
     test(
+      'empty queue does not enter syncing or fire state callbacks',
+      () async {
+        final queue = InMemoryLocalQueue()..currentUserId = 'emp-1';
+        final states = <SyncState>[];
+        final sync = SyncService(
+          _RecordingRepo(),
+          _AlwaysOnline(),
+          queue,
+          sessionEpochProvider: () => 1,
+          userIdProvider: () => 'emp-1',
+        )..onStateChanged = states.add;
+
+        await sync.syncPendingData();
+
+        expect(states, isEmpty);
+        expect(sync.state, SyncState.idle);
+      },
+    );
+
+    test('queued sync broadcasts syncing then success', () async {
+      final queue = InMemoryLocalQueue()..currentUserId = 'emp-1';
+      await queue.insert(
+        AttendancePayloadModel(
+          action: AttendanceAction.checkIn,
+          capturedAt: DateTime(2026, 8, 20, 10),
+          location: const LocationModel(lat: 33.67, lon: 73.07),
+          requestId: 'toast-1',
+          deviceDetails: 'Test',
+        ),
+      );
+      final states = <SyncState>[];
+      final sync = SyncService(
+        _RecordingRepo(),
+        _AlwaysOnline(),
+        queue,
+        sessionEpochProvider: () => 1,
+        userIdProvider: () => 'emp-1',
+      )..onStateChanged = states.add;
+
+      await sync.syncPendingData();
+
+      expect(states, [SyncState.syncing, SyncState.success, SyncState.idle]);
+    });
+
+    test(
       'session epoch change mid-sync does not fire onSyncCompleted',
       () async {
         var epoch = 1;

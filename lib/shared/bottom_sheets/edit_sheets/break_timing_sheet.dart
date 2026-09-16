@@ -7,6 +7,7 @@ import 'package:obecno/features/manager_module/Manager_employees/domain/manager_
 import 'package:obecno/features/manager_module/Manager_locations/data/models/location_schedule.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/customswitch2.dart';
 import 'package:flutter/material.dart';
@@ -351,170 +352,191 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.9,
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AppText.h5(
-                      'Break Timing',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: AppText.h5(
+                        'Break Timing',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
+                      ),
                     ),
-                  ),
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 22),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            const Divider(height: 1, color: kDividerColor),
-            Expanded(
-              child: Container(
-                color: kbackground2,
-                child: _loading
-                    ? const Center(child: ShimmerProgress())
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(10, 10, 20, 12),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: AppText.p1(
-                                'Enable or disable employee break timings.',
-                                color: kGreyColor,
-                                weight: FontWeight.w400,
-                                align: TextAlign.left,
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: Container(
+                  color: kbackground2,
+                  child: _loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 64),
+                          child: ShimmerProgress(),
+                        )
+                      : ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                10,
+                                10,
+                                20,
+                                12,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppText.p1(
+                                  'Enable or disable employee break timings.',
+                                  color: kGreyColor,
+                                  weight: FontWeight.w400,
+                                  align: TextAlign.left,
+                                ),
                               ),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                            decoration: BoxDecoration(
-                              color: kWhite,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kBorderColor),
-                            ),
-                            child: Column(
-                              children: [
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: _pickDuration,
-                                  child: Padding(
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                              decoration: BoxDecoration(
+                                color: kWhite,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: kBorderColor),
+                              ),
+                              child: Column(
+                                children: [
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: _pickDuration,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: AppText.p2(
+                                              'Set max break duration',
+                                              color: kBlack,
+                                              weight: FontWeight.w500,
+                                              align: TextAlign.left,
+                                            ),
+                                          ),
+                                          AppText.p2(
+                                            _maxBreak,
+                                            color: kGreyColor,
+                                            weight: FontWeight.w500,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Icon(
+                                            Icons.keyboard_arrow_down,
+                                            size: 18,
+                                            color: kGreyColor,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: kDividerColor,
+                                  ),
+                                  Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                      vertical: 4,
                                     ),
                                     child: Row(
                                       children: [
                                         Expanded(
                                           child: AppText.p2(
-                                            'Set max break duration',
+                                            'Break location tracking',
                                             color: kBlack,
                                             weight: FontWeight.w500,
                                             align: TextAlign.left,
                                           ),
                                         ),
-                                        AppText.p2(
-                                          _maxBreak,
-                                          color: kGreyColor,
-                                          weight: FontWeight.w500,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        const Icon(
-                                          Icons.keyboard_arrow_down,
-                                          size: 18,
-                                          color: kGreyColor,
+                                        CustomSwitch(
+                                          value: _trackLocation,
+                                          onChanged: (v) => setState(
+                                            () => _trackLocation = v,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
-                                const Divider(height: 1, color: kDividerColor),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 4,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: AppText.p2(
-                                          'Break location tracking',
-                                          color: kBlack,
-                                          weight: FontWeight.w500,
-                                          align: TextAlign.left,
-                                        ),
-                                      ),
-                                      CustomSwitch(
-                                        value: _trackLocation,
-                                        onChanged: (v) =>
-                                            setState(() => _trackLocation = v),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(10, 20, 20, 12),
-                            child: AppText.p1(
-                              'Breaks can only be started and ended when the employee is within office/location premises.',
-                              color: kGreyColor,
-                              align: TextAlign.left,
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                10,
+                                20,
+                                20,
+                                12,
+                              ),
+                              child: AppText.p1(
+                                'Breaks can only be started and ended when the employee is within office/location premises.',
+                                color: kGreyColor,
+                                align: TextAlign.left,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                ),
               ),
-            ),
 
-            const Divider(height: 1, color: kDividerColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: MyButton(
-                      size: MyButtonSize.normal,
-                      buttonText: 'Reset',
-                      backgroundColor: kWhite,
-                      fontColor: kBlack,
-                      outlineColor: kBorderColor,
-                      onTap: () async => _reset(),
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: MyButton(
+                        size: MyButtonSize.normal,
+                        buttonText: 'Reset',
+                        backgroundColor: kWhite,
+                        fontColor: kBlack,
+                        outlineColor: kBorderColor,
+                        onTap: () async => _reset(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 3,
-                    child: MyButton(
-                      buttonText: 'Save',
-                      backgroundColor: kPrimaryButtonColor,
-                      isLoadingExternally: _saving,
-                      isactive: !_saving && !_loading,
-                      onTap: _save,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 3,
+                      child: MyButton(
+                        buttonText: 'Save',
+                        backgroundColor: kPrimaryButtonColor,
+                        isLoadingExternally: _saving,
+                        isactive: !_saving && !_loading,
+                        onTap: _save,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

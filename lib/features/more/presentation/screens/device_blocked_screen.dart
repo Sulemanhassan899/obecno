@@ -130,7 +130,7 @@ class _DeviceBlockedScreenState extends State<DeviceBlockedScreen>
         backgroundColor: kbackground1,
         body: SafeArea(
           child: Padding(
-            padding: AppSizes.DEFAULT,
+            padding: AppSizes.page(context, AppSizes.DEFAULT),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,

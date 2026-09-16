@@ -146,15 +146,40 @@ class HistoryAttendanceEngine {
   static List<HistoryAttendanceEvent> sortedNewestFirst(
     List<HistoryAttendanceEvent> events,
   ) {
-    final sorted = [...events]..sort((a, b) => b.time.compareTo(a.time));
+    final sorted = [...events]
+      ..sort((a, b) {
+        final byTime = b.time.compareTo(a.time);
+        if (byTime != 0) return byTime;
+        return _typeOrder(b.type).compareTo(_typeOrder(a.type));
+      });
     return sorted;
   }
 
-  /// Events sorted oldest-first (chronological), for attendance timelines.
+  /// Events sorted oldest-first (chronological). Equal times keep
+  /// check-in → break start → break end → check-out so paired punches
+  /// at the same minute still read in work order.
   static List<HistoryAttendanceEvent> sortedOldestFirst(
     List<HistoryAttendanceEvent> events,
   ) {
-    final sorted = [...events]..sort((a, b) => a.time.compareTo(b.time));
+    final sorted = [...events]
+      ..sort((a, b) {
+        final byTime = a.time.compareTo(b.time);
+        if (byTime != 0) return byTime;
+        return _typeOrder(a.type).compareTo(_typeOrder(b.type));
+      });
     return sorted;
+  }
+
+  static int _typeOrder(AttendanceHisotryEventType type) {
+    switch (type) {
+      case AttendanceHisotryEventType.checkIn:
+        return 0;
+      case AttendanceHisotryEventType.breakStart:
+        return 1;
+      case AttendanceHisotryEventType.breakEnd:
+        return 2;
+      case AttendanceHisotryEventType.checkOut:
+        return 3;
+    }
   }
 }

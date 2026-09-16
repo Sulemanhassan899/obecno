@@ -134,17 +134,19 @@ class ManagerEmployeeHistoryMapper {
         status = (checkOut == null || checkOut.isEmpty)
             ? AttendanceDayStatus.missingCheckOut
             : AttendanceDayStatus.normal;
-        totalWorking += 1;
-        workingDays += 1;
-        if (_isLateIn(
-          punched.checkin ?? checkIn,
-          scheduledCheckIn,
-          graceMinutes,
-        )) {
-          lateIns += 1;
-        }
-        if (_isLateOut(punched.checkout ?? checkOut, scheduledCheckOut)) {
-          lateOuts += 1;
+        if (classification.type != DayCardType.weekend) {
+          totalWorking += 1;
+          workingDays += 1;
+          if (_isLateIn(
+            punched.checkin ?? checkIn,
+            scheduledCheckIn,
+            graceMinutes,
+          )) {
+            lateIns += 1;
+          }
+          if (_isLateOut(punched.checkout ?? checkOut, scheduledCheckOut)) {
+            lateOuts += 1;
+          }
         }
       } else {
         switch (classification.type) {

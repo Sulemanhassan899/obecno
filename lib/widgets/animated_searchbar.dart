@@ -297,17 +297,17 @@ class _AnimSearchBarState extends State<AnimSearchBar>
                   icon: widget.prefixIcon != null
                       ? (isOpen
                             ? Icon(
-                                Icons.arrow_back_ios,
+                                Icons.arrow_back,
                                 color: widget.textFieldIconColor,
-                                size: 18,
+                                size: 16,
                               )
                             : widget.prefixIcon!)
                       : Icon(
-                          isOpen ? Icons.arrow_back_ios : Icons.search,
+                          isOpen ? Icons.arrow_back : Icons.search,
                           color: isOpen
                               ? widget.textFieldIconColor
                               : widget.searchIconColor,
-                          size: 20.0,
+                          size: isOpen ? 16.0 : 20.0,
                         ),
                   onPressed: () async {
                     if (_toggle == 0) {

@@ -1,10 +1,45 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:obecno/features/employee_module/alerts/presentation/screens/alerts_screen.dart';
+import 'package:obecno/features/alerts/data/models/device_alert_item.dart';
+import 'package:obecno/features/more/data/models/device_model.dart';
 
 void main() {
-  testWidgets('Alerts screen shows coming soon', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: AlertsScreen()));
-    expect(find.textContaining('Coming soon'), findsOneWidget);
+  DeviceModel device({String status = 'pending'}) {
+    return DeviceModel(
+      id: '1',
+      deviceId: 'dev-1',
+      name: 'iPhone 16',
+      model: 'iPhone',
+      manufacturer: 'Apple',
+      os: 'iOS',
+      osVersion: '18',
+      appVersion: '1.0',
+      ipAddress: '',
+      timezone: 'UTC',
+      platform: 'ios',
+      status: status,
+    );
+  }
+
+  test('device alert item describes pending and approved requests', () {
+    final pending = DeviceAlertItem(
+      device: device(),
+      employeeName: 'Alex',
+      employeeUserId: 7,
+    );
+    expect(
+      pending.title(isManagerView: true),
+      'Alex has requested for new device approval',
+    );
+    expect(pending.placeLabel, 'iPhone 16');
+    expect(pending.key, '7-1');
+
+    final approved = DeviceAlertItem(
+      device: device(status: 'approved'),
+      employeeName: 'Alex',
+    );
+    expect(
+      approved.title(isManagerView: true),
+      'Alex has requested for new device approval',
+    );
   });
 }

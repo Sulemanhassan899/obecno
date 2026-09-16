@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/helpers/dialog.dart';
 
 import 'package:obecno/core/generated/assets.dart';
@@ -49,230 +50,218 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     final authProvider = context.read<AuthProvider>();
     return Scaffold(
       backgroundColor: kbackground1,
-      body: SafeArea(
-        child: ShimmerRefreshIndicator(
-          onRefresh: () => profileProvider.loadProfile(),
-          child: ListenableBuilder(
-            listenable: Listenable.merge([profileProvider, authProvider]),
-            builder: (context, _) {
-              final profile = profileProvider.profile;
-              final isInitialLoad =
-                  profileProvider.isLoading && profile == null;
+      body: ShimmerRefreshIndicator(
+        onRefresh: () => profileProvider.loadProfile(),
+        child: ListenableBuilder(
+          listenable: Listenable.merge([profileProvider, authProvider]),
+          builder: (context, _) {
+            final profile = profileProvider.profile;
+            final isInitialLoad = profileProvider.isLoading && profile == null;
 
-              return ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  /// ================= HEADER =================
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: ButtonAnimations.press(
+            return ListView(
+              padding: AppSizes.page(
+                context,
+                const EdgeInsets.fromLTRB(20, 40, 20, 0),
+              ),
+              children: [
+                /// ================= HEADER =================
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ButtonAnimations.press(
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AccountSetting(),
+                        ),
+                        (route) => true,
+                      );
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: kBorderColor),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: Row(
+                            children: [
+                              AppText.p2("Account Info", color: kBlack),
+                              const SizedBox(width: 8),
+                              CommonImageView(
+                                imagePath: Assets.imagesSetting,
+                                height: 14,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                if (isInitialLoad)
+                  const Padding(padding: EdgeInsets.only(top: 80))
+                else if (profileProvider.hasError && profile == null)
+                  _errorState(
+                    profileProvider.errorMessage ?? 'Failed to load profile.',
+                    () => context.read<ProfileProvider>().loadProfile(),
+                  )
+                else
+                  _profileHeader(profile, profileProvider, authProvider),
+
+                const SizedBox(height: 18),
+
+                /// ================= OFFICE CARD =================
+                ListenableBuilder(
+                  listenable: authProvider,
+                  builder: (context, _) {
+                    final count = authProvider.locations.length;
+                    return _tile(
+                      title: "Offices & Locations",
+                      count: count.toString().padLeft(2, '0'),
+                      icon: Assets.imagesOfficeLocationIcon,
                       onTap: () {
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const AccountSetting(),
+                            builder: (_) => const OfficeLocation(),
                           ),
                           (route) => true,
                         );
                       },
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: kBorderColor),
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            child: Row(
-                              children: [
-                                AppText.p2("Account Info", color: kBlack),
-                                const SizedBox(width: 8),
-                                CommonImageView(
-                                  imagePath: Assets.imagesSetting,
-                                  height: 14,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                /// ================= SETTINGS =================
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppText.h6("Settings", weight: FontWeight.w600),
+                ),
+
+                const SizedBox(height: 10),
+
+                _groupCard([
+                  _settingTile("My Reminders", Assets.imagesReminderClock, () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AttendanceRemindersScreen(),
                       ),
-                    ),
-                  ),
+                      (route) => true,
+                    );
+                  }),
+                  _divider(),
+                  _settingTile("Linked Devices", Assets.imagesLinkDevices, () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LinkedDevices()),
+                      (route) => true,
+                    );
+                  }),
+                  _divider(),
+                  _settingTile("Change password", Assets.imagesKey, () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ChangePassword()),
+                      (route) => true,
+                    );
+                  }),
 
-                  if (isInitialLoad)
-                    const Padding(padding: EdgeInsets.only(top: 80))
-                  else if (profileProvider.hasError && profile == null)
-                    _errorState(
-                      profileProvider.errorMessage ?? 'Failed to load profile.',
-                      () => context.read<ProfileProvider>().loadProfile(),
-                    )
-                  else
-                    _profileHeader(profile, profileProvider, authProvider),
+                  //   _divider(),
+                  // _settingTile("Permission", Assets.imagesInfo, () {
+                  //   Navigator.pushAndRemoveUntil(
+                  //     context,
+                  //     MaterialPageRoute(
+                  //       builder: (_) => const PermissionScreen(),
+                  //     ),
+                  //     (route) => true,
+                  //   );
+                  // }),
+                ]),
 
-                  const SizedBox(height: 18),
+                const SizedBox(height: 14),
 
-                  /// ================= OFFICE CARD =================
-                  ListenableBuilder(
-                    listenable: authProvider,
-                    builder: (context, _) {
-                      final count = authProvider.locations.length;
-                      return _tile(
-                        title: "Offices & Locations",
-                        count: count.toString().padLeft(2, '0'),
-                        icon: Assets.imagesOfficeLocationIcon,
-                        onTap: () {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const OfficeLocation(),
-                            ),
-                            (route) => true,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 20),
+                _groupCard([
+                  _settingTile("Terms of use", Assets.imagesTerms, () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TermsScreen()),
+                      (route) => true,
+                    );
+                  }),
+                  _divider(),
+                  _settingTile("Privacy policy", Assets.imagesPrivacy, () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PolicyScreen()),
+                      (route) => true,
+                    );
+                  }),
+                  _divider(),
+                  _settingTile("Help & Feedback", Assets.imagesInfo, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HelpFeedbackScreen(),
+                      ),
+                    );
+                  }),
+                ]),
 
-                  /// ================= SETTINGS =================
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: AppText.h6("Settings", weight: FontWeight.w600),
-                  ),
+                const SizedBox(height: 14),
 
-                  const SizedBox(height: 10),
+                /// LOGOUT
+                ButtonAnimations.press(
+                  onTap: () async {
+                    DialogHelper.show(
+                      context: context,
+                      imagePath: Assets.imagesRedBgTriangleExclamation,
+                      heightImage: 100,
+                      subtitle: "Are you sure you want to logout?",
 
-                  _groupCard([
-                    _settingTile(
-                      "My Reminders",
-                      Assets.imagesReminderClock,
-                      () {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AttendanceRemindersScreen(),
-                          ),
-                          (route) => true,
-                        );
+                      cancelButtonText: "No",
+                      buttonText: "Yes",
+                      ButtonBg: kredColor,
+                      onButtonTap: () async {
+                        await context.read<AuthProvider>().logout();
+
+                        if (!context.mounted) return;
+
+                        context.go('/onboarding');
                       },
+
+                      barrierDismissible: true,
+                    );
+                  },
+
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: kWhite,
+                      border: Border.all(color: kBorderColor),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    _divider(),
-                    _settingTile(
-                      "Linked Devices",
-                      Assets.imagesLinkDevices,
-                      () {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LinkedDevices(),
-                          ),
-                          (route) => true,
-                        );
-                      },
-                    ),
-                    _divider(),
-                    _settingTile("Change password", Assets.imagesKey, () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const ChangePassword(),
-                        ),
-                        (route) => true,
-                      );
-                    }),
-
-                    //   _divider(),
-                    // _settingTile("Permission", Assets.imagesInfo, () {
-                    //   Navigator.pushAndRemoveUntil(
-                    //     context,
-                    //     MaterialPageRoute(
-                    //       builder: (_) => const PermissionScreen(),
-                    //     ),
-                    //     (route) => true,
-                    //   );
-                    // }),
-                  ]),
-
-                  const SizedBox(height: 14),
-
-                  _groupCard([
-                    _settingTile("Terms of use", Assets.imagesTerms, () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const TermsScreen()),
-                        (route) => true,
-                      );
-                    }),
-                    _divider(),
-                    _settingTile("Privacy policy", Assets.imagesPrivacy, () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const PolicyScreen()),
-                        (route) => true,
-                      );
-                    }),
-                    _divider(),
-                    _settingTile("Help & Feedback", Assets.imagesInfo, () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const HelpFeedbackScreen(),
-                        ),
-                      );
-                    }),
-                  ]),
-
-                  const SizedBox(height: 14),
-
-                  /// LOGOUT
-                  ButtonAnimations.press(
-                    onTap: () async {
-                      DialogHelper.show(
-                        context: context,
-                        imagePath: Assets.imagesRedBgTriangleExclamation,
-                        heightImage: 100,
-                        subtitle: "Are you sure you want to logout?",
-
-                        cancelButtonText: "No",
-                        buttonText: "Yes",
-                        ButtonBg: kredColor,
-                        onButtonTap: () async {
-                          await context.read<AuthProvider>().logout();
-
-                          if (!context.mounted) return;
-
-                          context.go('/onboarding');
-                        },
-
-                        barrierDismissible: true,
-                      );
-                    },
-
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: kWhite,
-                        border: Border.all(color: kBorderColor),
-                        borderRadius: BorderRadius.circular(16),
+                    child: ListTile(
+                      leading: CommonImageView(
+                        imagePath: Assets.imagesLogout,
+                        height: 24,
                       ),
-                      child: ListTile(
-                        leading: CommonImageView(
-                          imagePath: Assets.imagesLogout,
-                          height: 24,
-                        ),
-                        title: AppText.p1(
-                          "Logout",
-                          color: kredColor,
-                          align: TextAlign.left,
-                        ),
+                      title: AppText.p1(
+                        "Logout",
+                        color: kredColor,
+                        align: TextAlign.left,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 40),
-                ],
-              );
-            },
-          ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -304,8 +293,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     ProfileProvider profileProvider,
     AuthProvider authProvider,
   ) {
+    final localPhoto = profileProvider.localPhotoFile;
     final photoUrl = profileProvider.displayPhotoUrl;
-    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    final hasPhoto =
+        localPhoto != null || (photoUrl != null && photoUrl.isNotEmpty);
     return Column(
       children: [
         Center(
@@ -314,7 +305,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             children: [
               hasPhoto
                   ? CommonImageView(
-                      url: photoUrl,
+                      file: localPhoto,
+                      url: localPhoto == null ? photoUrl : null,
                       height: 110,
                       width: 110,
                       radius: 500,

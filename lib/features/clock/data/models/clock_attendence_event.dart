@@ -50,21 +50,67 @@ class AttendanceEvent {
     if (_withinSkew(effectiveTime, other.effectiveTime)) return true;
     if (_withinSkew(time, other.effectiveTime)) return true;
     if (_withinSkew(effectiveTime, other.time)) return true;
-    return _matchesApprovedTimes(other) || other._matchesApprovedTimes(this);
+    return _sharesApprovedClockTimes(other);
   }
 
-  bool _matchesApprovedTimes(AttendanceEvent other) {
-    for (final request in other.editRequests) {
-      if (!request.isApproved) continue;
-      if (request.matchesClock(time) || request.matchesClock(effectiveTime)) {
-        return true;
+  bool _sharesApprovedClockTimes(AttendanceEvent other) {
+    final mine = _knownClockTimes();
+    final theirs = other._knownClockTimes();
+    for (final a in mine) {
+      for (final b in theirs) {
+        if (_withinSkew(a, b)) return true;
       }
     }
     return false;
   }
 
+  List<DateTime> _knownClockTimes() {
+    final times = <DateTime>[time, effectiveTime];
+    for (final request in editRequests) {
+      if (!request.isApproved) continue;
+      final from = AttendanceEditRequest.parseClockTime(
+        request.originalTime,
+        date: time,
+      );
+      final to = AttendanceEditRequest.parseClockTime(
+        request.newTime,
+        date: time,
+      );
+      if (from != null) times.add(from);
+      if (to != null) times.add(to);
+    }
+    return times;
+  }
+
   static bool _withinSkew(DateTime a, DateTime b) =>
       a.difference(b).abs() <= _punchSkew;
+
+  static List<AttendanceEditRequest> _combineEditRequests(
+    List<AttendanceEditRequest> a,
+    List<AttendanceEditRequest> b,
+  ) {
+    if (a.isEmpty) return List.of(b);
+    if (b.isEmpty) return List.of(a);
+    final out = <AttendanceEditRequest>[];
+    final keys = <String>{};
+    void addAll(List<AttendanceEditRequest> list) {
+      for (final request in list) {
+        final key =
+            '${request.status.name}|${request.originalTime}|${request.newTime}';
+        if (!keys.add(key)) continue;
+        out.add(request);
+      }
+    }
+
+    addAll(a);
+    addAll(b);
+    out.sort((left, right) {
+      final leftAt = left.actionedAt ?? left.requestedAt;
+      final rightAt = right.actionedAt ?? right.requestedAt;
+      return rightAt.compareTo(leftAt);
+    });
+    return out;
+  }
 
   /// Prefer the server / approved version of a matched punch.
   static AttendanceEvent preferAuthoritative(
@@ -92,14 +138,22 @@ class AttendanceEvent {
     }
 
     final other = identical(primary, incoming) ? current : incoming;
+    final combined = _combineEditRequests(
+      current.editRequests,
+      incoming.editRequests,
+    );
+    final earliest = current.time.isBefore(incoming.time)
+        ? current.time
+        : incoming.time;
+    final applied = combined.isEmpty
+        ? primary.effectiveTime
+        : AttendanceEditRequest.applyApprovedTime(earliest, combined);
     return primary.copyWith(
-      time: primary.effectiveTime,
+      time: applied,
       location: (primary.location != null && primary.location!.trim().isNotEmpty)
           ? primary.location
           : other.location,
-      editRequests: primary.editRequests.isNotEmpty
-          ? primary.editRequests
-          : other.editRequests,
+      editRequests: combined.isNotEmpty ? combined : primary.editRequests,
       phoneWallClock: primary.phoneWallClock ?? other.phoneWallClock,
       calculatedActualTime:
           primary.calculatedActualTime ?? other.calculatedActualTime,

@@ -1,4 +1,3 @@
-import 'package:obecno/demo/demo_list.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_month_bounds.dart';
@@ -23,6 +22,8 @@ import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'fixtures.dart';
 
 void main() {
   group('StatusFilterOption', () {

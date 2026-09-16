@@ -30,7 +30,12 @@ class ReminderEngine {
     TimeOfDay? policyCheckOutTime,
     TimeOfDay? breakReminderTime,
     TimeOfDay? breakEndedReminderTime,
+    TimeOfDay? checkInMissedTime,
+    TimeOfDay? checkOutMissedTime,
     required int graceMinutes,
+    int? checkInMissedMinutes,
+    int? checkOutMissedMinutes,
+    int? longerBreakMinutes,
     required int breakMinutes,
     required int longAttendanceHours,
     required List<ReminderPunch> punches,
@@ -62,7 +67,12 @@ class ReminderEngine {
       policyCheckOutTime: policyOut,
       breakReminderTime: breakAtTime,
       breakEndedReminderTime: breakEndedAtTime,
+      checkInMissedTime: checkInMissedTime,
+      checkOutMissedTime: checkOutMissedTime,
       graceMinutes: graceMinutes,
+      checkInMissedMinutes: checkInMissedMinutes,
+      checkOutMissedMinutes: checkOutMissedMinutes,
+      longerBreakMinutes: longerBreakMinutes,
       breakMinutes: breakMinutes,
       longAttendanceHours: longAttendanceHours,
       status: status,
@@ -254,7 +264,9 @@ class ReminderEngine {
     }
     final longAt = schedule.veryLongAttendanceAt;
     final reachedLongAttendance =
-        longAt != null && !longAt.isAfter(now) && _stayedThrough(status, longAt);
+        longAt != null &&
+        !longAt.isAfter(now) &&
+        _stayedThrough(status, longAt);
     if (!reachedLongAttendance) {
       stale.add(ReminderType.veryLongAttendance);
     }
@@ -397,25 +409,34 @@ class ReminderEngine {
       primaryKinds: primaryKinds,
     );
 
-    return [
-      if (missingCardAlerts.isNotEmpty)
-        ReminderTimelineItem.reminders(
-          time: missingCardAlerts.first.firedAt,
-          standaloneLogs: missingCardAlerts,
-        ),
-      for (var i = 0; i < punchTimes.length; i++)
-        ReminderTimelineItem.punch(
-          punchIndex: i,
-          time: punchTimes[i],
-          attachedLogs: primaryKinds[i] == null
-              ? const []
-              : _logsUnderPunch(
-                  kind: primaryKinds[i]!,
-                  punchTime: punchTimes[i],
-                  logs: logs,
-                ),
-        ),
-    ];
+    final items =
+        [
+          if (missingCardAlerts.isNotEmpty)
+            ReminderTimelineItem.reminders(
+              time: missingCardAlerts
+                  .map((log) => log.firedAt)
+                  .reduce((a, b) => a.isAfter(b) ? a : b),
+              standaloneLogs: missingCardAlerts,
+            ),
+          for (var i = 0; i < punchTimes.length; i++)
+            ReminderTimelineItem.punch(
+              punchIndex: i,
+              time: punchTimes[i],
+              attachedLogs: primaryKinds[i] == null
+                  ? const []
+                  : _logsUnderPunch(
+                      kind: primaryKinds[i]!,
+                      punchTime: punchTimes[i],
+                      logs: logs,
+                    ),
+            ),
+        ]..sort((a, b) {
+          final byTime = b.time.compareTo(a.time);
+          if (byTime != 0) return byTime;
+          if (a.isPunch != b.isPunch) return a.isPunch ? -1 : 1;
+          return 0;
+        });
+    return items;
   }
 }
 

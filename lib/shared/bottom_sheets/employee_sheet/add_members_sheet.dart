@@ -9,6 +9,7 @@ import 'package:obecno/features/manager_module/Manager_locations/data/models/man
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -245,8 +246,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
         widget.location.id,
       }.map((id) => id.trim()).where((id) => id.isNotEmpty).toList();
       final existingDefault = person.locationId?.trim();
-      final defaultId =
-          (existingDefault != null && existingDefault.isNotEmpty)
+      final defaultId = (existingDefault != null && existingDefault.isNotEmpty)
           ? existingDefault
           : widget.location.id;
 
@@ -287,101 +287,102 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.88,
-        ),
-        decoration: const BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: AppText.h5(
-                        widget.title,
-                        weight: FontWeight.w600,
-                        align: TextAlign.left,
+      child: ConstrainedBox(
+        constraints: AppSheetSize.constraintsOf(context),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppText.h5(
+                          widget.title,
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
                       ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: () => Navigator.pop(context, false),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(Icons.close, size: 22),
+                      ButtonAnimations.press(
+                        onTap: () => Navigator.pop(context, false),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.close, size: 22),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: CustomTextField(
-                  controller: _searchController,
-                  hintText: 'Search',
-                  radius: 25,
-                  hintTextFontColor: kBlack,
-                  hintTextFontSize: 15,
-                  preffixWidget: CommonImageView(
-                    imagePath: Assets.Search,
-                    height: 16,
-                  ),
-                  havePrefixIcon: true,
-                  onChanged: (v) => setState(() => _query = v),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppText.h6(
-                    'Employees',
-                    weight: FontWeight.w600,
-                    align: TextAlign.left,
+                    ],
                   ),
                 ),
-              ),
-              Expanded(child: _buildList(people)),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: MyButton(
-                        size: MyButtonSize.normal,
-                        buttonText: 'Clear',
-                        backgroundColor: kWhite,
-                        fontColor: kBlack,
-                        outlineColor: kBorderColor,
-                        isactive: !_saving,
-                        onTap: () async {
-                          setState(() => _selectedIds.clear());
-                        },
-                      ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: CustomTextField(
+                    controller: _searchController,
+                    hintText: 'Search',
+                    radius: 25,
+                    hintTextFontColor: kBlack,
+                    hintTextFontSize: 15,
+                    preffixWidget: CommonImageView(
+                      imagePath: Assets.Search,
+                      height: 16,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 3,
-                      child: MyButton(
-                        buttonText: 'Add',
-                        backgroundColor: kPrimaryButtonColor,
-                        isactive: !_loading && !_saving,
-                        isLoadingExternally: _saving,
-                        onTap: _onAdd,
-                      ),
-                    ),
-                  ],
+                    havePrefixIcon: true,
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AppText.h6(
+                      'Employees',
+                      weight: FontWeight.w600,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                ),
+                Flexible(child: _buildList(people)),
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: MyButton(
+                          size: MyButtonSize.normal,
+                          buttonText: 'Clear',
+                          backgroundColor: kWhite,
+                          fontColor: kBlack,
+                          outlineColor: kBorderColor,
+                          isactive: !_saving,
+                          onTap: () async {
+                            setState(() => _selectedIds.clear());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 3,
+                        child: MyButton(
+                          buttonText: 'Add',
+                          backgroundColor: kPrimaryButtonColor,
+                          isactive: !_loading && !_saving,
+                          isLoadingExternally: _saving,
+                          onTap: _onAdd,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -390,25 +391,27 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
 
   Widget _buildList(List<ManagerEmployeeModel> people) {
     if (_loading) {
-      return const Center(child: ShimmerProgress());
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 64),
+        child: ShimmerProgress(),
+      );
     }
     if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppText.p1(_error!, color: kSubText, align: TextAlign.center),
-              const SizedBox(height: 12),
-              TextButton(onPressed: _load, child: const Text('Retry')),
-            ],
-          ),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppText.p1(_error!, color: kSubText, align: TextAlign.center),
+            const SizedBox(height: 12),
+            TextButton(onPressed: _load, child: const Text('Retry')),
+          ],
         ),
       );
     }
     if (people.isEmpty) {
-      return Center(
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: AppText.p1(
           _query.trim().isEmpty
               ? 'No employees found.'
@@ -420,6 +423,7 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
     }
 
     return ListView.separated(
+      shrinkWrap: true,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       itemCount: people.length,
       separatorBuilder: (_, __) =>

@@ -13,12 +13,14 @@ class ReminderDurationPickerSheet {
     BuildContext context, {
     required int initialMinutes,
     required int resetMinutes,
+    String title = 'Notify me after',
   }) {
     return showModalBottomSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _ReminderDurationPickerBody(
+        title: title,
         initialMinutes: ReminderCopy.snapDuration(initialMinutes),
         resetMinutes: ReminderCopy.snapDuration(resetMinutes),
       ),
@@ -30,10 +32,12 @@ class _ReminderDurationPickerBody extends StatefulWidget {
   const _ReminderDurationPickerBody({
     required this.initialMinutes,
     required this.resetMinutes,
+    this.title = 'Notify me after',
   });
 
   final int initialMinutes;
   final int resetMinutes;
+  final String title;
 
   @override
   State<_ReminderDurationPickerBody> createState() =>
@@ -86,7 +90,7 @@ class _ReminderDurationPickerBodyState
                 ),
               ),
               const SizedBox(height: 16),
-              AppText.h6('Notify me after', weight: FontWeight.w600),
+              AppText.h6(widget.title, weight: FontWeight.w600),
               const SizedBox(height: 8),
               SizedBox(
                 height: 180,

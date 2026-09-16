@@ -1,11 +1,12 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
-import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/more/data/models/device_model.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
@@ -351,119 +352,123 @@ class _ManagerLinkedDevicesSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-      ),
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  ButtonAnimations.press(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      height: 42,
-                      width: 42,
-                      decoration: const BoxDecoration(
-                        color: kGreyContainerColor,
-                        shape: BoxShape.circle,
+    return ConstrainedBox(
+      constraints: AppSheetSize.constraintsOf(context),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    BackCircleButton(onTap: () => Navigator.pop(context)),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          AppText.h5('Linked Devices', weight: FontWeight.w700),
+                          const SizedBox(height: 2),
+                          AppText.caption(
+                            widget.employeeName,
+                            color: kGreyColor,
+                            weight: FontWeight.w400,
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.arrow_back, size: 16),
                     ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        AppText.h5('Linked Devices', weight: FontWeight.w700),
-                        const SizedBox(height: 2),
-                        AppText.caption(
-                          widget.employeeName,
-                          color: kGreyColor,
-                          weight: FontWeight.w400,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 42),
-                ],
+                    const SizedBox(width: 42),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: AppText.caption(
-                'Attendance actions are allowed only from the devices listed below.',
-                color: kGreyColor,
-                weight: FontWeight.w400,
-                align: TextAlign.left,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: AppText.caption(
+                  'Attendance actions are allowed only from the devices listed below.',
+                  color: kGreyColor,
+                  weight: FontWeight.w400,
+                  align: TextAlign.left,
+                ),
               ),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: ShimmerProgress())
-                  : ShimmerRefreshIndicator(
-                      onRefresh: () => _load(showSpinner: false),
-                      child: _error != null
-                          ? ListView(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                60,
-                                16,
-                                20,
-                              ),
-                              children: [
-                                Center(
-                                  child: AppText.p2(_error!, color: kGreyColor),
+              Flexible(
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 64),
+                        child: ShimmerProgress(),
+                      )
+                    : ShimmerRefreshIndicator(
+                        onRefresh: () => _load(showSpinner: false),
+                        child: _error != null
+                            ? ListView(
+                                shrinkWrap: true,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  40,
+                                  16,
+                                  20,
                                 ),
-                              ],
-                            )
-                          : _devices.isEmpty
-                          ? ListView(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                60,
-                                16,
-                                20,
-                              ),
-                              children: [
-                                Center(
-                                  child: AppText.p2(
-                                    'No linked devices yet',
-                                    color: kGreyColor,
+                                children: [
+                                  Center(
+                                    child: AppText.p2(
+                                      _error!,
+                                      color: kGreyColor,
+                                    ),
                                   ),
+                                ],
+                              )
+                            : _devices.isEmpty
+                            ? ListView(
+                                shrinkWrap: true,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  40,
+                                  16,
+                                  20,
                                 ),
-                              ],
-                            )
-                          : ListView.separated(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                              itemCount: _devices.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                return _DeviceCard(
-                                  device: _devices[index],
-                                  iconPath: _iconFor(_devices[index]),
-                                  busy: _actingDeviceId == _devices[index].id,
-                                  onApprove: () => _approve(_devices[index]),
-                                  onReject: () => _reject(_devices[index]),
-                                  onBlock: () => _block(_devices[index]),
-                                  onUnblock: () => _unblock(_devices[index]),
-                                );
-                              },
-                            ),
-                    ),
-            ),
-          ],
+                                children: [
+                                  Center(
+                                    child: AppText.p2(
+                                      'No linked devices yet',
+                                      color: kGreyColor,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : ListView.separated(
+                                shrinkWrap: true,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  20,
+                                ),
+                                itemCount: _devices.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  return _DeviceCard(
+                                    device: _devices[index],
+                                    iconPath: _iconFor(_devices[index]),
+                                    busy: _actingDeviceId == _devices[index].id,
+                                    onApprove: () => _approve(_devices[index]),
+                                    onReject: () => _reject(_devices[index]),
+                                    onBlock: () => _block(_devices[index]),
+                                    onUnblock: () => _unblock(_devices[index]),
+                                  );
+                                },
+                              ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

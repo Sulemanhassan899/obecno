@@ -35,6 +35,7 @@ import 'package:obecno/features/employee_module/attendance/services/attendance_s
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
+import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
 import 'package:obecno/features/more/repositories/profile_repository.dart';
 import 'package:obecno/features/more/services/profile_service.dart';
@@ -117,6 +118,7 @@ class AppBindings {
   late final ManagerAttendanceRepository managerAttendanceRepository;
   late final ManagerAttendanceService managerAttendanceService;
   late final ManagerAttendanceProvider managerAttendanceProvider;
+  late final AlertsProvider alertsProvider;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -175,7 +177,10 @@ class AppBindings {
 
     profileRepository = ProfileRepository(ApihttpClient);
     profileService = ProfileService(profileRepository);
-    profileProvider = ProfileProvider(profileService);
+    profileProvider = ProfileProvider(
+      profileService,
+      userIdProvider: () => authProvider.user?.id,
+    );
 
     deviceRepository = DeviceRepository(ApihttpClient);
     deviceInfoService = DeviceInfoService();
@@ -210,6 +215,12 @@ class AppBindings {
     );
     managerEmployeesProvider = ManagerEmployeesProvider(
       managerEmployeesService,
+    );
+    alertsProvider = AlertsProvider(
+      auth: authProvider,
+      devices: deviceProvider,
+      employees: managerEmployeesProvider,
+      employeesService: managerEmployeesService,
     );
 
     managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
@@ -298,10 +309,12 @@ class AppBindings {
         managerEmployeesProvider.reset();
         managerStatusFiltersProvider.reset();
         managerAttendanceProvider.reset();
+        alertsProvider.reset();
       }
       _wasAuthenticated = isAuthenticatedNow;
     };
     authProvider.addListener(_authListener!);
+    alertsProvider.start();
 
     final connectivityService = AttendanceConnectivityServiceImpl();
     // Phase 5: the queue must always know *who* queued an action, so it can
@@ -380,7 +393,6 @@ class AppBindings {
         // guard inside SyncService itself.
         clockSyncService.onQueuedItemSynced = null;
         clockSyncService.onSyncCompleted = null;
-        clockSyncService.onStateChanged = null;
       });
 
       await _guardedCleanupStep('clearQueue', queueService.clearAll);
@@ -411,6 +423,12 @@ class AppBindings {
       await _guardedCleanupStep('clearTermsCache', termsService.clearCache);
 
       await _guardedCleanupStep('clearPrivacyCache', privacyService.clearCache);
+
+      await _guardedCleanupStep('clearProfileCache', () async {
+        if (loggedOutUserId != null && loggedOutUserId.isNotEmpty) {
+          await profileProvider.clearLocal(userId: loggedOutUserId);
+        }
+      });
     });
   }
 

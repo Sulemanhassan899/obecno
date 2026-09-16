@@ -7,7 +7,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/core/utils/maps_launcher.dart';
-import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
@@ -17,6 +17,7 @@ import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/presentation/widgets/timeline_reminder_rows.dart';
 import 'package:obecno/features/more/services/reminder_engine.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_profile_sheet.dart';
@@ -737,110 +738,127 @@ class _ManagerAttendanceDetailsSheetBodyState
         if (didPop) return;
         Navigator.pop(context, _savedResult);
       },
-      child: DraggableScrollableSheet(
-        initialChildSize: hasAttendance ? 0.88 : 0.62,
-        minChildSize: 0.45,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: kWhite,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: AppText.h5(
-                          ManagerAttendanceDetailsData.formatFullDate(
-                            _data.day,
-                          ),
-                          weight: FontWeight.w600,
-                          align: TextAlign.left,
-                        ),
+      child: ConstrainedBox(
+        constraints: AppSheetSize.constraintsOf(context),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: AppText.h5(
+                        ManagerAttendanceDetailsData.formatFullDate(_data.day),
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
                       ),
-                      ButtonAnimations.press(
-                        onTap: () => Navigator.pop(context, _savedResult),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Icon(Icons.close, size: 22),
-                        ),
+                    ),
+                    ButtonAnimations.press(
+                      onTap: () => Navigator.pop(context, _savedResult),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.close, size: 22),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const Divider(height: 1, color: kDividerColor),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                  child: Row(
-                    children: [
-                      ClipOval(
-                        child: CommonImageView(
-                          url: _data.hasNetworkPhoto ? _data.photo : null,
-                          imagePath: _data.hasNetworkPhoto
-                              ? null
-                              : _data.photoPath,
-                          height: 48,
-                          width: 48,
-                          fit: BoxFit.cover,
-                        ),
+              ),
+              const Divider(height: 1, color: kDividerColor),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Row(
+                  children: [
+                    ClipOval(
+                      child: CommonImageView(
+                        url: _data.hasNetworkPhoto ? _data.photo : null,
+                        imagePath: _data.hasNetworkPhoto
+                            ? null
+                            : _data.photoPath,
+                        height: 48,
+                        width: 48,
+                        fit: BoxFit.cover,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            AppText.p2(
-                              _data.name,
-                              color: kBlack,
-                              weight: FontWeight.w600,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText.p2(
+                            _data.name,
+                            color: kBlack,
+                            weight: FontWeight.w600,
+                            align: TextAlign.left,
+                          ),
+                          if (_data.role != null &&
+                              _data.role!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            AppText.caption(
+                              _data.role!,
+                              color: kGreyColor,
+                              weight: FontWeight.w400,
                               align: TextAlign.left,
                             ),
-                            if (_data.role != null &&
-                                _data.role!.trim().isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              AppText.caption(
-                                _data.role!,
-                                color: kGreyColor,
-                                weight: FontWeight.w400,
-                                align: TextAlign.left,
-                              ),
-                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+                    ButtonAnimations.press(
+                      onTap: _openProfile,
+                      child: CommonImageView(
+                        imagePath: Assets.PersonIconSheet,
+                        height: 45,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ButtonAnimations.press(
+                      onTap: _openAttendance,
+                      child: CommonImageView(
+                        imagePath: Assets.AttendanceIconSheet,
+                        height: 45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: kDividerColor),
+              Flexible(
+                child: Container(
+                  color: kbackground2,
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                    children: [
+                      if (_loading) ...[
+                        const _SummaryCardSkeleton(),
+                        const SizedBox(height: 32),
+                        Row(
+                          children: [
+                            CommonImageView(
+                              imagePath: Assets.imagesClipboardClock,
+                              height: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            AppText.h5("Timeline", weight: FontWeight.w600),
                           ],
                         ),
-                      ),
-                      ButtonAnimations.press(
-                        onTap: _openProfile,
-                        child: CommonImageView(
-                          imagePath: Assets.PersonIconSheet,
-                          height: 45,
+                        const SizedBox(height: 14),
+                        ..._timelineSkeletons(),
+                      ] else ...[
+                        _SummaryCard(
+                          data: _data,
+                          durationLabel: _durationLabel,
+                          locations: locations,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      ButtonAnimations.press(
-                        onTap: _openAttendance,
-                        child: CommonImageView(
-                          imagePath: Assets.AttendanceIconSheet,
-                          height: 45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: kDividerColor),
-                Expanded(
-                  child: Container(
-                    color: kbackground2,
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                      children: [
-                        if (_loading) ...[
-                          const _SummaryCardSkeleton(),
+                        if ((hasAttendance && _punchEvents.isNotEmpty) ||
+                            (_isViewingOwnAttendance &&
+                                _reminderLogs.isNotEmpty)) ...[
                           const SizedBox(height: 32),
                           Row(
                             children: [
@@ -853,79 +871,56 @@ class _ManagerAttendanceDetailsSheetBodyState
                             ],
                           ),
                           const SizedBox(height: 14),
-                          ..._timelineSkeletons(),
-                        ] else ...[
-                          _SummaryCard(
-                            data: _data,
-                            durationLabel: _durationLabel,
-                            locations: locations,
-                          ),
-                          if ((hasAttendance && _punchEvents.isNotEmpty) ||
-                              (_isViewingOwnAttendance &&
-                                  _reminderLogs.isNotEmpty)) ...[
-                            const SizedBox(height: 32),
-                            Row(
-                              children: [
-                                CommonImageView(
-                                  imagePath: Assets.imagesClipboardClock,
-                                  height: 22,
-                                ),
-                                const SizedBox(width: 8),
-                                AppText.h5("Timeline", weight: FontWeight.w600),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            ..._timelineChildren(locations),
-                          ],
+                          ..._timelineChildren(locations),
                         ],
                       ],
-                    ),
+                    ],
                   ),
                 ),
-                Container(
-                  width: double.infinity,
-                  color: kWhite,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  child: SafeArea(
-                    top: false,
-                    child: _loading
-                        ? const Align(
-                            alignment: Alignment.centerRight,
-                            child: _ShimmerLine(
-                              width: 200,
-                              height: 44,
-                              radius: 22,
-                            ),
-                          )
-                        : hasAttendance
-                        ? Align(
-                            alignment: Alignment.centerRight,
-                            child: MyButton(
-                              size: MyButtonSize.normal,
-                              width: 200,
-                              buttonText: 'Edit Attendance',
-                              backgroundColor: kWhite,
-                              fontColor: kBlack,
-                              outlineColor: kBorderColor,
-                              hasicon: true,
-                              leftWidget: CommonImageView(
-                                imagePath: Assets.imagesPen,
-                                height: 16,
-                              ),
-                              onTap: () async => _openEditor(isAdd: false),
-                            ),
-                          )
-                        : MyButton(
-                            buttonText: "Add Attendance",
-                            backgroundColor: kPrimaryColor,
-                            onTap: () async => _openEditor(isAdd: true),
+              ),
+              Container(
+                width: double.infinity,
+                color: kWhite,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: SafeArea(
+                  top: false,
+                  child: _loading
+                      ? const Align(
+                          alignment: Alignment.centerRight,
+                          child: _ShimmerLine(
+                            width: 200,
+                            height: 44,
+                            radius: 22,
                           ),
-                  ),
+                        )
+                      : hasAttendance
+                      ? Align(
+                          alignment: Alignment.centerRight,
+                          child: MyButton(
+                            size: MyButtonSize.normal,
+                            width: 200,
+                            buttonText: 'Edit Attendance',
+                            backgroundColor: kWhite,
+                            fontColor: kBlack,
+                            outlineColor: kBorderColor,
+                            hasicon: true,
+                            leftWidget: CommonImageView(
+                              imagePath: Assets.imagesPen,
+                              height: 16,
+                            ),
+                            onTap: () async => _openEditor(isAdd: false),
+                          ),
+                        )
+                      : MyButton(
+                          buttonText: "Add Attendance",
+                          backgroundColor: kPrimaryColor,
+                          onTap: () async => _openEditor(isAdd: true),
+                        ),
                 ),
-              ],
-            ),
-          );
-        },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

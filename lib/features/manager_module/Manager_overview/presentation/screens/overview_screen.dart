@@ -1,10 +1,10 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/all_colors.dart';
-import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/features/manager_module/Manager_overview/presentation/widgets/overview_header.dart';
 import 'package:obecno/features/manager_module/Manager_overview/providers/manager_overview_provider.dart';
 import 'package:flutter/material.dart';
@@ -47,11 +47,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
             ]);
           },
           child: Padding(
-            padding: AppSizes.DEFAULT2,
+            padding: AppSizes.page(context),
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
                 const SliverToBoxAdapter(child: OverviewHeader()),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 if (isInitialLoad)
@@ -59,18 +58,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     hasScrollBody: false,
                     child: Center(child: ShimmerProgress()),
                   )
-                else if (provider.hasError && summary == null)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _OverviewError(
-                      message:
-                          provider.errorMessage ?? 'Failed to load overview.',
-                      onRetry: provider.load,
-                    ),
-                  )
-                else if (summary != null) ...[
+                else ...[
                   SliverToBoxAdapter(
-                    child: OverviewStatsCard(summary: summary),
+                    child: OverviewStatsCard(
+                      summary: summary ?? OverviewSummary.empty,
+                    ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   const SliverToBoxAdapter(child: OverviewActionsGrid()),
@@ -79,30 +71,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OverviewError extends StatelessWidget {
-  const _OverviewError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppText.p1(message, color: kSubText, align: TextAlign.center),
-            const SizedBox(height: 12),
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
         ),
       ),
     );

@@ -441,7 +441,7 @@ void main() {
         final durations = ReminderCopy.durationOptionsInMinutes
             .where((minutes) => minutes <= 12 * 60)
             .toList();
-        expect(durations.first, 10);
+        expect(durations.first, 5);
         expect(durations.last, 12 * 60);
         final checkInAt = at(9);
         for (final minutes in durations) {

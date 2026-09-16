@@ -27,7 +27,12 @@ class PermissionService {
       case AppPermission.notification:
         return Permission.notification;
       case AppPermission.motion:
-        return Permission.activityRecognition;
+        // Android: ACTIVITY_RECOGNITION. iOS has no matching group —
+        // `Permission.activityRecognition` is permanently denied there —
+        // so use Motion & Fitness (`Permission.sensors`) instead.
+        return defaultTargetPlatform == TargetPlatform.iOS
+            ? Permission.sensors
+            : Permission.activityRecognition;
     }
   }
 
@@ -47,15 +52,26 @@ class PermissionService {
     await openAppSettings();
   }
 
-  static bool isAllowed(PermissionStatus s) {
-    return s.isGranted || s.isLimited || s.isProvisional;
+  static bool isAllowed(PermissionStatus s, [AppPermission? p]) {
+    if (s.isGranted || s.isLimited || s.isProvisional) return true;
+    // iOS Simulator (and devices without a motion coprocessor) report
+    // Core Motion as restricted. Don't block attendance on that.
+    if (p == AppPermission.motion &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        s.isRestricted) {
+      return true;
+    }
+    return false;
   }
 
   static Future<bool> areAllPermissionsAllowed() async {
-    final loc = await Permission.locationWhenInUse.status;
-    final notif = await Permission.notification.status;
-    final motion = await Permission.activityRecognition.status;
-    final result = isAllowed(loc) && isAllowed(notif) && isAllowed(motion);
+    final loc = await status(AppPermission.location);
+    final notif = await status(AppPermission.notification);
+    final motion = await status(AppPermission.motion);
+    final result =
+        isAllowed(loc) &&
+        isAllowed(notif) &&
+        isAllowed(motion, AppPermission.motion);
     debugPrint(
       '[PermissionService] areAllPermissionsAllowed() -> location: $loc, '
       'notification: $notif, motion: $motion => $result',
@@ -80,9 +96,9 @@ class PermissionService {
   /// depends on. Notification is surfaced separately (see
   /// [missingPermissions]) as a non-blocking nudge instead.
   static Future<bool> areCriticalPermissionsAllowed() async {
-    final loc = await Permission.locationWhenInUse.status;
-    final motion = await Permission.activityRecognition.status;
-    final result = isAllowed(loc) && isAllowed(motion);
+    final loc = await status(AppPermission.location);
+    final motion = await status(AppPermission.motion);
+    final result = isAllowed(loc) && isAllowed(motion, AppPermission.motion);
     debugPrint(
       '[PermissionService] areCriticalPermissionsAllowed() -> location: $loc, '
       'motion: $motion => $result',
@@ -94,7 +110,7 @@ class PermissionService {
     final missing = <AppPermission>[];
     for (final p in AppPermission.values) {
       final s = await status(p);
-      if (!isAllowed(s)) missing.add(p);
+      if (!isAllowed(s, p)) missing.add(p);
     }
     return missing;
   }

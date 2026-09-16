@@ -171,14 +171,6 @@ class HistoryAttendanceRepository {
     final today = history.today ?? DateTime.now();
     final joiningDate = _joiningDate;
 
-    final summary = _buildSummary(
-      days: days,
-      calendarDates: calendar?.attendanceDates ?? const [],
-      month: month,
-      today: today,
-      joiningDate: joiningDate,
-    );
-
     final daysWithLeave = EmployeeLeaveDates.overlay(days, leaveDates);
 
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
@@ -194,6 +186,10 @@ class HistoryAttendanceRepository {
       displayDays,
       calendar,
       extraLeaveDates: leaveDates,
+    );
+    final summary = _buildSummary(
+      records: records,
+      days: displayDays,
     );
 
     final monthLabel = (calendar?.monthLabel.isNotEmpty ?? false)
@@ -239,24 +235,27 @@ class HistoryAttendanceRepository {
         ? const <AttendanceDay>[]
         : await _dao.getDaysForMonth(userId, month);
 
-    final today = DateTime.now();
-    final joiningDate = _joiningDate;
+    return monthFromLocalDays(month, days: days);
+  }
 
-    final summary = _buildSummary(
-      days: days,
-      calendarDates: const [],
-      month: month,
-      today: today,
-      joiningDate: joiningDate,
-    );
+  /// Calendar cards for [month] without hitting the network. Used when
+  /// offline (or the cache is empty) so Attendance still shows day tiles.
+  AttendanceMonthResult monthFromLocalDays(
+    DateTime month, {
+    List<AttendanceDay> days = const [],
+    DateTime? today,
+  }) {
+    final now = today ?? DateTime.now();
+    final joiningDate = _joiningDate;
 
     final displayDays = _fillMissingDays(
       days: days,
       month: month,
-      today: today,
+      today: now,
       joiningDate: joiningDate,
     ).reversed.toList();
     final records = _recordsFor(displayDays, null);
+    final summary = _buildSummary(records: records, days: displayDays);
     final monthLabel = '${_monthNames[month.month - 1]} ${month.year}';
 
     return AttendanceMonthResult(
@@ -266,6 +265,15 @@ class HistoryAttendanceRepository {
       rawDays: days,
       calendarDates: const [],
     );
+  }
+
+  /// Cached month if we have one; otherwise a locally built empty calendar.
+  Future<AttendanceMonthResult> localMonthFallback(DateTime month) async {
+    try {
+      final cached = await loadMonthFromCache(month);
+      if (cached != null) return cached;
+    } catch (_) {}
+    return monthFromLocalDays(month);
   }
 
   Future<void> cacheMonth(DateTime month, AttendanceMonthResult result) async {
@@ -338,48 +346,39 @@ class HistoryAttendanceRepository {
   // ---------------------------------------------------------------------
 
   MonthSummary _buildSummary({
+    required List<AttendanceDayRecord> records,
     required List<AttendanceDay> days,
-    required List<DateTime> calendarDates,
-    required DateTime month,
-    required DateTime today,
-    DateTime? joiningDate,
   }) {
-    final eligibleDays = joiningDate == null
-        ? days
-        : days
-              .where((d) {
-                final date = DateTime(d.date.year, d.date.month, d.date.day);
-                return !date.isBefore(joiningDate);
-              })
-              .toList(growable: false);
+    final byDate = <String, AttendanceDay>{
+      for (final day in days) _yyyyMMdd(day.date): day,
+    };
 
-    final workingDays = eligibleDays.where(_hasPunch).length;
-
-    // Count only working weekdays (per policy) in the elapsed period,
-    // instead of counting every calendar day.
-    final range = _monthDisplayRange(
-      month: month,
-      today: today,
-      joiningDate: joiningDate,
-    );
-    final firstDay = range.$1;
-    final elapsedDays = range.$2;
+    var workingDays = 0;
     var totalWorkingDays = 0;
-    for (var i = 0; i < elapsedDays; i++) {
-      final d = firstDay.add(Duration(days: i));
-      if (_workingWeekdays.contains(d.weekday)) totalWorkingDays++;
-    }
-
-    final absentOrLeaves = (totalWorkingDays - workingDays).clamp(
-      0,
-      totalWorkingDays,
-    );
-
+    var absentOrLeaves = 0;
     var lateCheckIns = 0;
     var lateCheckOuts = 0;
 
-    for (final day in eligibleDays) {
-      if (!_hasPunch(day)) continue;
+    for (final record in records) {
+      switch (record.status) {
+        case AttendanceDayStatus.weekend:
+        case AttendanceDayStatus.holiday:
+          continue;
+        case AttendanceDayStatus.onLeave:
+        case AttendanceDayStatus.absent:
+          totalWorkingDays++;
+          absentOrLeaves++;
+          continue;
+        default:
+          break;
+      }
+
+      totalWorkingDays++;
+      workingDays++;
+
+      final day = byDate[_yyyyMMdd(record.date)];
+      if (day == null || !_hasCountablePunch(day)) continue;
+
       final checkIn = _parseClockTime(day.firstCheckIn);
       if (checkIn != null &&
           _isAfterThreshold(checkIn, _lateCheckInHour, _lateCheckInMinute)) {
@@ -509,14 +508,9 @@ class HistoryAttendanceRepository {
     required List<HolidayInfo> holidays,
     required Set<DateTime> leaveDates,
   }) {
-    // No attendance recorded at all for this date.
-    final isFullyMissing =
-        day.firstCheckIn == null && day.lastCheckOut == null && !day.isEdited;
-
-    // Build the set of dates that have attendance for classification.
+    final dateOnly = DateTime(day.date.year, day.date.month, day.date.day);
     final attendanceDates = <DateTime>{
-      if (!isFullyMissing)
-        DateTime(day.date.year, day.date.month, day.date.day),
+      if (_hasCountablePunch(day)) dateOnly,
     };
 
     // Use the classification engine instead of hardcoded weekend check.
@@ -610,8 +604,17 @@ class HistoryAttendanceRepository {
     };
   }
 
-  bool _hasPunch(AttendanceDay day) {
-    return day.checkIns.isNotEmpty || day.checkOuts.isNotEmpty || day.isEdited;
+  bool _hasCountablePunch(AttendanceDay day) {
+    bool isReal(String raw) {
+      final parsed = AttendanceEditRequest.parseClockTime(
+        raw,
+        date: DateTime(2000, 1, 1),
+      );
+      if (parsed == null) return false;
+      return !AttendanceEditRequest.isPlaceholderMint(parsed);
+    }
+
+    return day.checkIns.any(isReal) || day.checkOuts.any(isReal);
   }
 
   // ---------------------------------------------------------------------

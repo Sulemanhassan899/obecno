@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,14 +35,21 @@ class AttendanceEditRequestStore {
         if (decoded is Map) {
           decoded.forEach((key, value) {
             if (value is List) {
-              _cache[key.toString()] = AttendanceEditRequest.listFromJson(value)
-                  .toList();
+              _cache[key.toString()] = AttendanceEditRequest.listFromJson(
+                value,
+              ).toList();
             }
           });
         }
       } catch (_) {}
     }
     _loaded = true;
+  }
+
+  @visibleForTesting
+  void debugReset() {
+    _cache.clear();
+    _loaded = false;
   }
 
   Future<void> _persist() async {
@@ -59,6 +67,24 @@ class AttendanceEditRequestStore {
     required String eventType,
   }) {
     return List.unmodifiable(_cache[_entryKey(day, eventType)] ?? const []);
+  }
+
+  List<AttendanceEditRequest> forDay(DateTime day) {
+    final prefix = '${_dayKey(day)}|';
+    final out = <AttendanceEditRequest>[];
+    for (final entry in _cache.entries) {
+      if (entry.key.startsWith(prefix)) out.addAll(entry.value);
+    }
+    return List.unmodifiable(out);
+  }
+
+  bool hasPending(DateTime day) =>
+      forDay(day).any((request) => request.isPending);
+
+  bool hasPendingAdd(DateTime day) {
+    final pending = forDay(day).where((request) => request.isPending).toList();
+    if (pending.isEmpty) return false;
+    return pending.every((request) => request.isPendingAdd);
   }
 
   Future<void> addRequest({
@@ -91,5 +117,27 @@ class AttendanceEditRequestStore {
       _cache[key] = existing;
     }
     await _persist();
+  }
+
+  /// Drops local pending-add rows once the server has real punches.
+  Future<void> clearPendingAdd(DateTime day) async {
+    await ensureLoaded();
+    final prefix = '${_dayKey(day)}|';
+    var changed = false;
+    for (final key in _cache.keys.toList()) {
+      if (!key.startsWith(prefix)) continue;
+      final kept = [
+        for (final request in _cache[key]!)
+          if (!request.isPendingAdd) request,
+      ];
+      if (kept.length == (_cache[key]?.length ?? 0)) continue;
+      changed = true;
+      if (kept.isEmpty) {
+        _cache.remove(key);
+      } else {
+        _cache[key] = kept;
+      }
+    }
+    if (changed) await _persist();
   }
 }

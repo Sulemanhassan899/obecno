@@ -1,4 +1,5 @@
 import 'package:obecno/core/constants/app_enums.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 
 /// Groups consecutive weekend rows. Holidays stay as individual cards.
 class AttendanceListGrouping {
@@ -101,6 +102,37 @@ class AttendanceDayRecord {
         lower != 'holiday' &&
         lower != '--' &&
         !lower.startsWith('--:--');
+  }
+
+  /// True when the row has a punch that is not a 00:00–00:03 placeholder mint.
+  bool get hasVisiblePunch => isRealPunch(checkIn) || isRealPunch(checkOut);
+
+  static bool isRealPunch(String? raw) {
+    if (!hasPunchTime(raw)) return false;
+    final parsed = AttendanceEditRequest.parseClockTime(
+      raw!,
+      date: DateTime(2000, 1, 1),
+    );
+    if (parsed == null) return false;
+    return !AttendanceEditRequest.isPlaceholderMint(parsed);
+  }
+
+  /// Pending-add overlay until the manager approves. Once the API has real
+  /// punch times, keep those times on the list.
+  AttendanceDayRecord overlayPendingAdd({required bool pendingAdd}) {
+    if (!pendingAdd ||
+        isOnLeave ||
+        status == AttendanceDayStatus.holiday ||
+        status == AttendanceDayStatus.weekend ||
+        hasVisiblePunch) {
+      return this;
+    }
+    return AttendanceDayRecord(
+      day: day,
+      weekday: weekday,
+      date: date,
+      status: AttendanceDayStatus.absent,
+    );
   }
 }
 

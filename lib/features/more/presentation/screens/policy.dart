@@ -39,7 +39,7 @@ class _PolicyScreenState extends State<PolicyScreen> {
           return ShimmerRefreshIndicator(
             onRefresh: () => privacyProvider.load(),
             child: ListView(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.page(context, AppSizes.DEFAULT),
               children: [
                 const SizedBox(height: 20),
 

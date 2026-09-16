@@ -105,4 +105,65 @@ void main() {
     );
     expect(parsed, DateTime(2026, 8, 17, 7, 55));
   });
+
+  test('clock card uses latest chained approval and break-adjusted duration', () {
+    final firstApproval = AttendanceEditRequest(
+      status: AttendanceEditRequestStatus.approved,
+      requestedAt: DateTime(2026, 9, 14, 17, 33),
+      originalTime: '12:00 AM',
+      newTime: '12:20 PM',
+      actionedAt: DateTime(2026, 9, 14, 17, 34),
+    );
+    final secondApproval = AttendanceEditRequest(
+      status: AttendanceEditRequestStatus.approved,
+      requestedAt: DateTime(2026, 9, 14, 17, 34),
+      originalTime: '12:20 PM',
+      newTime: '1:20 PM',
+      actionedAt: DateTime(2026, 9, 14, 17, 35),
+    );
+
+    final staleLocal = AttendanceEvent(
+      id: 'local_checkin',
+      type: AttendanceEventType.checkIn,
+      time: DateTime(2026, 9, 14, 12, 20),
+      editRequests: [firstApproval],
+    );
+    final server = AttendanceEvent(
+      id: '501',
+      type: AttendanceEventType.checkIn,
+      time: DateTime(2026, 9, 14, 13, 20),
+      editRequests: [secondApproval, firstApproval],
+    );
+    final breakStart = AttendanceEvent(
+      id: '502',
+      type: AttendanceEventType.breakStart,
+      time: DateTime(2026, 9, 14, 13, 17),
+    );
+    final breakEnd = AttendanceEvent(
+      id: '503',
+      type: AttendanceEventType.breakEnd,
+      time: DateTime(2026, 9, 14, 14, 17),
+    );
+    final checkOut = AttendanceEvent(
+      id: '504',
+      type: AttendanceEventType.checkOut,
+      time: DateTime(2026, 9, 14, 17, 25),
+    );
+
+    expect(staleLocal.isSamePunchAs(server), isTrue);
+    final merged = AttendanceEvent.preferAuthoritative(staleLocal, server);
+    expect(merged.effectiveTime, DateTime(2026, 9, 14, 13, 20));
+
+    final summary = AttendanceEngine.compute([
+      staleLocal,
+      server,
+      breakStart,
+      breakEnd,
+      checkOut,
+    ]);
+    expect(summary.firstCheckIn, DateTime(2026, 9, 14, 13, 20));
+    expect(summary.lastCheckOut, DateTime(2026, 9, 14, 17, 25));
+    expect(summary.totalBreakDuration, const Duration(hours: 1));
+    expect(summary.totalWorkingDuration, const Duration(hours: 3, minutes: 5));
+  });
 }

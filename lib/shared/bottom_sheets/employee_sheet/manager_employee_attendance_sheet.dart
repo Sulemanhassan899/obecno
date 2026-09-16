@@ -1,10 +1,9 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
-import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
-import 'package:obecno/demo/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
@@ -23,10 +22,12 @@ import 'package:obecno/features/manager_module/Manager_locations/data/models/man
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
+import 'package:obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
 
 class ManagerEmployeeAttendanceSheet {
@@ -51,29 +52,31 @@ class ManagerEmployeeAttendanceSheet {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) {
-        return Container(
-          height: MediaQuery.sizeOf(context).height * 0.94,
-          decoration: const BoxDecoration(
-            color: kbackground2,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            top: false,
-            child: isLocation
-                ? _LocationAttendanceSheetBody(
-                    locationId: locationId,
-                    locationName: locationName,
-                    locationAddress: locationAddress ?? '',
-                    statusFilter: statusFilter,
-                  )
-                : _EmployeeHistorySheetBody(
-                    employeeName: employeeName ?? 'Employee',
-                    userId: userId,
-                    role: role,
-                    photo: photo,
-                    joiningDate: joiningDate,
-                  ),
+        return ConstrainedBox(
+          constraints: AppSheetSize.constraintsOf(context),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: kbackground2,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SafeArea(
+              top: false,
+              child: isLocation
+                  ? _LocationAttendanceSheetBody(
+                      locationId: locationId,
+                      locationName: locationName,
+                      locationAddress: locationAddress ?? '',
+                      statusFilter: statusFilter,
+                    )
+                  : _EmployeeHistorySheetBody(
+                      employeeName: employeeName ?? 'Employee',
+                      userId: userId,
+                      role: role,
+                      photo: photo,
+                      joiningDate: joiningDate,
+                    ),
+            ),
           ),
         );
       },
@@ -445,23 +448,13 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     return ColoredBox(
       color: kbackground2,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                ButtonAnimations.press(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    height: 42,
-                    width: 42,
-                    decoration: const BoxDecoration(
-                      color: kGreyContainerColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.close, size: 18),
-                  ),
-                ),
+                BackCircleButton(onTap: () => Navigator.pop(context)),
                 Expanded(
                   child: Column(
                     children: [
@@ -492,19 +485,21 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
             ),
           ),
           const SizedBox(height: 20),
-          Expanded(
+          Flexible(
             child: _loading
-                ? const Center(child: ShimmerProgress())
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 64),
+                    child: ShimmerProgress(),
+                  )
                 : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: AppText.p2(_error!, color: kGreyColor),
-                    ),
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: AppText.p2(_error!, color: kGreyColor),
                   )
                 : ShimmerRefreshIndicator(
                     onRefresh: _load,
                     child: ListView.builder(
+                      shrinkWrap: true,
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       itemCount: _records.length + 1,
                       itemBuilder: (context, index) {
@@ -748,24 +743,14 @@ class _LocationAttendanceSheetBodyState
     return ColoredBox(
       color: kbackground2,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                ButtonAnimations.press(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    height: 42,
-                    width: 42,
-                    decoration: const BoxDecoration(
-                      color: kGreyContainerColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.close, size: 18),
-                  ),
-                ),
+                BackCircleButton(onTap: () => Navigator.pop(context)),
                 Expanded(
                   child: Column(
                     children: [
@@ -823,33 +808,38 @@ class _LocationAttendanceSheetBodyState
             ),
           ),
           const SizedBox(height: 20),
-          Expanded(
+          Flexible(
             child: isLoading
-                ? const Center(child: ShimmerProgress())
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 64),
+                    child: ShimmerProgress(),
+                  )
                 : hasError
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AppText.p1(
-                            attendance.errorMessage ??
-                                employees.errorMessage ??
-                                'Failed to load attendance.',
-                            color: kSubText,
-                            align: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-                          TextButton(
-                            onPressed: _load,
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 32,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppText.p1(
+                          attendance.errorMessage ??
+                              employees.errorMessage ??
+                              'Failed to load attendance.',
+                          color: kSubText,
+                          align: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: _load,
+                          child: const Text('Retry'),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.separated(
+                    shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     itemCount: tiles.isEmpty ? 2 : tiles.length + 1,
                     separatorBuilder: (context, index) {

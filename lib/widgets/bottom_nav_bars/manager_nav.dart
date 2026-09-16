@@ -4,9 +4,9 @@ import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
-import 'package:obecno/features/manager_module/Manager_alerts/presentation/screens/manager_alerts_screen.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
@@ -16,12 +16,21 @@ import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_shee
 
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
-
+import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/widgets/bottom_nav_bars/alerts_nav_icon.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class ManagerBottomNavBar extends StatefulWidget {
   const ManagerBottomNavBar({super.key});
+
+  static final ValueNotifier<int> _alertsTick = ValueNotifier(0);
+  static bool openAlertsOnBuild = false;
+
+  static void goToAlerts() {
+    openAlertsOnBuild = true;
+    _alertsTick.value++;
+  }
 
   /// Switch to Attendance tab with an optional status filter and date.
   static void goToAttendance(
@@ -53,19 +62,39 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     const OverviewScreen(),
     ClockScreen(key: _clockKey),
     const ManagerAttendanceScreen(),
-    const ManagerAlertsScreen(),
+    const AlertsScreen(),
     const ProfileSettingsScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
+    if (ManagerBottomNavBar.openAlertsOnBuild) {
+      selectedIndex = 3;
+      ManagerBottomNavBar.openAlertsOnBuild = false;
+    }
+    ManagerBottomNavBar._alertsTick.addListener(_openAlerts);
     // Employees land on Clock, which arms reminders. Managers land on
     // Overview, so arm the same reminder schedule here.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(context.read<ReminderSettingsProvider>().activateFromClock());
     });
+  }
+
+  void _openAlerts() {
+    if (!mounted) return;
+    setState(() {
+      selectedIndex = 3;
+      ManagerBottomNavBar.openAlertsOnBuild = false;
+    });
+    context.read<AlertsProvider>().markAlertsSeen();
+  }
+
+  @override
+  void dispose() {
+    ManagerBottomNavBar._alertsTick.removeListener(_openAlerts);
+    super.dispose();
   }
 
   void openAttendance({String? statusFilter}) {
@@ -90,6 +119,9 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       }
       selectedIndex = index;
     });
+    if (index == 3) {
+      context.read<AlertsProvider>().markAlertsSeen();
+    }
     if (index == 1 && previousIndex != 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -128,6 +160,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
+    final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge;
     return Scaffold(
       body: IndexedStack(index: selectedIndex, children: screens),
       bottomNavigationBar: Container(
@@ -149,12 +182,17 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CommonImageView(
-                      imagePath: isSelected
-                          ? items[index]["activeIcon"]
-                          : items[index]["inactiveIcon"],
-                      height: 20,
-                    ),
+                    index == 3
+                        ? AlertsNavIcon(
+                            selected: isSelected,
+                            showBadge: showAlertsBadge,
+                          )
+                        : CommonImageView(
+                            imagePath: isSelected
+                                ? items[index]["activeIcon"]
+                                : items[index]["inactiveIcon"],
+                            height: 20,
+                          ),
                     const SizedBox(height: 6),
                     AppText.p4(
                       items[index]["label"],

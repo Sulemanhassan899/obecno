@@ -641,10 +641,11 @@ class ClockScreenController extends ChangeNotifier {
       }
     }
     merged.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+    final collapsed = AttendanceEngine.collapseDuplicatePunches(merged);
 
     _events
       ..clear()
-      ..addAll(merged);
+      ..addAll(collapsed);
     unawaited(_persistEvents());
     notifyListeners();
   }

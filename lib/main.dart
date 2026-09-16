@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/state/multi_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/binding/app_binding.dart';
@@ -21,8 +22,11 @@ import 'package:obecno/features/manager_module/Manager_employees/providers/manag
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
-import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/clock/services/sync_toast_listener.dart';
 import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/features/more/services/reminder_notification_service.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
 
@@ -45,6 +49,8 @@ Future<void> main() async {
 
     bindings = AppBindings();
     await bindings.init();
+    ReminderNotificationService.instance.onNotificationTap =
+        AlertNavigation.handleNotificationTap;
     await ReminderNotificationService.instance.init();
 
     runApp(MyApp());
@@ -60,6 +66,28 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final ThemeProvider _themeProvider = ThemeProvider();
+  late final SyncToastListener _syncToasts;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncToasts = SyncToastListener(
+      onSyncing: () {
+        final ctx = rootNavigatorKey.currentContext;
+        if (ctx != null) ToastHelper.syncing(ctx);
+      },
+      onSynced: ({required bool success}) {
+        final ctx = rootNavigatorKey.currentContext;
+        if (ctx != null) ToastHelper.synced(ctx, success: success);
+      },
+    )..attach(bindings.clockSyncService);
+  }
+
+  @override
+  void dispose() {
+    _syncToasts.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +151,10 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<ManagerAttendanceProvider>(
           notifier: bindings.managerAttendanceProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<AlertsProvider>(
+          notifier: bindings.alertsProvider,
           child: child,
         ),
         (child) => ChangeNotifierProvider<ThemeProvider>(

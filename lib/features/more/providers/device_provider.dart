@@ -51,6 +51,7 @@ class DeviceProvider extends BaseProvider {
   DeviceModel? _registeredFallback;
   Completer<DeviceRegisterResult>? _registerCompleter;
   Completer<LoginDeviceCheck>? _loginRegisterCompleter;
+  String? _sessionRegisterFingerprint;
 
   bool get isDeviceApproved => _deviceApproved;
   bool get isDeviceBlocked => _deviceBlocked;
@@ -169,7 +170,30 @@ class DeviceProvider extends BaseProvider {
     for (final d in _devices) {
       if (d.isCurrent) return d;
     }
-    return null;
+    final local = _currentDevice;
+    if (local == null || _devices.isEmpty) return null;
+    return DeviceModel.pickCurrent(
+      _devices,
+      currentDeviceId: local.deviceId,
+      model: local.model,
+      manufacturer: local.manufacturer,
+      platform: local.platform,
+      name: local.name,
+    );
+  }
+
+  bool _isLiveRegistration(DeviceModel device) =>
+      device.isApproved || device.isPending;
+
+  bool _shouldSkipRegister(DeviceModel? match, String deviceId) {
+    if (match != null && _isLiveRegistration(match)) return true;
+    if (match != null && (match.isBlocked || match.isRejected)) return false;
+    return deviceId.isNotEmpty && _sessionRegisterFingerprint == deviceId;
+  }
+
+  void _rememberSessionRequest(String deviceId) {
+    if (deviceId.trim().isEmpty) return;
+    _sessionRegisterFingerprint = deviceId;
   }
 
   void _syncCurrentDevice(String currentId) {
@@ -340,10 +364,12 @@ class DeviceProvider extends BaseProvider {
   Future<bool> loadLinkedDevices() async {
     await fetchDevices();
     final listed = _listedCurrent;
-    if (listed != null && listed.hasExistingRegistration) {
+    final currentId = _currentDevice?.deviceId ?? '';
+    if (_shouldSkipRegister(listed, currentId)) {
+      _rememberSessionRequest(currentId);
       AppLogger.info(
         '[DeviceProvider] Linked Devices: current device already '
-        '${listed.statusLabel} -- skipping register request',
+        '${listed?.statusLabel ?? 'requested'} -- skipping register request',
       );
       return true;
     }
@@ -357,6 +383,7 @@ class DeviceProvider extends BaseProvider {
         result.outcome == DeviceRegisterOutcome.alreadyRegistered;
     if (ok) {
       _rememberRegisteredDevice(result.device);
+      _rememberSessionRequest(result.device?.deviceId ?? currentId);
     } else {
       AppLogger.info(
         '[DeviceProvider] Linked Devices: register failed (${result.message})',
@@ -425,10 +452,12 @@ class DeviceProvider extends BaseProvider {
     final fetched = await fetchDevices();
     if (fetched) {
       final listed = _listedCurrent;
-      if (listed != null && listed.hasExistingRegistration) {
+      final currentId = _currentDevice?.deviceId ?? '';
+      if (_shouldSkipRegister(listed, currentId)) {
         _statusValidated = true;
-        _rememberRegisteredDevice(listed);
-        if (listed.isApproved) {
+        _rememberSessionRequest(currentId);
+        if (listed != null) _rememberRegisteredDevice(listed);
+        if (listed != null && listed.isApproved) {
           _deviceApproved = true;
           _deviceBlocked = false;
           AppLogger.info(
@@ -437,7 +466,7 @@ class DeviceProvider extends BaseProvider {
           );
           return LoginDeviceCheck.registeredSilently;
         }
-        if (listed.isBlocked || listed.isRejected) {
+        if (listed != null && (listed.isBlocked || listed.isRejected)) {
           _deviceApproved = false;
           _deviceBlocked = true;
           AppLogger.info(
@@ -450,7 +479,7 @@ class DeviceProvider extends BaseProvider {
         _deviceBlocked = false;
         AppLogger.info(
           '[DeviceProvider] registerOnLogin: request already pending '
-          '(${listed.displayName}) -- skipping POST',
+          '(${listed?.displayName ?? currentId}) -- skipping POST',
         );
         return LoginDeviceCheck.newlyRegistered;
       }
@@ -463,12 +492,18 @@ class DeviceProvider extends BaseProvider {
         _deviceBlocked = false;
         _statusValidated = true;
         _rememberRegisteredDevice(result.device);
+        _rememberSessionRequest(
+          result.device?.deviceId ?? _currentDevice?.deviceId ?? '',
+        );
         return LoginDeviceCheck.newlyRegistered;
       case DeviceRegisterOutcome.alreadyRegistered:
         _deviceApproved = false;
         _deviceBlocked = false;
         _statusValidated = true;
         _rememberRegisteredDevice(result.device);
+        _rememberSessionRequest(
+          result.device?.deviceId ?? _currentDevice?.deviceId ?? '',
+        );
         return LoginDeviceCheck.registeredSilently;
       case DeviceRegisterOutcome.blocked:
         _deviceBlocked = true;
@@ -605,6 +640,7 @@ class DeviceProvider extends BaseProvider {
     _lastKnownStatus = null;
     _currentListedByServer = true;
     _registeredFallback = null;
+    _sessionRegisterFingerprint = null;
     DeviceApprovalGuard.reset();
     await _cache.clearCache();
   }
