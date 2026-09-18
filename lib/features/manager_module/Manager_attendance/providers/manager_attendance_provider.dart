@@ -41,8 +41,11 @@ class ManagerAttendanceProvider extends BaseProvider {
     );
   }
 
-  List<ManagerAttendanceModel> get tiles =>
-      TeamAttendanceMapper.toTiles(filteredItems);
+  List<ManagerAttendanceModel> get tiles => TeamAttendanceMapper.toTiles(
+    filteredItems,
+    currentUserId: _service.currentUserId,
+    currentUserName: _currentUserName,
+  );
 
   Iterable<PendingAttendanceSave> get pendingSaves => _pendingSaves.values;
 
@@ -55,7 +58,18 @@ class ManagerAttendanceProvider extends BaseProvider {
         searchQuery: query,
         members: members,
       ),
+      currentUserId: _service.currentUserId,
+      currentUserName: _currentUserName,
     );
+  }
+
+  String? get _currentUserName {
+    final id = _service.currentUserId;
+    if (id == null || id.isEmpty) return null;
+    for (final member in members) {
+      if (member.id == id) return member.name;
+    }
+    return null;
   }
 
   Future<bool> load() {

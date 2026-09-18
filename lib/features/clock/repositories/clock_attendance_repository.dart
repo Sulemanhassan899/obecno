@@ -150,7 +150,11 @@ class AttendanceRepository {
           final events =
               details.data!
                   .toClockEvents()
-                  .where((e) => _isSameCalendarDay(e.effectiveTime, todayDate))
+                  .where(
+                    (e) =>
+                        _isSameCalendarDay(e.effectiveTime, todayDate) &&
+                        !AttendanceEditRequest.isPlaceholderMint(e.time),
+                  )
                   .toList()
                 ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
           if (events.isNotEmpty) {

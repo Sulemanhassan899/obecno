@@ -8,6 +8,7 @@ import 'package:obecno/features/auth/services/company_policy_service.dart';
 import 'package:obecno/features/more/data/local/reminder_dao.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
+import 'package:obecno/features/more/services/native_reminder_scheduler.dart';
 import 'package:obecno/features/more/services/reminder_engine.dart';
 import 'package:obecno/features/more/services/reminder_notification_plan.dart';
 import 'package:obecno/features/more/services/reminder_notification_service.dart';
@@ -97,6 +98,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
   bool _loading = false;
   bool get isLoading => _loading;
 
+  ReminderHealth? health;
+  DateTime? testReminderAt;
+
   bool isEnabled(ReminderType type) => _enabled[type] ?? false;
 
   String _armedKey() => 'reminder_clock_armed_${_userIdProvider()}';
@@ -138,6 +142,8 @@ class ReminderSettingsProvider extends ChangeNotifier {
         await _rescheduleNotifications();
         _startWatch();
       }
+      await NativeReminderScheduler.ensureUnrestricted();
+      await refreshHealth();
     } finally {
       _loading = false;
       notifyListeners();
@@ -162,6 +168,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     }
     // OS notifications follow the phone clock, not trusted punch time.
     await _rescheduleNotifications(now: DateTime.now());
+    await NativeReminderScheduler.ensureUnrestricted();
     _startWatch();
   }
 
@@ -325,6 +332,43 @@ class ReminderSettingsProvider extends ChangeNotifier {
     _watch = null;
     _clockActivated = false;
     return ReminderNotificationService.instance.cancelAll();
+  }
+
+  Future<void> refreshHealth() async {
+    try {
+      health = await ReminderNotificationService.instance.health();
+    } catch (_) {
+      health = ReminderHealth.unavailable;
+    }
+    notifyListeners();
+  }
+
+  Future<DateTime> scheduleTestReminder() async {
+    final fireAt = await ReminderNotificationService.instance
+        .scheduleTestReminder();
+    testReminderAt = fireAt;
+    await refreshHealth();
+    return fireAt;
+  }
+
+  Future<void> openReminderFix() async {
+    final status = health;
+    if (status == null) {
+      await NativeReminderScheduler.openAppDetails();
+      return;
+    }
+    if (!status.notificationsAllowed) {
+      await NativeReminderScheduler.openNotificationSettings();
+      return;
+    }
+    if (!status.exactAlarmsAllowed) {
+      await NativeReminderScheduler.openExactAlarmSettings();
+      return;
+    }
+    if (!status.batteryUnrestricted) {
+      await NativeReminderScheduler.openBatterySettings();
+      return;
+    }
   }
 
   Future<void> resync({DateTime? now}) {

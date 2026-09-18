@@ -588,6 +588,13 @@ void main() {
       expect(of(items, ReminderType.checkIn, day: 12), isNull);
     });
 
+    test('friday still schedules monday when the app stays closed', () {
+      final friday = DateTime(2026, 9, 11, 8);
+      final items = plan(now: friday);
+      expect(of(items, ReminderType.checkIn, day: 14), isNotNull);
+      expect(of(items, ReminderType.checkInMissed, day: 14), isNotNull);
+    });
+
     test('saturday is scheduled when it is a working day', () {
       final saturday = DateTime(2026, 9, 12, 8);
       final items = plan(now: saturday, workingWeekdays: const {6});
@@ -917,7 +924,10 @@ void main() {
     test('notification ids are unique across types and day offsets', () {
       final ids = <int>{};
       for (final type in ReminderType.values) {
-        for (final offset in [0, 1]) {
+        for (final offset in List<int>.generate(
+          ReminderNotificationPlan.lookaheadDays,
+          (i) => i,
+        )) {
           final id = ReminderNotificationPlan.idFor(type, dayOffset: offset);
           expect(
             ids.add(id),

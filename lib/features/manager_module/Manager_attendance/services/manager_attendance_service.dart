@@ -25,6 +25,12 @@ class ManagerAttendanceService {
   final ManagerOverviewRepository? _overviewRepository;
   final String? Function()? _currentUserIdProvider;
 
+  String? get currentUserId {
+    final raw = _currentUserIdProvider?.call()?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
   Future<ApiResponse<ManagerTeamAttendanceData>> loadTeamAttendance({
     required DateTime date,
     String? search,
@@ -246,22 +252,25 @@ class ManagerAttendanceService {
         date.day == now.day;
   }
 
-  /// Makes sure the signed-in owner is on the list and has today's punches.
+  /// Ensures owners/managers are listed and backfills punches for anyone whose
+  /// team-attendance / live overlay row is missing check-in status. Detail
+  /// sheets already use the per-employee API; the list must do the same when
+  /// the bulk endpoints omit live status (common with multiple managers).
   Future<List<ManagerTeamAttendanceItem>> withOwnerAttendance({
     required List<ManagerTeamAttendanceItem> items,
     required List<ManagerEmployeeModel> members,
     required DateTime date,
   }) async {
-    final seeded = _ensureOwnerRows(items, members);
-    return _hydrateOwnerPunches(items: seeded, members: members, date: date);
+    final seeded = _ensureLeadershipRows(items, members);
+    return _hydrateMissingPunches(items: seeded, members: members, date: date);
   }
 
-  List<ManagerTeamAttendanceItem> _ensureOwnerRows(
+  List<ManagerTeamAttendanceItem> _ensureLeadershipRows(
     List<ManagerTeamAttendanceItem> items,
     List<ManagerEmployeeModel> members,
   ) {
     final next = [...items];
-    final currentId = int.tryParse(_currentUserIdProvider?.call() ?? '');
+    final currentId = int.tryParse(currentUserId ?? '');
 
     void addIfMissing(ManagerEmployeeModel member) {
       final id = member.userId;
@@ -284,7 +293,7 @@ class ManagerAttendanceService {
     }
 
     for (final member in members) {
-      if (_isOwner(member) ||
+      if (_isOwnerOrManager(member) ||
           (currentId != null && member.userId == currentId)) {
         addIfMissing(member);
       }
@@ -298,28 +307,18 @@ class ManagerAttendanceService {
     return next;
   }
 
-  Future<List<ManagerTeamAttendanceItem>> _hydrateOwnerPunches({
+  Future<List<ManagerTeamAttendanceItem>> _hydrateMissingPunches({
     required List<ManagerTeamAttendanceItem> items,
     required List<ManagerEmployeeModel> members,
     required DateTime date,
   }) async {
-    final currentId = int.tryParse(_currentUserIdProvider?.call() ?? '');
-    final ownerIds = <int>{
-      if (currentId != null) currentId,
-      for (final member in members)
-        if (_isOwner(member) && member.userId != null) member.userId!,
-    };
-
     final next = [...items];
+    final tasks = <Future<void>>[];
+
     for (var i = 0; i < next.length; i++) {
       final item = next[i];
       final userId = item.userId ?? _userIdForName(members, item.employeeName);
       if (userId == null) continue;
-      if (!ownerIds.contains(userId) &&
-          !_isOwnerName(item.employeeName) &&
-          userId != currentId) {
-        continue;
-      }
 
       final needsPunch = !item.hasCheckIn;
       final needsLocation =
@@ -328,58 +327,93 @@ class ManagerAttendanceService {
           (item.currentLocation == null ||
               item.currentLocation!.trim().isEmpty);
 
-      try {
-        final response = await loadEmployeeAttendance(
-          userId: userId,
-          date: date,
-        );
-        if (!response.success || response.data == null) continue;
-        final day = EmployeeAttendanceMapper.dayFor(
-          response.data!.history,
-          date,
-        );
-        final checkin = EmployeeAttendanceMapper.firstCheckIn(day);
-        final isOpen = EmployeeAttendanceMapper.isSessionOpen(day);
-        final onBreak = EmployeeAttendanceMapper.isOnBreak(day);
-        final checkout = EmployeeAttendanceMapper.liveCheckOut(day);
-        final punchLocation = _locationFromDay(day);
-        if ((checkin == null || checkin.trim().isEmpty) &&
-            (checkout == null || checkout.trim().isEmpty) &&
-            punchLocation == null &&
-            !onBreak &&
-            !isOpen &&
-            !needsPunch &&
-            !needsLocation) {
+      // Already has punches — only refill location for leadership rows.
+      if (!needsPunch) {
+        if (!needsLocation ||
+            (!_isLeadershipName(item.employeeName) &&
+                !_isLeadershipUser(members, userId))) {
           continue;
         }
-        final hasCheckin = (checkin ?? item.checkin)?.trim().isNotEmpty == true;
-        next[i] = item.copyWith(
-          userId: userId,
-          attendanceId: day?.id ?? item.attendanceId,
-          employeeName: (item.employeeName ?? '').trim().isEmpty
-              ? (response.data!.employeeName ?? item.employeeName)
-              : item.employeeName,
-          checkin: checkin ?? item.checkin,
-          checkout: isOpen || onBreak ? '' : (checkout ?? item.checkout),
-          isOnBreak: onBreak,
-          status: onBreak
-              ? 'break'
-              : (isOpen
-                    ? 'working'
-                    : (day?.isLeave == true && !hasCheckin
-                          ? 'leave'
-                          : item.status)),
-          isOpen: isOpen || onBreak,
-          locationId: item.locationId ?? punchLocation?.$1,
-          locationName: item.locationName ?? punchLocation?.$2,
-          currentLocation:
-              item.currentLocation ?? punchLocation?.$3 ?? day?.currentLocation,
-          lat: day?.lat ?? item.lat,
-          lon: day?.lon ?? item.lon,
-        );
-      } catch (_) {}
+      }
+
+      final index = i;
+      tasks.add(() async {
+        try {
+          final response = await loadEmployeeAttendance(
+            userId: userId,
+            date: date,
+          );
+          if (!response.success || response.data == null) return;
+          final day = EmployeeAttendanceMapper.dayFor(
+            response.data!.history,
+            date,
+          );
+          final checkin = EmployeeAttendanceMapper.firstCheckIn(day);
+          final isOpen = EmployeeAttendanceMapper.isSessionOpen(day);
+          final onBreak = EmployeeAttendanceMapper.isOnBreak(day);
+          final checkout = EmployeeAttendanceMapper.liveCheckOut(day);
+          final punchLocation = _locationFromDay(day);
+          if ((checkin == null || checkin.trim().isEmpty) &&
+              (checkout == null || checkout.trim().isEmpty) &&
+              punchLocation == null &&
+              !onBreak &&
+              !isOpen &&
+              !needsPunch &&
+              !needsLocation) {
+            return;
+          }
+          final hasCheckin =
+              (checkin ?? next[index].checkin)?.trim().isNotEmpty == true;
+          next[index] = next[index].copyWith(
+            userId: userId,
+            attendanceId: day?.id ?? next[index].attendanceId,
+            employeeName: (next[index].employeeName ?? '').trim().isEmpty
+                ? (response.data!.employeeName ?? next[index].employeeName)
+                : next[index].employeeName,
+            checkin: checkin ?? next[index].checkin,
+            checkout: isOpen || onBreak
+                ? ''
+                : (checkout ?? next[index].checkout),
+            isOnBreak: onBreak,
+            status: onBreak
+                ? 'break'
+                : (isOpen
+                      ? 'working'
+                      : (day?.isLeave == true && !hasCheckin
+                            ? 'leave'
+                            : next[index].status)),
+            isOpen: isOpen || onBreak,
+            locationId: next[index].locationId ?? punchLocation?.$1,
+            locationName: next[index].locationName ?? punchLocation?.$2,
+            currentLocation:
+                next[index].currentLocation ??
+                punchLocation?.$3 ??
+                day?.currentLocation,
+            lat: day?.lat ?? next[index].lat,
+            lon: day?.lon ?? next[index].lon,
+          );
+        } catch (_) {}
+      }());
     }
-    return TeamAttendanceMapper.statusFirst(next);
+
+    if (tasks.isNotEmpty) {
+      await Future.wait(tasks);
+    }
+    String? currentName;
+    final id = currentUserId;
+    if (id != null) {
+      for (final member in members) {
+        if (member.id == id) {
+          currentName = member.name;
+          break;
+        }
+      }
+    }
+    return TeamAttendanceMapper.statusFirst(
+      next,
+      currentUserId: id,
+      currentUserName: currentName,
+    );
   }
 
   static int? _userIdForName(List<ManagerEmployeeModel> members, String? name) {
@@ -391,11 +425,35 @@ class ManagerAttendanceService {
     return null;
   }
 
-  static bool _isOwner(ManagerEmployeeModel member) {
-    if (member.badge == ManagerEmployeeBadge.owner) return true;
+  static bool _isOwnerOrManager(ManagerEmployeeModel member) {
+    if (member.badge == ManagerEmployeeBadge.owner ||
+        member.badge == ManagerEmployeeBadge.manager) {
+      return true;
+    }
+    final role = member.role.toLowerCase();
+    final dept = (member.departmentTitle ?? '').toLowerCase();
     return _isOwnerName(member.name) ||
-        member.role.toLowerCase().contains('owner') ||
-        (member.departmentTitle ?? '').toLowerCase().contains('owner');
+        role.contains('owner') ||
+        role.contains('manager') ||
+        dept.contains('owner') ||
+        dept.contains('manager');
+  }
+
+  static bool _isLeadershipUser(
+    List<ManagerEmployeeModel> members,
+    int userId,
+  ) {
+    for (final member in members) {
+      if (member.userId == userId) return _isOwnerOrManager(member);
+    }
+    return false;
+  }
+
+  static bool _isLeadershipName(String? name) {
+    final value = (name ?? '').trim().toLowerCase();
+    return value == 'owner' ||
+        value.contains('owner') ||
+        value.contains('manager');
   }
 
   static bool _isOwnerName(String? name) {

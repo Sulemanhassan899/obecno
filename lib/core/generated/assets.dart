@@ -203,6 +203,18 @@ class Assets {
   /// assets/images/location_pin.png
   static const String imagesLocationPin = "assets/images/location_pin.png";
 
+  /// Assets for imagesJoinAttendance
+  /// assets/images/join_attendance.png
+  static const String imagesJoinAttendance = "assets/images/join_attendance.png";
+
+  /// Assets for imagesJoinBreaks
+  /// assets/images/join_breaks.png
+  static const String imagesJoinBreaks = "assets/images/join_breaks.png";
+
+  /// Assets for imagesJoinLeaves
+  /// assets/images/join_leaves.png
+  static const String imagesJoinLeaves = "assets/images/join_leaves.png";
+
   /// Assets for imagesLogout
   /// assets/images/logout.png
   static const String imagesLogout = "assets/images/logout.png";
@@ -323,6 +335,10 @@ class Assets {
   static const String EarlyCheckOutInIcon =
       "assets/images/early_checkout_icon.png";
   static const String OnBreakIcon = "assets/images/on_break_icon.png";
+  /// Assets for imagesShareIconSheet
+  /// assets/images/share_icon_sheet.png
+  static const String imagesShareIconSheet = "assets/images/share_icon_sheet.png";
+
   static const String ProfileShareButton = "assets/images/up_arrwo_profile.png";
 
   static const String WhiteCheck = "assets/images/white_circle_check.png";

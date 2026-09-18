@@ -395,6 +395,7 @@ class ReminderEngine {
     required List<DateTime> punchTimes,
     required List<ReminderPunchKind?> primaryKinds,
     required List<ReminderLog> logs,
+    bool newestFirst = true,
   }) {
     assert(punchTimes.length == primaryKinds.length);
 
@@ -431,7 +432,9 @@ class ReminderEngine {
                     ),
             ),
         ]..sort((a, b) {
-          final byTime = b.time.compareTo(a.time);
+          final byTime = newestFirst
+              ? b.time.compareTo(a.time)
+              : a.time.compareTo(b.time);
           if (byTime != 0) return byTime;
           if (a.isPunch != b.isPunch) return a.isPunch ? -1 : 1;
           return 0;

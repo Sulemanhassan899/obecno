@@ -3,6 +3,7 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -70,6 +71,20 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     final email = _emailController.text.trim();
 
     setState(() => _isSubmitting = true);
+
+    await context.read<JoinInviteProvider>().ensureLoaded();
+    final join = context.read<JoinInviteProvider>();
+    final isLocalInvite =
+        join.hasLocalAccount(email) || join.hasOpenLinkInvite;
+
+    if (isLocalInvite) {
+      // Seed pending email for the password step without hitting the API.
+      context.read<AuthProvider>().setPendingEmail(email);
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      context.push('/login/password', extra: email);
+      return;
+    }
 
     // STEP 1: email-only check against POST /api/auth/login
     final exists = await context.read<AuthProvider>().checkEmail(email);

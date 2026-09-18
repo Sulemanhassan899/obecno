@@ -410,6 +410,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   }
 
   bool _shouldPollDeviceStatus() {
+    if (_authProvider?.isLocalInviteSession == true) return false;
     if (_authProvider?.isAuthenticated != true) return false;
     final path = _currentMatchedLocation();
     return path == '/employee_nav' ||
@@ -419,6 +420,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
   }
 
   void _routeIfDeviceBlocked() {
+    if (_authProvider?.isLocalInviteSession == true) return;
     if (_deviceProvider?.isDeviceApproved == true) return;
     if (_deviceProvider?.isDeviceBlocked != true) return;
     if (_authProvider?.isAuthenticated != true) return;

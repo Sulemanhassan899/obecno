@@ -4,6 +4,8 @@ import 'package:obecno/core/services/permission_helper.dart';
 import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
+import 'package:obecno/features/join/services/join_device_auto_approve.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
@@ -157,18 +159,29 @@ class _SplashScreenState extends State<SplashScreen>
 
     try {
       final deviceProvider = context.read<DeviceProvider>();
-      final userId = authProvider.user?.id;
-      unawaited(() async {
-        DeviceApprovalGuard.reset();
-        await deviceProvider.registerOnLogin();
-        await deviceProvider.checkDeviceStatus(
-          null,
-          loginMessage: false,
-          source: 'APP_START',
-          userId: userId,
-          isFirstLogin: false,
+      if (authProvider.isLocalInviteSession) {
+        // Join invite: no separate device request. Account approval covers device.
+        final join = context.read<JoinInviteProvider>();
+        await join.ensureLoaded();
+        JoinDeviceAutoApprove.sync(
+          auth: authProvider,
+          join: join,
+          devices: deviceProvider,
         );
-      }());
+      } else {
+        final userId = authProvider.user?.id;
+        unawaited(() async {
+          DeviceApprovalGuard.reset();
+          await deviceProvider.registerOnLogin();
+          await deviceProvider.checkDeviceStatus(
+            null,
+            loginMessage: false,
+            source: 'APP_START',
+            userId: userId,
+            isFirstLogin: false,
+          );
+        }());
+      }
     } catch (e) {
       debugPrint('[SplashScreen] DeviceProvider unavailable: $e');
     }

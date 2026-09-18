@@ -4,6 +4,7 @@ import 'package:obecno/features/auth/presentation/screens/login_pass.dart';
 import 'package:obecno/features/more/presentation/screens/device_blocked_screen.dart';
 
 import 'package:obecno/demo/monotonic_clock/presentation/monotonic_clock_demo_screen.dart';
+import 'package:obecno/features/join/presentation/screens/youve_joined_screen.dart';
 import 'package:obecno/features/launch/book_demo/presentation/book_demo.dart';
 import 'package:obecno/features/launch/onboarding/onboarding.dart';
 import 'package:obecno/features/launch/splash/splash.dart';
@@ -31,12 +32,18 @@ final GoRouter router = GoRouter(
       path: '/login',
       builder: (context, state) => const LoginEmailScreen(),
     ),
-
     GoRoute(
       path: '/login/password',
       builder: (context, state) {
         final email = state.extra as String? ?? '';
         return LoginPasswordScreen(email: email);
+      },
+    ),
+    GoRoute(
+      path: '/youve_joined',
+      builder: (context, state) {
+        final company = state.extra as String? ?? 'Acme Corporation';
+        return YouveJoinedScreen(companyName: company);
       },
     ),
     GoRoute(
@@ -63,7 +70,6 @@ final GoRouter router = GoRouter(
       path: '/manager/locations',
       builder: (context, state) => const AllLocationsScreen(),
     ),
-
     GoRoute(
       path: '/bookdemo',
       builder: (context, state) => const BookDemoScreen(),

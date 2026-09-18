@@ -605,63 +605,61 @@ class ManagerAttendanceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = _alertIcon();
+    final textScaler = MediaQuery.textScalerOf(context);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: textScaler.scale(8)),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             /// LEFT — name / role / team
             Expanded(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 46),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: (_hasRole || _hasTeam)
-                      ? MainAxisAlignment.start
-                      : MainAxisAlignment.center,
-                  children: [
-                    AppText.p2(
-                      data.name,
-                      color: kBlack,
-                      weight: FontWeight.w400,
-                      align: TextAlign.left,
-                    ),
-                    if (_hasRole || _hasTeam) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          if (_hasRole)
-                            _isRoleBadge
-                                ? Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _roleBgColor(),
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
-                                    child: AppText.caption(
-                                      data.role!,
-                                      color: kBlack,
-                                      weight: FontWeight.w400,
-                                    ),
-                                  )
-                                : AppText.caption(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: (_hasRole || _hasTeam)
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  AppText.p2(
+                    data.name,
+                    color: kBlack,
+                    weight: FontWeight.w400,
+                    align: TextAlign.left,
+                  ),
+                  if (_hasRole || _hasTeam) ...[
+                    SizedBox(height: textScaler.scale(6)),
+                    Row(
+                      children: [
+                        if (_hasRole)
+                          _isRoleBadge
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _roleBgColor(),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: AppText.caption(
                                     data.role!,
                                     color: kBlack,
                                     weight: FontWeight.w400,
-                                    align: TextAlign.left,
                                   ),
-                        ],
-                      ),
-                    ],
+                                )
+                              : AppText.caption(
+                                  data.role!,
+                                  color: kBlack,
+                                  weight: FontWeight.w400,
+                                  align: TextAlign.left,
+                                ),
+                      ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
 

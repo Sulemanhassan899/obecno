@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
@@ -9,7 +11,11 @@ import 'package:obecno/features/alerts/data/models/device_alert_item.dart';
 import 'package:obecno/features/alerts/presentation/widgets/device_alert_card.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
+import 'package:obecno/features/join/data/models/join_invite_models.dart';
+import 'package:obecno/features/join/presentation/widgets/join_employee_alert_card.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/more/presentation/screens/linked_devices.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/select_default_location_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
@@ -65,6 +71,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<AlertsProvider>().refresh();
+      unawaited(context.read<JoinInviteProvider>().ensureLoaded());
     });
   }
 
@@ -74,10 +81,61 @@ class _AlertsScreenState extends State<AlertsScreen> {
         _filter == _AlertFilter.leaves) {
       return const [];
     }
+    final now = DateTime.now();
+    final viewingCurrentMonth =
+        _month.year == now.year && _month.month == now.month;
     return items.where((item) {
+      // Pending / one-shot approved cards must stay visible even when the
+      // device request timestamp falls outside the selected month.
+      if (item.device.isPending) return true;
+      if (viewingCurrentMonth &&
+          (item.device.isApproved ||
+              item.device.isRejected ||
+              item.device.isBlocked)) {
+        return true;
+      }
       final stamp = item.device.cardTimestamp.toLocal();
       return stamp.year == _month.year && stamp.month == _month.month;
     }).toList();
+  }
+
+  List<JoinInviteRecord> _visibleJoins(List<JoinInviteRecord> items) {
+    if (_filter == _AlertFilter.checkIn ||
+        _filter == _AlertFilter.checkOut ||
+        _filter == _AlertFilter.leaves ||
+        _filter == _AlertFilter.device) {
+      return const [];
+    }
+    return items.where((item) {
+      final stamp = (item.joinedAt ?? item.createdAt).toLocal();
+      return stamp.year == _month.year && stamp.month == _month.month;
+    }).toList();
+  }
+
+  DateTime _stampForJoin(JoinInviteRecord invite) =>
+      invite.joinedAt ?? invite.createdAt;
+
+  Future<void> _approveJoin(JoinInviteRecord invite) async {
+    final join = context.read<JoinInviteProvider>();
+    final updated = await join.reviewJoin(id: invite.id, approve: true);
+    if (!mounted || updated == null) return;
+    final selected = await SelectDefaultLocationSheet.show(
+      context,
+      selectedId: updated.locationId,
+    );
+    if (selected == null || !mounted) return;
+    await join.assignLocation(
+      id: updated.id,
+      locationId: selected.id,
+      locationName: selected.name,
+    );
+  }
+
+  Future<void> _rejectJoin(JoinInviteRecord invite) async {
+    await context.read<JoinInviteProvider>().reviewJoin(
+          id: invite.id,
+          approve: false,
+        );
   }
 
   String _groupLabel(DateTime stamp) {
@@ -116,15 +174,35 @@ class _AlertsScreenState extends State<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AlertsProvider>();
+    final joinProvider = context.watch<JoinInviteProvider>();
     final items = _visibleItems(provider.items);
-    final isInitialLoad = provider.isLoading && provider.items.isEmpty;
+    final joins = provider.isManagerView
+        ? _visibleJoins(joinProvider.managerAlerts())
+        : const <JoinInviteRecord>[];
+    final isInitialLoad = provider.isLoading &&
+        provider.items.isEmpty &&
+        joins.isEmpty;
+    final totalCount = items.length + joins.length;
+
+    // Build a merged timeline of joins + devices for manager view.
+    final timeline = <({DateTime stamp, Object item})>[
+      for (final join in joins)
+        (stamp: _stampForJoin(join), item: join as Object),
+      for (final item in items)
+        (stamp: item.device.cardTimestamp, item: item as Object),
+    ]..sort((a, b) => b.stamp.compareTo(a.stamp));
 
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.page(context),
         child: ShimmerRefreshIndicator(
-          onRefresh: () => provider.refresh(),
+          onRefresh: () async {
+            await Future.wait([
+              provider.refresh(),
+              joinProvider.ensureLoaded(),
+            ]);
+          },
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -156,7 +234,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   hasScrollBody: false,
                   child: Center(child: ShimmerProgress()),
                 )
-              else if (provider.errorMessage != null && provider.items.isEmpty)
+              else if (provider.errorMessage != null &&
+                  provider.items.isEmpty &&
+                  joins.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -179,7 +259,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     ),
                   ),
                 )
-              else if (items.isEmpty)
+              else if (totalCount == 0)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -193,12 +273,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
               else
                 SliverList(
                   delegate: SliverChildBuilderDelegate((context, index) {
-                    final item = items[index];
-                    final stamp = item.device.cardTimestamp;
-                    final showHeader =
-                        index == 0 ||
-                        _groupLabel(items[index - 1].device.cardTimestamp) !=
+                    final entry = timeline[index];
+                    final stamp = entry.stamp;
+                    final showHeader = index == 0 ||
+                        _groupLabel(timeline[index - 1].stamp) !=
                             _groupLabel(stamp);
+                    final item = entry.item;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Column(
@@ -212,25 +292,36 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             ),
                             const SizedBox(height: 12),
                           ],
-                          DeviceAlertCard(
-                            item: item,
-                            isManagerView: provider.isManagerView,
-                            busy: provider.actingKey == item.key,
-                            onDelete: provider.isManagerView
-                                ? null
-                                : () => provider.deleteRequest(item, context),
-                            onApprove: provider.isManagerView
-                                ? () =>
-                                      provider.review(item, 'approve', context)
-                                : null,
-                            onReject: provider.isManagerView
-                                ? () => provider.review(item, 'reject', context)
-                                : null,
-                          ),
+                          if (item is JoinInviteRecord)
+                            JoinEmployeeAlertCard(
+                              invite: item,
+                              onApprove: () => _approveJoin(item),
+                              onReject: () => _rejectJoin(item),
+                            )
+                          else if (item is DeviceAlertItem)
+                            DeviceAlertCard(
+                              item: item,
+                              isManagerView: provider.isManagerView,
+                              busy: provider.actingKey == item.key,
+                              onDelete: provider.isManagerView
+                                  ? null
+                                  : () => provider.deleteRequest(item, context),
+                              onApprove: provider.isManagerView
+                                  ? () => provider.review(
+                                        item,
+                                        'approve',
+                                        context,
+                                      )
+                                  : null,
+                              onReject: provider.isManagerView
+                                  ? () =>
+                                      provider.review(item, 'reject', context)
+                                  : null,
+                            ),
                         ],
                       ),
                     );
-                  }, childCount: items.length),
+                  }, childCount: timeline.length),
                 ),
             ],
           ),

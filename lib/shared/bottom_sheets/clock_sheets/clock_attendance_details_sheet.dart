@@ -8,6 +8,7 @@ import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engi
 import 'package:obecno/core/routes/app_routes.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/presentation/widgets/timeline_reminder_rows.dart';
@@ -23,6 +24,7 @@ import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 
 class ClockAttendanceDetailsSheet {
   ClockAttendanceDetailsSheet._();
@@ -89,6 +91,8 @@ class _ClockAttendanceDetailsSheetBodyState
   bool _loadingTimeline = true;
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
+  List<AttendanceEvent> _pendingAddEvents = const [];
+  TimelineSortMode _sortMode = TimelineSortMode.newestFirst;
 
   @override
   void initState() {
@@ -97,7 +101,7 @@ class _ClockAttendanceDetailsSheetBodyState
     _recompute();
     _startTimer();
     unawaited(_loadFullTodayTimeline());
-    unawaited(_mergeEditRequests());
+    unawaited(_assembleTimeline());
     unawaited(_syncReminders());
   }
 
@@ -127,7 +131,7 @@ class _ClockAttendanceDetailsSheetBodyState
     merged.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
     _events = merged;
     _recompute();
-    unawaited(_mergeEditRequests());
+    unawaited(_assembleTimeline());
   }
 
   /// Same day-only filter used for clock timeline rendering.
@@ -138,6 +142,7 @@ class _ClockAttendanceDetailsSheetBodyState
     return events
         .where(
           (e) =>
+              !AttendanceTimelineAssembler.isPendingAddId(e.id) &&
               e.effectiveTime.year == day.year &&
               e.effectiveTime.month == day.month &&
               e.effectiveTime.day == day.day,
@@ -146,25 +151,19 @@ class _ClockAttendanceDetailsSheetBodyState
       ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
   }
 
-  Future<void> _mergeEditRequests() async {
+  Future<void> _assembleTimeline() async {
     final store = AttendanceEditRequestStore.instance;
     await store.ensureLoaded();
     if (!mounted) return;
 
-    final attachedTypes = <String>{};
-    final merged = _events
-        .map((event) {
-          if (event.editRequests.isNotEmpty) return event;
-          final typeName = event.type.name;
-          if (!attachedTypes.add(typeName)) return event;
-          final stored = store.forEvent(day: widget.day, eventType: typeName);
-          if (stored.isEmpty) return event;
-          return event.copyWith(editRequests: stored);
-        })
-        .toList(growable: false);
-
+    final assembled = AttendanceTimelineAssembler.clock(
+      events: _events,
+      day: widget.day,
+      stored: store.forDay(widget.day),
+    );
     setState(() {
-      _events = merged;
+      _events = assembled.punches;
+      _pendingAddEvents = assembled.pendingAdds;
       _recompute();
     });
   }
@@ -195,7 +194,7 @@ class _ClockAttendanceDetailsSheetBodyState
             _recompute();
           });
           widget.onTodayEventsLoaded?.call(apiEvents);
-          await _mergeEditRequests();
+          await _assembleTimeline();
           await _syncReminders();
           return;
         }
@@ -222,7 +221,7 @@ class _ClockAttendanceDetailsSheetBodyState
             _recompute();
           });
           widget.onTodayEventsLoaded?.call(todayEvents);
-          await _mergeEditRequests();
+          await _assembleTimeline();
           await _syncReminders();
           return;
         }
@@ -233,17 +232,14 @@ class _ClockAttendanceDetailsSheetBodyState
 
     if (!mounted) return;
     setState(() => _loadingTimeline = false);
-    await _mergeEditRequests();
+    await _assembleTimeline();
     await _syncReminders();
   }
 
   Future<void> _syncReminders() async {
-    final punches = <ReminderPunch>[];
-    for (final event in _events) {
-      final kind = ReminderPunchKind.fromName(event.type.name);
-      if (kind == null) continue;
-      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
-    }
+    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(
+      _events,
+    );
     final logs = await bindings.reminderSettingsProvider.syncForDay(
       day: widget.day,
       punches: punches,
@@ -254,6 +250,7 @@ class _ClockAttendanceDetailsSheetBodyState
   }
 
   ReminderPunchKind? _primaryKind(AttendanceEvent event) {
+    if (AttendanceTimelineAssembler.isPendingAddId(event.id)) return null;
     final kind = ReminderPunchKind.fromName(event.type.name);
     if (kind == null) return null;
     if (kind == ReminderPunchKind.breakEnd ||
@@ -271,10 +268,14 @@ class _ClockAttendanceDetailsSheetBodyState
   }
 
   List<Widget> _timelineChildren(List<AttendanceEvent> timeline) {
-    final mixed = ReminderEngine.mixTimeline(
-      punchTimes: [for (final e in timeline) e.effectiveTime],
-      primaryKinds: [for (final e in timeline) _primaryKind(e)],
-      logs: _reminderLogs,
+    final mixed = TimelineSort.mixed(
+      items: ReminderEngine.mixTimeline(
+        punchTimes: [for (final e in timeline) e.effectiveTime],
+        primaryKinds: [for (final e in timeline) _primaryKind(e)],
+        logs: _reminderLogs,
+      ),
+      mode: _sortMode,
+      isEdited: (index) => timeline[index].isEdited,
     );
     return [
       for (final item in mixed)
@@ -349,7 +350,10 @@ class _ClockAttendanceDetailsSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    final timeline = AttendanceEngine.sortedNewestFirst(_events);
+    final timeline = AttendanceEngine.sortedNewestFirst([
+      ..._events,
+      ..._pendingAddEvents,
+    ]);
     // Live timer only for today; freeze completed-session total otherwise.
     final workingDuration = _isViewingToday
         ? _workingDuration
@@ -536,6 +540,11 @@ class _ClockAttendanceDetailsSheetBodyState
                             child: ShimmerProgress(strokeWidth: 2),
                           ),
                         ],
+                        const Spacer(),
+                        TimelineSortButton(
+                          value: _sortMode,
+                          onChanged: (mode) => setState(() => _sortMode = mode),
+                        ),
                       ],
                     ),
 

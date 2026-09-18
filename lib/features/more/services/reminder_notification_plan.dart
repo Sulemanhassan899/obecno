@@ -160,13 +160,18 @@ class ReminderNotificationPlan {
   static const defaultWorkingWeekdays = {1, 2, 3, 4, 5};
   static const longerBreakAfter = Duration(hours: 1);
 
+  /// Native AlarmManager holds one-shot check-in alarms this far ahead so
+  /// Friday-close still fires Monday without opening the app.
+  static const lookaheadDays = 14;
+  static const idStride = 100;
+
   static int idFor(ReminderType type, {int dayOffset = 0, int slot = 0}) =>
-      notificationIdBase + type.index * 10 + dayOffset + slot;
+      notificationIdBase + type.index * idStride + dayOffset + slot;
 
   static ReminderType? typeForId(int id) {
     final raw = id - notificationIdBase;
     if (raw < 0) return null;
-    final index = raw ~/ 10;
+    final index = raw ~/ idStride;
     if (index < 0 || index >= ReminderType.values.length) return null;
     return ReminderType.values[index];
   }
@@ -360,9 +365,8 @@ class ReminderNotificationPlan {
         );
     final todaySchedule = scheduleFor(today);
 
-    final days = [today, today.add(const Duration(days: 1))];
-    for (var i = 0; i < days.length; i++) {
-      final day = days[i];
+    for (var i = 0; i < lookaheadDays; i++) {
+      final day = today.add(Duration(days: i));
       if (!weekdays.contains(day.weekday)) continue;
       final daySchedule = i == 0 ? todaySchedule : scheduleFor(day);
       final notStartedToday = i == 0 ? status.hasNotStarted : true;
@@ -428,9 +432,23 @@ class ReminderNotificationPlan {
     return items;
   }
 
+  static bool isStatefulType(ReminderType type) {
+    switch (type) {
+      case ReminderType.checkOut:
+      case ReminderType.checkOutMissed:
+      case ReminderType.breakTime:
+      case ReminderType.breakTimeEnded:
+      case ReminderType.longerBreak:
+      case ReminderType.veryLongAttendance:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   static Iterable<int> allIds() sync* {
     for (final type in ReminderType.values) {
-      for (final offset in const [0, 1]) {
+      for (var offset = 0; offset < lookaheadDays; offset++) {
         for (final slot in const [0, 5]) {
           yield idFor(type, dayOffset: offset, slot: slot);
         }

@@ -19,7 +19,7 @@ class MyButton extends StatefulWidget {
     this.backgroundColor,
     this.fontColor,
     this.customChild,
-    this.outlineColor = kBorderColor,
+    this.outlineColor,
     this.radius = 50,
     this.choiceIcon,
     this.choiceIconRight,
@@ -45,7 +45,7 @@ class MyButton extends StatefulWidget {
   final double height;
   final double? width;
   final double radius;
-  final Color outlineColor;
+  final Color? outlineColor;
 
   final Color? backgroundColor, fontColor;
 
@@ -117,7 +117,7 @@ class _MyButtonState extends State<MyButton> {
     if (bg != null && bg != kWhite && bg != kTransperentColor) {
       return bg;
     }
-    return widget.outlineColor;
+    return widget.outlineColor ?? widget.backgroundColor ?? kSecondaryButtonColor;
   }
 
   @override

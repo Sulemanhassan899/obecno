@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Location / motion for clock-in geofence -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -9,6 +10,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
@@ -42,16 +46,52 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Open app when invite / download links are tapped (Open with). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="obecno" android:host="join"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="www.obecno.com"
+                    android:pathPrefix="/download"/>
+                <data
+                    android:scheme="http"
+                    android:host="www.obecno.com"
+                    android:pathPrefix="/download"/>
+                <data
+                    android:scheme="https"
+                    android:host="obecno.com"
+                    android:pathPrefix="/download"/>
+                <data
+                    android:scheme="http"
+                    android:host="obecno.com"
+                    android:pathPrefix="/download"/>
+            </intent-filter>
         </activity>
-        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
-        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+        <receiver
+            android:name=".reminders.AttendanceAlarmReceiver"
+            android:exported="false"/>
+        <receiver
+            android:name=".reminders.AttendanceBootReceiver"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <meta-data
             android:name="com.obecno.notification_icon"
             android:resource="@drawable/ic_stat_obecno" />
@@ -89,5 +129,21 @@
             <data android:scheme="https" android:host="www.google.com"/>
         </intent>
         <package android:name="com.google.android.apps.maps"/>
+        <package android:name="com.miui.securitycenter"/>
+        <package android:name="com.miui.powerkeeper"/>
+        <package android:name="com.huawei.systemmanager"/>
+        <package android:name="com.hihonor.systemmanager"/>
+        <package android:name="com.coloros.safecenter"/>
+        <package android:name="com.oppo.safe"/>
+        <package android:name="com.vivo.permissionmanager"/>
+        <package android:name="com.iqoo.secure"/>
+        <package android:name="com.samsung.android.lool"/>
+        <package android:name="com.samsung.android.sm"/>
+        <package android:name="com.oneplus.security"/>
+        <package android:name="com.oplus.battery"/>
+        <package android:name="com.asus.mobilemanager"/>
+        <package android:name="com.letv.android.letvsafe"/>
+        <package android:name="com.meizu.safe"/>
+        <package android:name="com.evenwell.powersaving.g3"/>
     </queries>
 </manifest>
