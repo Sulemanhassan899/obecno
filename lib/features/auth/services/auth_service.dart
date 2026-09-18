@@ -5,12 +5,15 @@ import 'package:obecno/features/auth/data/models/auth_location_model.dart';
 import 'package:obecno/features/auth/data/models/auth_user_model.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 import 'package:obecno/features/auth/repositories/auth_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   AuthService(this._repository, this._tokenService);
 
   final AuthRepository _repository;
   final TokenService _tokenService;
+
+  static const _localInviteSessionKey = 'auth_local_invite_session_v1';
 
   // ================= CHECK EMAIL (STEP 1) =================
   Future<ApiResponse<bool>> checkEmailExists(String email) {
@@ -153,6 +156,8 @@ class AuthService {
     final remembered = await _tokenService.isRememberMe;
 
     await _tokenService.clearSession();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_localInviteSessionKey);
 
     if (!remembered) {
       await _tokenService.clearSavedEmail();
@@ -161,5 +166,18 @@ class AuthService {
 
   Future<bool> isLoggedIn() {
     return _tokenService.isSessionActive;
+  }
+
+  Future<void> activateLocalInviteSession(AuthUserModel user) async {
+    await _tokenService.setRememberMe(true);
+    await _tokenService.markSessionActive(userId: user.id, role: user.role);
+    await _cacheEverythingFromEnvelope(user, resetSelection: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_localInviteSessionKey, true);
+  }
+
+  Future<bool> isLocalInviteSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_localInviteSessionKey) ?? false;
   }
 }

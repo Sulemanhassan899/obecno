@@ -883,6 +883,110 @@ void main() {
       expect(item.checkin, '10:50:00');
     });
 
+    test('treats present / checked_in live status as open without check-in time', () {
+      final present = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 2,
+        'employee_name': 'Javier',
+        'live_status': 'present',
+      });
+      expect(present.isOpen, isTrue);
+      expect(TeamAttendanceMapper.uiStatus(present), 'working');
+
+      final checkedIn = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 3,
+        'employee_name': 'Ava',
+        'status': 'checked_in',
+      });
+      expect(checkedIn.isOpen, isTrue);
+      expect(TeamAttendanceMapper.uiStatus(checkedIn), 'working');
+    });
+
+    test('reads punch times from nested attendance_details', () {
+      final item = ManagerTeamAttendanceItem.fromJson({
+        'user_id': 4,
+        'employee_name': 'Sam',
+        'attendance_details': [
+          {'type': 'check_in', 'attendance_time': '09:10:00'},
+          {'type': 'break_start', 'attendance_time': '12:00:00'},
+        ],
+      });
+      expect(item.hasCheckIn, isTrue);
+      expect(item.checkin, '09:10:00');
+      expect(item.isOpen, isTrue);
+      expect(TeamAttendanceMapper.uiStatus(item), 'working');
+    });
+
+    test('list tile shows Working when check-in exists even if is_open omitted', () {
+      const item = ManagerTeamAttendanceItem(
+        userId: 5,
+        employeeName: 'Working Employee',
+        checkin: '08:00:00',
+      );
+      expect(TeamAttendanceMapper.uiStatus(item), 'working');
+      final tile = TeamAttendanceMapper.toTile(item);
+      expect(tile.status, 'working');
+      expect(tile.checkIn, isNotNull);
+    });
+
+    test('merge + live overlay recovers working status for manager list', () {
+      const members = [
+        ManagerEmployeeModel(id: '10', name: 'Javier Escher', role: 'Sales'),
+        ManagerEmployeeModel(id: '31', name: 'Employee3', role: 'Sales'),
+        ManagerEmployeeModel(
+          id: '44',
+          name: 'Second Manager',
+          role: 'Manager',
+          badge: ManagerEmployeeBadge.manager,
+        ),
+      ];
+      // Bulk endpoint returned people with no punches (the reported bug).
+      const attendance = <ManagerTeamAttendanceItem>[
+        ManagerTeamAttendanceItem(userId: 10, employeeName: 'Javier Escher'),
+        ManagerTeamAttendanceItem(userId: 31, employeeName: 'Employee3'),
+        ManagerTeamAttendanceItem(userId: 44, employeeName: 'Second Manager'),
+      ];
+      const live = [
+        ManagerTeamAttendanceItem(
+          userId: 10,
+          employeeName: 'Javier Escher',
+          checkin: '09:10:00',
+          isOpen: true,
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 31,
+          employeeName: 'Employee3',
+          checkin: '09:15:00',
+          breakout: '11:00:00',
+          isOnBreak: true,
+          isOpen: true,
+        ),
+      ];
+
+      final merged = TeamAttendanceMapper.mergeWithMembers(
+        attendance: attendance,
+        members: members,
+      );
+      final overlaid = TeamAttendanceMapper.overlayLive(
+        items: merged,
+        live: live,
+      );
+      final tiles = TeamAttendanceMapper.toTiles(overlaid);
+
+      expect(
+        tiles.firstWhere((t) => t.name == 'Javier Escher').status,
+        'working',
+      );
+      expect(
+        tiles.firstWhere((t) => t.name == 'Employee3').status,
+        'break',
+      );
+      // Second manager still absent until per-employee hydrate fills punches.
+      expect(
+        tiles.firstWhere((t) => t.name == 'Second Manager').status,
+        isEmpty,
+      );
+    });
+
     test('maps live status to working, on break, and on leave', () {
       expect(
         TeamAttendanceMapper.uiStatus(

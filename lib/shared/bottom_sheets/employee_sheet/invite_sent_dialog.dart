@@ -35,7 +35,7 @@ class InviteSentDialog {
                 AppText.h4('Invites Sent!', weight: FontWeight.w700),
                 const SizedBox(height: 10),
                 AppText.p2(
-                  'Your employees will receive their onboarding invites shortly. They can log in once they complete the setup.',
+                  'Your employees will receive their onboarding invites shortly.',
                   color: kGreyColor,
                 ),
                 const SizedBox(height: 24),

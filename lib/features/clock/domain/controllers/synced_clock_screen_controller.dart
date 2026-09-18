@@ -18,6 +18,7 @@ import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';
 import '../../services/employee_trusted_time.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/main.dart';
 
 class SyncedClockScreenController extends ClockScreenController {
@@ -378,12 +379,7 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   Future<void> _syncReminderLogs() async {
-    final punches = <ReminderPunch>[];
-    for (final event in events) {
-      final kind = ReminderPunchKind.fromName(event.type.name);
-      if (kind == null) continue;
-      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
-    }
+    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(events);
     await bindings.reminderSettingsProvider.syncForDay(
       day: clockNow,
       punches: punches,
@@ -497,12 +493,7 @@ class SyncedClockScreenController extends ClockScreenController {
     required bool entered,
     required String locationName,
   }) async {
-    final punches = <ReminderPunch>[];
-    for (final event in events) {
-      final kind = ReminderPunchKind.fromName(event.type.name);
-      if (kind == null) continue;
-      punches.add(ReminderPunch(kind: kind, time: event.effectiveTime));
-    }
+    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(events);
     await bindings.reminderSettingsProvider.notifyGeofenceTransition(
       entered: entered,
       now: clockNow,
@@ -639,8 +630,14 @@ class SyncedClockScreenController extends ClockScreenController {
           e.effectiveTime.day == today.day;
 
       // Clock UI must never mix other days into today's timeline.
-      final serverToday = serverEvents.where(isToday).toList();
-      final localToday = events.where(isToday).toList();
+      final serverToday = serverEvents
+          .where(isToday)
+          .where((e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time))
+          .toList();
+      final localToday = events
+          .where(isToday)
+          .where((e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time))
+          .toList();
 
       final merged = serverToday.isEmpty
           ? localToday

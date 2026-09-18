@@ -9,6 +9,8 @@
 -keep class dev.fluttercommunity.plus.** { *; }
 -keep class com.dexterous.flutterlocalnotifications.** { *; }
 -dontwarn com.dexterous.flutterlocalnotifications.**
+-keep class com.example.obecno.** { *; }
+-keep class com.example.obecno.reminders.** { *; }
 -dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
 -dontwarn com.google.android.play.core.splitinstall.SplitInstallException
 -dontwarn com.google.android.play.core.splitinstall.SplitInstallManager

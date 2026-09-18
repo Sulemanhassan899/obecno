@@ -36,6 +36,7 @@ import 'package:obecno/features/clock/repositories/clock_attendance_repository.d
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
 import 'package:obecno/features/more/repositories/profile_repository.dart';
 import 'package:obecno/features/more/services/profile_service.dart';
@@ -119,6 +120,7 @@ class AppBindings {
   late final ManagerAttendanceService managerAttendanceService;
   late final ManagerAttendanceProvider managerAttendanceProvider;
   late final AlertsProvider alertsProvider;
+  late final JoinInviteProvider joinInviteProvider;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -222,6 +224,8 @@ class AppBindings {
       employees: managerEmployeesProvider,
       employeesService: managerEmployeesService,
     );
+    joinInviteProvider = JoinInviteProvider();
+    unawaited(joinInviteProvider.ensureLoaded());
 
     managerAttendanceRepository = ManagerAttendanceRepository(ApihttpClient);
     managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
@@ -284,7 +288,10 @@ class AppBindings {
       // login path), where a BuildContext is available for the
       // toast/dialog. Only silently (re-)register here so a returning
       // user's device is registered even before either widget runs.
-      unawaited(deviceProvider.registerOnLogin());
+      // Local invite sessions skip this — account approval covers device.
+      if (!authProvider.isLocalInviteSession) {
+        unawaited(deviceProvider.registerOnLogin());
+      }
       unawaited(reminderSettingsProvider.load(resumeExistingSession: true));
     }
     _authListener = () {

@@ -161,8 +161,10 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
                     padding: const EdgeInsets.only(bottom: 32),
                     sliver: SliverList.separated(
                       itemCount: tiles.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 24, color: kDividerColor),
+                      separatorBuilder: (_, __) => Divider(
+                        height: MediaQuery.textScalerOf(context).scale(24),
+                        color: kDividerColor,
+                      ),
                       itemBuilder: (context, index) {
                         final item = tiles[index];
                         return ManagerAttendanceTile(

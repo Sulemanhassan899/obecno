@@ -88,6 +88,7 @@ class CustomTextField extends StatelessWidget {
   final bool isExpanded;
   final double minHeight;
   final double width;
+  final bool reserveHelperSpace;
 
   CustomTextField({
     super.key,
@@ -154,6 +155,7 @@ class CustomTextField extends StatelessWidget {
     this.minHeight = 50, // ✅ default
     this.width = 100,
     this.focusNode,
+    this.reserveHelperSpace = true,
   });
 
   @override
@@ -222,7 +224,7 @@ class CustomTextField extends StatelessWidget {
                 onChanged: onChanged,
 
                 decoration: InputDecoration(
-                  helperText: errorText == null ? ' ' : null,
+                  helperText: errorText == null && reserveHelperSpace ? ' ' : null,
                   errorText: errorText,
                   errorMaxLines: 2,
 

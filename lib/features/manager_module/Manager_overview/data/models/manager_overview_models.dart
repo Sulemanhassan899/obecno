@@ -197,7 +197,11 @@ class ManagerTeamAttendanceItem {
 
   factory ManagerTeamAttendanceItem.fromJson(Map<String, dynamic> json) {
     final liveStatus = _asNullableString(
-      json['live_status'] ?? json['status'] ?? json['filter_status'],
+      json['live_status'] ??
+          json['status'] ??
+          json['filter_status'] ??
+          json['attendance_status'] ??
+          json['current_status'],
     );
     final statusLabel = _asNullableString(json['status_label']);
     final breakout = _asNullableString(
@@ -212,17 +216,22 @@ class ManagerTeamAttendanceItem {
           json['break_end'] ??
           json['break_ended_at'],
     );
+    final nestedTimes = _timesFromDetails(json['attendance_details']);
     final checkin = _asNullableString(
       json['checkin'] ??
           json['check_in'] ??
           json['check_in_time'] ??
-          json['first_check_in'],
+          json['first_check_in'] ??
+          json['clock_in'] ??
+          nestedTimes.$1,
     );
     final checkout = _asNullableString(
       json['checkout'] ??
           json['check_out'] ??
           json['check_out_time'] ??
-          json['last_check_out'],
+          json['last_check_out'] ??
+          json['clock_out'] ??
+          nestedTimes.$2,
     );
     final onBreak =
         _asBool(json['is_on_break']) ||
@@ -287,6 +296,41 @@ class ManagerTeamAttendanceItem {
       isOnTime: _asBool(json['is_on_time']),
       hoursVsExpected: _asNullableString(json['hours_vs_expected']),
     );
+  }
+
+  /// Pull first check-in / last check-out from nested attendance_details when
+  /// the bulk team-attendance payload omits top-level punch times.
+  static (String?, String?) _timesFromDetails(dynamic raw) {
+    if (raw is! List) return (null, null);
+    String? checkin;
+    String? checkout;
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final map = Map<String, dynamic>.from(entry);
+      final type = _normStatus(
+        _asNullableString(map['type'] ?? map['action'] ?? map['event']),
+      );
+      final time = _asNullableString(
+        map['attendance_time'] ??
+            map['time'] ??
+            map['punch_time'] ??
+            map['created_at'] ??
+            map['occurred_at'],
+      );
+      if (time == null) continue;
+      if (type.contains('checkin') ||
+          type == 'in' ||
+          type == 'clockin' ||
+          type == 'check_in') {
+        checkin ??= time;
+      } else if (type.contains('checkout') ||
+          type == 'out' ||
+          type == 'clockout' ||
+          type == 'check_out') {
+        checkout = time;
+      }
+    }
+    return (checkin, checkout);
   }
 
   static List<ManagerTeamAttendanceItem> listFrom(dynamic raw) {
@@ -476,12 +520,25 @@ bool _hasOpenSession(String? checkin, String? checkout) {
 
 bool _isLiveClockedIn(String? raw) {
   final value = _normStatus(raw);
+  if (value.isEmpty) return false;
+  if (value.contains('absent') ||
+      value.contains('checkout') ||
+      value == 'leave' ||
+      value.contains('onleave')) {
+    return false;
+  }
   return value == 'working' ||
       value == 'active' ||
+      value == 'present' ||
       value == 'late' ||
       value == 'latecheckin' ||
       value == 'clockedin' ||
       value == 'checkedin' ||
+      value == 'checkin' ||
+      value == 'in' ||
+      value == 'onduty' ||
+      value.contains('checkedin') ||
+      value.contains('clockedin') ||
       _looksBreak(raw);
 }
 

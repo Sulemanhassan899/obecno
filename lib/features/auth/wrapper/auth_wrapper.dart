@@ -6,6 +6,8 @@ import 'package:obecno/features/auth/presentation/screens/login_email.dart';
 import 'package:flutter/material.dart';
 
 import 'package:obecno/features/more/providers/device_provider.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
+import 'package:obecno/features/join/services/join_device_auto_approve.dart';
 
 import '../providers/auth_provider.dart';
 
@@ -86,6 +88,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     try {
       final deviceProvider = context.read<DeviceProvider>();
+      if (authProvider.isLocalInviteSession) {
+        final join = context.read<JoinInviteProvider>();
+        await join.ensureLoaded();
+        JoinDeviceAutoApprove.sync(
+          auth: authProvider,
+          join: join,
+          devices: deviceProvider,
+        );
+        return;
+      }
       await deviceProvider.registerOnLogin();
       if (!mounted) return;
       await deviceProvider.checkDeviceStatus(

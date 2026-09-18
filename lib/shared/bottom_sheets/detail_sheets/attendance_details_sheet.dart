@@ -28,8 +28,9 @@ import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/resolved_location_text.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_history_section.dart';
+import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
-import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
 class AttendanceDetailsSheet {
@@ -102,6 +103,8 @@ class _AttendanceDetailsSheetBodyState
   bool _loadingDetails = true;
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
+  List<HistoryAttendanceEvent> _pendingAddEvents = const [];
+  TimelineSortMode _sortMode = TimelineSortMode.newestFirst;
 
   String _yyyyMMdd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -152,29 +155,13 @@ class _AttendanceDetailsSheetBodyState
       if (response.success && response.data != null) {
         final data = response.data!;
         final apiEvents = _dayOnly(data.toHistoryEvents());
-        final realEvents = [
-          for (final event in apiEvents)
-            if (!AttendanceEditRequest.isPlaceholderMint(event.time)) event,
-        ];
-        if (realEvents.isNotEmpty) {
-          await AttendanceEditRequestStore.instance.clearPendingAdd(widget.day);
-          final withLocal = await _mergeLocalFallback(realEvents);
+        if (apiEvents.isNotEmpty) {
+          final assembled = await _assembleEvents(apiEvents);
           if (!mounted) return;
           setState(() {
-            _events = withLocal;
-            _summary = HistoryAttendanceEngine.compute(withLocal);
-            _attendanceId = data.attendanceId;
-            _loadingDetails = false;
-          });
-          await _syncReminders();
-          return;
-        }
-        if (apiEvents.isNotEmpty && !widget.preferLocalEvents) {
-          final withLocal = await _mergeLocalFallback(apiEvents);
-          if (!mounted) return;
-          setState(() {
-            _events = withLocal;
-            _summary = HistoryAttendanceEngine.compute(withLocal);
+            _events = assembled.punches;
+            _pendingAddEvents = assembled.pendingAdds;
+            _summary = HistoryAttendanceEngine.compute(assembled.punches);
             _attendanceId = data.attendanceId;
             _loadingDetails = false;
           });
@@ -190,23 +177,21 @@ class _AttendanceDetailsSheetBodyState
     }
 
     if (!mounted) return;
-    final withLocal = await _mergeLocalFallback(_dayOnly(_events));
+    final withLocal = await _assembleEvents(_dayOnly(_events));
     if (!mounted) return;
     setState(() {
-      _events = withLocal;
-      _summary = HistoryAttendanceEngine.compute(withLocal);
+      _events = withLocal.punches;
+      _pendingAddEvents = withLocal.pendingAdds;
+      _summary = HistoryAttendanceEngine.compute(withLocal.punches);
       _loadingDetails = false;
     });
     await _syncReminders();
   }
 
   Future<void> _syncReminders() async {
-    final punches = <ReminderPunch>[];
-    for (final event in _events) {
-      final kind = ReminderPunchKind.fromName(event.type.name);
-      if (kind == null) continue;
-      punches.add(ReminderPunch(kind: kind, time: event.time));
-    }
+    final punches = AttendanceTimelineAssembler.reminderPunchesFromHistory(
+      _events,
+    );
     final logs = await bindings.reminderSettingsProvider.syncForDay(
       day: widget.day,
       punches: punches,
@@ -217,6 +202,7 @@ class _AttendanceDetailsSheetBodyState
   }
 
   ReminderPunchKind? _primaryKind(HistoryAttendanceEvent event) {
+    if (AttendanceTimelineAssembler.isPendingAddId(event.id)) return null;
     final kind = ReminderPunchKind.fromName(event.type.name);
     if (kind == null) return null;
     if (kind == ReminderPunchKind.breakEnd ||
@@ -237,10 +223,14 @@ class _AttendanceDetailsSheetBodyState
   }
 
   List<Widget> _timelineChildren(List<HistoryAttendanceEvent> timeline) {
-    final mixed = ReminderEngine.mixTimeline(
-      punchTimes: [for (final e in timeline) e.time],
-      primaryKinds: [for (final e in timeline) _primaryKind(e)],
-      logs: _reminderLogs,
+    final mixed = TimelineSort.mixed(
+      items: ReminderEngine.mixTimeline(
+        punchTimes: [for (final e in timeline) e.time],
+        primaryKinds: [for (final e in timeline) _primaryKind(e)],
+        logs: _reminderLogs,
+      ),
+      mode: _sortMode,
+      isEdited: (index) => timeline[index].isEdited,
     );
     return [
       for (final item in mixed)
@@ -258,25 +248,19 @@ class _AttendanceDetailsSheetBodyState
     ];
   }
 
-  /// Prefer API `change_requests` / `changes`. If a card has none, attach
-  /// any locally cached pending fix requests for that event type (optimistic).
-  Future<List<HistoryAttendanceEvent>> _mergeLocalFallback(
+  /// Prefer API `change_requests` / `changes`. Pending add-break requests
+  /// become their own cards at the requested time (1:00 / 2:30), never
+  /// dummy 12:01 AM cards and never glued onto a later real break.
+  Future<HistoryTimelineAssembly> _assembleEvents(
     List<HistoryAttendanceEvent> events,
   ) async {
     final store = AttendanceEditRequestStore.instance;
     await store.ensureLoaded();
-
-    final attachedTypes = <String>{};
-    return events
-        .map((event) {
-          if (event.editRequests.isNotEmpty) return event;
-          final typeName = event.type.name;
-          if (!attachedTypes.add(typeName)) return event;
-          final stored = store.forEvent(day: widget.day, eventType: typeName);
-          if (stored.isEmpty) return event;
-          return event.copyWith(editRequests: stored);
-        })
-        .toList(growable: false);
+    return AttendanceTimelineAssembler.history(
+      events: events,
+      day: widget.day,
+      stored: store.forDay(widget.day),
+    );
   }
 
   Color _colorFor(AttendanceHisotryEventType type) {
@@ -335,7 +319,10 @@ class _AttendanceDetailsSheetBodyState
     }
 
     // Newest activity first — never collapse to one-of-each-type.
-    final timeline = HistoryAttendanceEngine.sortedNewestFirst(_events);
+    final timeline = HistoryAttendanceEngine.sortedNewestFirst([
+      ..._events,
+      ..._pendingAddEvents,
+    ]);
     final day = widget.day;
     final summary = _summary;
     final apiClient = widget.apiClient;
@@ -548,6 +535,12 @@ class _AttendanceDetailsSheetBodyState
                               ),
                               const SizedBox(width: 8),
                               AppText.h5("Timeline", weight: FontWeight.w600),
+                              const Spacer(),
+                              TimelineSortButton(
+                                value: _sortMode,
+                                onChanged: (mode) =>
+                                    setState(() => _sortMode = mode),
+                              ),
                             ],
                           ),
 

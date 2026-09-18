@@ -30,7 +30,23 @@ void main() {
       pending.title(isManagerView: true),
       'Alex has requested for new device approval',
     );
-    expect(pending.placeLabel, 'iPhone 16');
+    expect(pending.placeLabel(isManagerView: true), 'iPhone 16');
+    expect(
+      DeviceAlertItem(
+        device: device(),
+        employeeName: 'Alex',
+        locationName: 'Head Office',
+      ).placeLabel(isManagerView: false),
+      'iPhone 16',
+    );
+    expect(
+      DeviceAlertItem(
+        device: device(),
+        employeeName: 'Alex',
+        locationName: 'Head Office',
+      ).placeLabel(isManagerView: true),
+      'Head Office',
+    );
     expect(pending.key, '7-1');
 
     final approved = DeviceAlertItem(

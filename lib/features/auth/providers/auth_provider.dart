@@ -6,6 +6,7 @@ import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/auth/data/models/auth_company_model.dart';
 import 'package:obecno/features/auth/data/models/auth_location_model.dart';
 import 'package:obecno/features/auth/data/models/auth_user_model.dart';
+import 'package:obecno/features/auth/data/models/token_model.dart';
 
 import '../services/auth_service.dart';
 
@@ -32,6 +33,10 @@ class AuthProvider extends ChangeNotifier {
   String? _pendingEmail;
 
   String? _restoredRole;
+
+  /// Local mock invite login (no backend session). Skips /auth/me wipe.
+  bool _isLocalInviteSession = false;
+  bool get isLocalInviteSession => _isLocalInviteSession;
 
   // Fix (Issue 6): lightweight guard for the pre-login flow (checkEmail ->
   // loginWithPassword). Bumped whenever the flow is reset (e.g. the user
@@ -100,6 +105,12 @@ class AuthProvider extends ChangeNotifier {
   AuthUserModel? get user => _user;
   AuthFlowStep get currentStep => _currentStep;
   String? get pendingEmail => _pendingEmail;
+
+  void setPendingEmail(String email) {
+    _pendingEmail = email.trim();
+    _errorMessage = null;
+    notifyListeners();
+  }
 
   bool get isForgotPasswordLoading => _isForgotPasswordLoading;
   String? get forgotPasswordMessage => _forgotPasswordMessage;
@@ -291,6 +302,73 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
+  /// Authenticates a locally invited employee without calling the API.
+  Future<bool> loginWithLocalInvite({
+    required String contact,
+    required String companyName,
+    String? locationName,
+  }) async {
+    final trimmed = contact.trim();
+    if (trimmed.isEmpty) {
+      _errorMessage = 'Please enter your email again.';
+      notifyListeners();
+      return false;
+    }
+
+    final local = trimmed.contains('@')
+        ? trimmed.split('@').first
+        : trimmed;
+    final parts = local
+        .replaceAll(RegExp(r'[^A-Za-z0-9._\-]+'), ' ')
+        .split(RegExp(r'[._\-\s]+'))
+        .where((p) => p.trim().isNotEmpty)
+        .map((p) {
+          final v = p.trim();
+          return '${v[0].toUpperCase()}${v.substring(1)}';
+        })
+        .toList(growable: false);
+    final name = parts.isEmpty ? 'Employee' : parts.join(' ');
+
+    _user = AuthUserModel(
+      id: 'local_invite_${trimmed.hashCode.abs()}',
+      name: name,
+      email: trimmed.contains('@') ? trimmed : '$trimmed@invite.local',
+      role: 'employee',
+      roleIds: const ['employee'],
+      company: AuthCompanyModel(
+        id: 'local_company',
+        name: companyName.trim().isEmpty ? 'Acme Corporation' : companyName,
+      ),
+      locations: locationName == null || locationName.trim().isEmpty
+          ? const []
+          : [
+              AuthLocationModel(
+                id: 'local_location',
+                name: locationName.trim(),
+                isDefault: true,
+              ),
+            ],
+      isEmployee: true,
+      token: TokenModel(
+        accessToken: 'local_invite_token',
+        tokenType: 'Bearer',
+        expiresIn: 60 * 60 * 24 * 30,
+        issuedAt: DateTime.now(),
+      ),
+    );
+    _pendingEmail = trimmed;
+    _isAuthenticated = true;
+    _isLocalInviteSession = true;
+    _currentStep = AuthFlowStep.authenticated;
+    _sessionEpoch++;
+    _sessionCancelToken = ApiCancelToken();
+    _applyCompanyAndLocations(_user!);
+    _lastMeRefreshedAt = DateTime.now();
+    await _service.activateLocalInviteSession(_user!);
+    notifyListeners();
+    return true;
+  }
+
   Future<bool> loginWithPassword(
     String password, {
     bool rememberMe = true,
@@ -307,6 +385,7 @@ class AuthProvider extends ChangeNotifier {
     final flowToken = ++_authFlowToken; // Fix (Issue 6)
     _isLoading = true;
     _errorMessage = null;
+    _isLocalInviteSession = false;
     notifyListeners();
 
     final response = await _service.login(
@@ -373,6 +452,7 @@ class AuthProvider extends ChangeNotifier {
     if (!isRemembered) {
       await _service.logout();
       _isAuthenticated = false;
+      _isLocalInviteSession = false;
       notifyListeners();
       return false;
     }
@@ -380,10 +460,12 @@ class AuthProvider extends ChangeNotifier {
     final hasLocalSession = await _service.isLoggedIn();
     if (!hasLocalSession) {
       _isAuthenticated = false;
+      _isLocalInviteSession = false;
       notifyListeners();
       return false;
     }
     _restoredRole ??= await _service.getCachedRole();
+    _isLocalInviteSession = await _service.isLocalInviteSession();
 
     await restoreCompanyAndLocationsFromCache();
     // Offline restore: /auth/me may fail with "No internet" while a local
@@ -393,6 +475,10 @@ class AuthProvider extends ChangeNotifier {
 
     _isAuthenticated = true;
     notifyListeners();
+
+    if (_isLocalInviteSession) {
+      return true;
+    }
 
     final verified = await refreshCurrentUser();
     if (!verified && _lastMeFailureConfirmedUnauthorized) {
@@ -407,6 +493,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> refreshCurrentUser() {
+    if (_isLocalInviteSession) {
+      return Future.value(true);
+    }
+
     // TTL guard — return immediately if the cache is still fresh.
     if (_isMeCacheValid) {
       AppLogger.info(
@@ -494,6 +584,7 @@ class AuthProvider extends ChangeNotifier {
     _company = null;
     _locations = const [];
     _selectedLocation = null;
+    _isLocalInviteSession = false;
     // Clear TTL cache so the next login always fetches fresh data.
     _lastMeRefreshedAt = null;
 

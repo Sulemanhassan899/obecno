@@ -56,6 +56,17 @@ class DeviceProvider extends BaseProvider {
   bool get isDeviceApproved => _deviceApproved;
   bool get isDeviceBlocked => _deviceBlocked;
 
+  /// Join-invite only: first device is covered by account approval.
+  /// Does not POST a device request or change the normal device-request flow.
+  void markApprovedForLocalInvite() {
+    if (_deviceApproved && !_deviceBlocked) return;
+    _deviceApproved = true;
+    _deviceBlocked = false;
+    _statusValidated = true;
+    _lastKnownStatus = 'approved';
+    notifyListeners();
+  }
+
   Future<bool> fetchDevices() async {
     if (_isFetchingDevices) {
       AppLogger.info(
@@ -84,7 +95,10 @@ class DeviceProvider extends BaseProvider {
   Future<bool> _fetchDevicesOnce() async {
     final currentDeviceInfo = await _service.currentDeviceInfo();
     final currentId = currentDeviceInfo.deviceId;
-    _currentDevice = DeviceModel(
+    // Keep an already-listed current device. Replacing it with an empty-status
+    // stub makes DeviceModel.isPending true, which Alerts treated as a fresh
+    // pending → approved transition on every launch.
+    _currentDevice ??= DeviceModel(
       id: '',
       deviceId: currentDeviceInfo.deviceId,
       name: currentDeviceInfo.deviceName,

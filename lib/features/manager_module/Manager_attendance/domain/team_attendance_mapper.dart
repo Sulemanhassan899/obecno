@@ -23,9 +23,15 @@ class TeamAttendanceMapper {
   }
 
   static List<ManagerAttendanceModel> toTiles(
-    List<ManagerTeamAttendanceItem> items,
-  ) {
-    return statusFirst(items).map(toTile).toList(growable: false);
+    List<ManagerTeamAttendanceItem> items, {
+    String? currentUserId,
+    String? currentUserName,
+  }) {
+    return statusFirst(
+      items,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
+    ).map(toTile).toList(growable: false);
   }
 
   /// Attendance APIs often return only people who punched in. Overlay the
@@ -153,18 +159,42 @@ class TeamAttendanceMapper {
   }
 
   static List<ManagerTeamAttendanceItem> statusFirst(
-    List<ManagerTeamAttendanceItem> items,
-  ) {
+    List<ManagerTeamAttendanceItem> items, {
+    String? currentUserId,
+    String? currentUserName,
+  }) {
+    final currentUser = <ManagerTeamAttendanceItem>[];
     final withStatus = <ManagerTeamAttendanceItem>[];
     final withoutStatus = <ManagerTeamAttendanceItem>[];
     for (final item in items) {
-      if (uiStatus(item).isNotEmpty) {
+      if (_isCurrentUser(
+        item,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+      )) {
+        currentUser.add(item);
+      } else if (uiStatus(item).isNotEmpty) {
         withStatus.add(item);
       } else {
         withoutStatus.add(item);
       }
     }
-    return [...withStatus, ...withoutStatus];
+    return [...currentUser, ...withStatus, ...withoutStatus];
+  }
+
+  static bool _isCurrentUser(
+    ManagerTeamAttendanceItem item, {
+    String? currentUserId,
+    String? currentUserName,
+  }) {
+    final id = currentUserId?.trim() ?? '';
+    if (id.isNotEmpty && item.userId?.toString() == id) return true;
+    final name = currentUserName?.trim().toLowerCase() ?? '';
+    if (name.isNotEmpty &&
+        (item.employeeName ?? '').trim().toLowerCase() == name) {
+      return true;
+    }
+    return false;
   }
 
   static String uiStatus(ManagerTeamAttendanceItem item) {
@@ -172,6 +202,9 @@ class TeamAttendanceMapper {
     if (item.isOnLeave && !item.isOpen && !item.isActive) return 'leave';
     if (item.isLate) return 'late';
     if (item.isActive || item.isOpen) return 'working';
+    // Bulk team-attendance often omits is_open; a check-in with no checkout
+    // still means the person is working on the list.
+    if (item.hasCheckIn && !item.hasCheckOut) return 'working';
     return '';
   }
 

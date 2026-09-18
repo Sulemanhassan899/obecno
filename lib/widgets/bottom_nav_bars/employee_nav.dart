@@ -7,10 +7,16 @@ import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
+import 'package:obecno/features/join/presentation/widgets/unverified_account_banner.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
+import 'package:obecno/features/join/services/join_device_auto_approve.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/widgets/bottom_nav_bars/alerts_nav_icon.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 class EmployeeBottomNavBar extends StatefulWidget {
   const EmployeeBottomNavBar({super.key});
@@ -29,9 +35,8 @@ class EmployeeBottomNavBar extends StatefulWidget {
 
 class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   int selectedIndex = 0;
+  JoinInviteProvider? _join;
 
-  // GlobalKey lets us call notifyTabResumed() on ClockScreen's state
-  // when the user switches back to the Clock tab.
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
   final GlobalKey<EmployeeAttendanceScreenState> _attendanceKey =
       GlobalKey<EmployeeAttendanceScreenState>();
@@ -51,6 +56,24 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
       EmployeeBottomNavBar.openAlertsOnBuild = false;
     }
     EmployeeBottomNavBar._alertsTick.addListener(_openAlerts);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _join = context.read<JoinInviteProvider>();
+      _join!.addListener(_syncJoinDeviceApproval);
+      unawaited(_join!.ensureLoaded().then((_) {
+        if (!mounted) return;
+        _syncJoinDeviceApproval();
+      }));
+    });
+  }
+
+  void _syncJoinDeviceApproval() {
+    if (!mounted) return;
+    JoinDeviceAutoApprove.sync(
+      auth: context.read<AuthProvider>(),
+      join: context.read<JoinInviteProvider>(),
+      devices: context.read<DeviceProvider>(),
+    );
   }
 
   void _openAlerts() {
@@ -64,6 +87,7 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
 
   @override
   void dispose() {
+    _join?.removeListener(_syncJoinDeviceApproval);
     EmployeeBottomNavBar._alertsTick.removeListener(_openAlerts);
     super.dispose();
   }
@@ -94,8 +118,24 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   @override
   Widget build(BuildContext context) {
     final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge;
+    final showUnverified =
+        context.watch<JoinInviteProvider>().showUnverifiedBanner;
     return Scaffold(
-      body: IndexedStack(index: selectedIndex, children: screens),
+      body: Column(
+        children: [
+          if (showUnverified)
+            const SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: UnverifiedAccountBanner(),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(index: selectedIndex, children: screens),
+          ),
+        ],
+      ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -124,9 +164,6 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
                     if (index == 2) {
                       context.read<AlertsProvider>().markAlertsSeen();
                     }
-                    // When switching back to the Clock tab (index 0),
-                    // tell the screen to refresh the geofence immediately
-                    // so the user sees the correct state without any delay.
                     if (index == 0 && previousIndex != 0) {
                       _clockKey.currentState?.notifyTabResumed();
                     }

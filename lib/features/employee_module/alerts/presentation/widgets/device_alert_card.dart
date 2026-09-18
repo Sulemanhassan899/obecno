@@ -59,7 +59,7 @@ class DeviceAlertCard extends StatelessWidget {
     final subtitle = item.emailLabel.isNotEmpty
         ? item.emailLabel
         : device.displayName;
-    final place = item.placeLabel;
+    final place = item.placeLabel(isManagerView: isManagerView);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),

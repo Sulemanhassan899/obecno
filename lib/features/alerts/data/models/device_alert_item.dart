@@ -44,7 +44,8 @@ class DeviceAlertItem {
     return '$value';
   }
 
-  String get placeLabel {
+  String placeLabel({required bool isManagerView}) {
+    if (!isManagerView) return device.displayName;
     if (locationLabel.isNotEmpty) return locationLabel;
     return device.displayName;
   }

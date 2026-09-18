@@ -543,6 +543,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       required TimeOfDay initial,
       required TimeOfDay updated,
       required String fallbackHms,
+      required bool hadInitial,
       bool force = false,
     }) {
       if (!force && !_timeChanged(initial, updated)) return;
@@ -552,11 +553,12 @@ class _AttendanceContentState extends State<_AttendanceContent>
       // `attendancedetail_id` (e.g. default break times on a day with none).
       if (serverId == null) return;
 
+      final isAdd = widget.isCreating || !hadInitial;
       localRequests.add(
         AttendanceEditRequest(
           status: AttendanceEditRequestStatus.pending,
           requestedAt: now,
-          originalTime: widget.isCreating ? '--' : formatTime(initial),
+          originalTime: isAdd ? '--' : formatTime(initial),
           newTime: formatTime(updated),
           eventType: eventType,
         ),
@@ -578,6 +580,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       initial: widget.initialCheckIn,
       updated: checkIn,
       fallbackHms: checkInHms,
+      hadInitial: widget.hadInitialCheckIn,
     );
     maybeAdd(
       eventType: 'breakStart',
@@ -585,6 +588,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       initial: widget.initialBreakStart,
       updated: breakStart,
       fallbackHms: breakStartHms,
+      hadInitial: widget.hadInitialBreakStart,
     );
     maybeAdd(
       eventType: 'breakEnd',
@@ -592,6 +596,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       initial: widget.initialBreakEnd,
       updated: breakEnd,
       fallbackHms: breakEndHms,
+      hadInitial: widget.hadInitialBreakEnd,
     );
     maybeAdd(
       eventType: 'checkOut',
@@ -599,6 +604,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       initial: widget.initialCheckOut,
       updated: checkOut,
       fallbackHms: checkOutHms,
+      hadInitial: widget.hadInitialCheckOut,
     );
 
     if (widget.isCreating) {
@@ -610,6 +616,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
           initial: widget.initialCheckIn,
           updated: checkIn,
           fallbackHms: checkInHms,
+          hadInitial: widget.hadInitialCheckIn,
           force: true,
         );
       }
@@ -620,6 +627,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
           initial: widget.initialCheckOut,
           updated: checkOut,
           fallbackHms: checkOutHms,
+          hadInitial: widget.hadInitialCheckOut,
           force: true,
         );
       }
@@ -636,6 +644,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             initial: widget.initialCheckOut,
             updated: checkOut,
             fallbackHms: checkOutHms,
+            hadInitial: widget.hadInitialCheckOut,
             force: true,
           );
           break;
@@ -646,6 +655,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             initial: widget.initialBreakStart,
             updated: breakStart,
             fallbackHms: breakStartHms,
+            hadInitial: widget.hadInitialBreakStart,
             force: true,
           );
           break;
@@ -656,6 +666,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             initial: widget.initialBreakEnd,
             updated: breakEnd,
             fallbackHms: breakEndHms,
+            hadInitial: widget.hadInitialBreakEnd,
             force: true,
           );
           break;
@@ -666,6 +677,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             initial: widget.initialCheckIn,
             updated: checkIn,
             fallbackHms: checkInHms,
+            hadInitial: widget.hadInitialCheckIn,
             force: true,
           );
       }

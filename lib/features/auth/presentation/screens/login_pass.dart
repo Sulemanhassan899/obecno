@@ -8,6 +8,9 @@ import 'package:obecno/core/services/permission_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/presentation/screens/forgot_password.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/join/data/models/join_invite_models.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
+import 'package:obecno/features/join/services/join_device_auto_approve.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/widgets/back_button.dart';
@@ -80,10 +83,64 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
 
     setState(() => _isSubmitting = true);
 
+    final password = _passController.text.trim();
+    final join = context.read<JoinInviteProvider>();
+    await join.ensureLoaded();
+    final invite = join.matchCredentials(
+      contact: widget.email,
+      password: password,
+    );
+
+    if (invite != null) {
+      final ok = await context.read<AuthProvider>().loginWithLocalInvite(
+            contact: widget.email,
+            companyName: invite.companyName,
+            locationName: invite.locationName,
+          );
+      if (!mounted) return;
+      if (!ok) {
+        setState(() {
+          _isSubmitting = false;
+          _errorText =
+              context.read<AuthProvider>().errorMessage ?? 'Login failed';
+        });
+        return;
+      }
+
+      final joined = await join.completeJoin(
+        invite.id,
+        contact: widget.email,
+      );
+      if (!mounted) return;
+
+      // Manual invite is already account-approved → first device auto-approves.
+      // Via-link stays pending until manager approves account (then device too).
+      // No separate device-request is sent for local invite sessions.
+      JoinDeviceAutoApprove.sync(
+        auth: context.read<AuthProvider>(),
+        join: join,
+        devices: context.read<DeviceProvider>(),
+      );
+
+      setState(() => _isSubmitting = false);
+
+      AppGuard.permissionOnboardingPending = false;
+      final viaLink = (joined ?? invite).source == JoinInviteSource.link;
+      if (viaLink) {
+        context.go(
+          '/youve_joined',
+          extra: (joined ?? invite).companyName,
+        );
+      } else {
+        context.go('/employee_nav');
+      }
+      return;
+    }
+
     // STEP 2: email (carried from screen 1) + password against the same
     // POST /api/auth/login endpoint, this time as a real sign-in.
     final ok = await context.read<AuthProvider>().loginWithPassword(
-      _passController.text.trim(),
+      password,
       rememberMe: _rememberMe,
     );
 

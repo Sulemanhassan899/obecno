@@ -12,6 +12,7 @@ import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/notification_helper.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
+import 'package:obecno/features/more/services/native_reminder_scheduler.dart';
 import 'package:obecno/features/more/services/reminder_notification_plan.dart';
 
 class ReminderNotificationService {
@@ -45,6 +46,10 @@ class ReminderNotificationService {
           requestSoundPermission: false,
         ),
       );
+      NativeReminderScheduler.onNotificationTap = (payload) {
+        onNotificationTap?.call(payload);
+      };
+      NativeReminderScheduler.bindTapHandler();
       await _plugin.initialize(
         settings: settings,
         onDidReceiveNotificationResponse: (response) {
@@ -74,9 +79,15 @@ class ReminderNotificationService {
     try {
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final payload = launch?.notificationResponse?.payload;
-      if (launch?.didNotificationLaunchApp != true || payload == null) return;
+      final nativePayload =
+          await NativeReminderScheduler.consumeLaunchPayload();
+      final fromPlugin = launch?.didNotificationLaunchApp == true
+          ? payload
+          : null;
+      final tap = nativePayload ?? fromPlugin;
+      if (tap == null) return;
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      onNotificationTap?.call(payload);
+      onNotificationTap?.call(tap);
     } catch (e, st) {
       AppLogger.error(
         'ReminderNotificationService',
@@ -119,6 +130,7 @@ class ReminderNotificationService {
   Future<void> cancelAll() async {
     if (!_initialized) return;
     try {
+      await NativeReminderScheduler.cancelAll();
       for (final id in ReminderNotificationPlan.allIds()) {
         await _plugin.cancel(id: id);
       }
@@ -195,11 +207,7 @@ class ReminderNotificationService {
       locationName: locationName,
     );
 
-    if (rebuildSchedule) {
-      await _cancelPending();
-    } else {
-      await _cancelUnplannedBreakReminders(planned);
-    }
+    final future = <ScheduledReminderNotification>[];
     for (final item in planned) {
       if (item.deliverImmediately) {
         if (!ReminderNotificationPlan.shouldShowNow(
@@ -219,10 +227,62 @@ class ReminderNotificationService {
         );
         if (shown) seen.add(item.type);
       } else {
+        future.add(item);
+      }
+    }
+
+    if (NativeReminderScheduler.isAndroid) {
+      await _syncAndroidAlarms(
+        future: future,
+        planned: planned,
+        rebuildSchedule: rebuildSchedule,
+      );
+    } else if (rebuildSchedule) {
+      await _cancelPending();
+      for (final item in future) {
         await _schedule(item);
+      }
+    } else {
+      await _cancelUnplannedBreakReminders(planned);
+      for (final item in future) {
+        if (ReminderNotificationPlan.isStatefulType(item.type)) {
+          await _schedule(item);
+        }
       }
     }
     return ReminderNotificationSyncResult(planned: planned, seenTypes: seen);
+  }
+
+  Future<void> _syncAndroidAlarms({
+    required List<ScheduledReminderNotification> future,
+    required List<ScheduledReminderNotification> planned,
+    required bool rebuildSchedule,
+  }) async {
+    Map<String, Object?> toMap(ScheduledReminderNotification item) {
+      return NativeReminderScheduler.alarmFrom(
+        id: item.id,
+        type: item.type.storageKey,
+        title: item.title,
+        message: item.body,
+        fireAt: item.fireAt,
+        payload: item.type.storageKey,
+      );
+    }
+
+    if (rebuildSchedule) {
+      await _cancelPending();
+      await NativeReminderScheduler.replaceAll(future.map(toMap).toList());
+      return;
+    }
+
+    final stateful = future
+        .where((item) => ReminderNotificationPlan.isStatefulType(item.type))
+        .map(toMap)
+        .toList();
+    if (stateful.isNotEmpty) {
+      await NativeReminderScheduler.upsert(stateful);
+    }
+    await _cancelUnplannedBreakReminders(planned);
   }
 
   Future<bool> showNow({
@@ -237,17 +297,30 @@ class ReminderNotificationService {
     await init();
     if (!_initialized) return false;
     await _ensurePermission();
+    final resolvedTitle =
+        title ?? ReminderCopy.title(type, locationName: locationName);
+    final resolvedBody =
+        body ??
+        ReminderCopy.message(
+          type,
+          checkInTime: checkInTime,
+          checkOutTime: checkOutTime,
+        );
+    final notificationId = id ?? ReminderNotificationPlan.idFor(type);
     try {
+      if (NativeReminderScheduler.isAndroid) {
+        await NativeReminderScheduler.show(
+          id: notificationId,
+          title: resolvedTitle,
+          message: resolvedBody,
+          payload: type.storageKey,
+        );
+        return true;
+      }
       await _plugin.show(
-        id: id ?? ReminderNotificationPlan.idFor(type),
-        title: title ?? ReminderCopy.title(type, locationName: locationName),
-        body:
-            body ??
-            ReminderCopy.message(
-              type,
-              checkInTime: checkInTime,
-              checkOutTime: checkOutTime,
-            ),
+        id: notificationId,
+        title: resolvedTitle,
+        body: resolvedBody,
         notificationDetails: _details,
         payload: type.storageKey,
       );
@@ -383,6 +456,10 @@ class ReminderNotificationService {
         continue;
       }
       try {
+        await NativeReminderScheduler.cancelIds([
+          id,
+          ReminderNotificationPlan.idFor(type, dayOffset: 1),
+        ]);
         await _plugin.cancel(id: id);
         await _plugin.cancel(
           id: ReminderNotificationPlan.idFor(type, dayOffset: 1),
@@ -408,6 +485,41 @@ class ReminderNotificationService {
     } catch (_) {
       return {};
     }
+  }
+
+  Future<ReminderHealth> health() async {
+    await init();
+    if (NativeReminderScheduler.isAndroid) {
+      return NativeReminderScheduler.health();
+    }
+    final allowed = await NotificationService.isEnabled();
+    return ReminderHealth(
+      notificationsAllowed: allowed,
+      exactAlarmsAllowed: true,
+      batteryUnrestricted: true,
+    );
+  }
+
+  Future<DateTime> scheduleTestReminder() async {
+    await init();
+    await _ensurePermission();
+    if (NativeReminderScheduler.isAndroid) {
+      return NativeReminderScheduler.scheduleTest(
+        title: 'Test reminder',
+        message: "Lock your phone. You don't need to keep Obecno open.",
+      );
+    }
+    final fireAt = DateTime.now().add(const Duration(minutes: 1));
+    await _plugin.zonedSchedule(
+      id: NativeReminderScheduler.testId,
+      title: 'Test successful',
+      body: 'Your reminders are ready.',
+      scheduledDate: localScheduleTime(fireAt),
+      notificationDetails: _details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      payload: 'test',
+    );
+    return fireAt;
   }
 
   Future<void> _ensurePermission() async {

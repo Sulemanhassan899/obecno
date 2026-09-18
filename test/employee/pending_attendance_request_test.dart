@@ -29,6 +29,15 @@ void main() {
 
     expect(add.isPendingAdd, isTrue);
     expect(edit.isPendingAdd, isFalse);
+
+    final mintedBreak = AttendanceEditRequest(
+      status: AttendanceEditRequestStatus.pending,
+      requestedAt: DateTime(2026, 9, 18, 15, 3),
+      originalTime: '12:01 AM',
+      newTime: '1:00 PM',
+      eventType: 'breakStart',
+    );
+    expect(mintedBreak.isPendingAdd, isTrue);
   });
 
   test('store finds pending add requests for a day', () async {

@@ -17,6 +17,8 @@ import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_shee
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/join/data/models/join_invite_models.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/widgets/bottom_nav_bars/alerts_nav_icon.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
@@ -79,6 +81,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(context.read<ReminderSettingsProvider>().activateFromClock());
+      unawaited(context.read<JoinInviteProvider>().ensureLoaded());
     });
   }
 
@@ -160,7 +163,10 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge;
+    final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge ||
+        context.watch<JoinInviteProvider>().managerAlerts().any(
+              (e) => e.status == JoinInviteStatus.pendingApproval,
+            );
     return Scaffold(
       body: IndexedStack(index: selectedIndex, children: screens),
       bottomNavigationBar: Container(

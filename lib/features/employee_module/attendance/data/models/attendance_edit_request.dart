@@ -21,15 +21,43 @@ class AttendanceEditRequest {
   /// checkIn | checkOut | breakStart | breakEnd
   final String? eventType;
 
+  /// Maps API labels onto timeline card types.
+  /// "break in" → Break End card, "break out" → Break Start card.
+  static String? normalizedEventType(String? raw) {
+    switch (raw?.trim().toLowerCase().replaceAll(RegExp(r'[-_]'), ' ')) {
+      case 'check out':
+      case 'checkout':
+        return 'checkOut';
+      case 'break out':
+      case 'breakout':
+      case 'break start':
+      case 'breakstart':
+        return 'breakStart';
+      case 'break in':
+      case 'breakin':
+      case 'break end':
+      case 'breakend':
+        return 'breakEnd';
+      case 'check in':
+      case 'checkin':
+        return 'checkIn';
+      default:
+        return raw;
+    }
+  }
+
   bool get isPending => status == AttendanceEditRequestStatus.pending;
   bool get isApproved => status == AttendanceEditRequestStatus.approved;
   bool get isRejected => status == AttendanceEditRequestStatus.rejected;
 
-  /// Employee add-attendance request for a previously empty/absent day.
+  /// Employee add-attendance request for a punch that did not exist yet.
+  /// Dummy 12:01 / 12:02 AM originals are treated as adds, not real edits.
   bool get isPendingAdd {
     if (!isPending) return false;
     final original = originalTime.trim();
-    return original.isEmpty || original == '--';
+    if (original.isEmpty || original == '--') return true;
+    final parsed = parseClockTime(original, date: DateTime(2000, 1, 1));
+    return parsed != null && isPlaceholderMint(parsed);
   }
 
   /// 00:00–00:03 punches used only to mint an attendance id for edit requests.
@@ -257,8 +285,9 @@ class AttendanceEditRequest {
             json['rejected_at'] ??
             json['updated_at'],
       ),
-      eventType: (json['event_type'] ?? json['eventType'] ?? json['type'])
-          ?.toString(),
+      eventType: normalizedEventType(
+        (json['event_type'] ?? json['eventType'] ?? json['type'])?.toString(),
+      ),
     );
   }
 
