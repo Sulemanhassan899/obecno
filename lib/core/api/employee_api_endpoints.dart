@@ -17,6 +17,8 @@ class EmployeeApiEndpoints {
   static const String attendanceDetails = "/employee/attendance/details";
   static const String attendanceEdit = "/employee/attendance/edit";
   static const String attendanceCalendar = "/employee/calendar";
+  static const String attendanceLocationFlags =
+      "/employee/attendance/location-flags";
 
   static String monthlyAttendance(String employeeId, String yearMonth) =>
       '/attendance/monthly/$employeeId/$yearMonth';

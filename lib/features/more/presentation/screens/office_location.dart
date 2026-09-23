@@ -11,6 +11,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/data/models/auth_location_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 
@@ -44,7 +45,8 @@ class _OfficeLocationState extends State<OfficeLocation> {
           listenable: Listenable.merge([authProvider, locationProvider]),
           builder: (context, _) {
             final locations = _orderedLocations(authProvider);
-            final defaultId = _defaultLocationId(authProvider);
+            final defaultLocation = authProvider.defaultLocation;
+            final defaultId = defaultLocation?.id;
 
             return ListView(
               children: [
@@ -64,7 +66,7 @@ class _OfficeLocationState extends State<OfficeLocation> {
                       location: locations[i],
                       isDefault: locations[i].id == defaultId,
                       liveStatus: locations[i].id == defaultId
-                          ? _liveStatusFor(locationProvider)
+                          ? _liveStatusFor(locationProvider, defaultLocation)
                           : null,
                     ),
                   ],
@@ -77,10 +79,7 @@ class _OfficeLocationState extends State<OfficeLocation> {
   }
 
   String? _defaultLocationId(AuthProvider authProvider) {
-    for (final location in authProvider.locations) {
-      if (location.isDefault) return location.id;
-    }
-    return authProvider.selectedLocation?.id;
+    return authProvider.defaultLocation?.id;
   }
 
   List<AuthLocationModel> _orderedLocations(AuthProvider authProvider) {
@@ -95,14 +94,24 @@ class _OfficeLocationState extends State<OfficeLocation> {
     return locations;
   }
 
-  String? _liveStatusFor(LocationProvider locationProvider) {
+  String? _liveStatusFor(
+    LocationProvider locationProvider,
+    AuthLocationModel? defaultLocation,
+  ) {
     if (locationProvider.isRefreshing) return "Checking your location…";
-    if (locationProvider.rangeMessage != null &&
-        locationProvider.geofenceResult == null) {
-      return locationProvider.rangeMessage;
+    if (locationProvider.errorMessage != null &&
+        locationProvider.userLocation == null) {
+      return locationProvider.errorMessage;
     }
-    final result = locationProvider.geofenceResult;
-    if (result == null) return null;
+    final user = locationProvider.userLocation;
+    if (user == null || defaultLocation == null) return null;
+    final officePoint = GeoPoint.tryParse(defaultLocation.latLon);
+    if (officePoint == null) return null;
+    final result = GeofenceHelper.evaluate(
+      companyLocation: officePoint,
+      user: user,
+      radiusMeters: defaultLocation.radiusMeters,
+    );
     final distance = result.distanceMeters.round();
     return result.isInside
         ? "You're ${distance}m away — in range"

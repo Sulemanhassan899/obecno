@@ -27,10 +27,12 @@ import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 
+import 'package:obecno/demo/location_flags/presentation/location_flag_demo_screen.dart';
 import 'package:obecno/widgets/check_in_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class ClockScreen extends StatefulWidget {
   const ClockScreen({super.key});
@@ -632,6 +634,14 @@ class ClockScreenState extends State<ClockScreen>
 
     return Scaffold(
       backgroundColor: kbackground1,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'location_flag_demo_fab',
+        backgroundColor: kBlack200,
+        foregroundColor: kWhite,
+        icon: const Icon(Icons.location_on_outlined, size: 18),
+        label: const Text('LOCATION'),
+        onPressed: () => context.push(LocationFlagDemoScreen.routePath),
+      ),
       body: Padding(
         padding: AppSizes.page(context),
         child: ListenableBuilder(

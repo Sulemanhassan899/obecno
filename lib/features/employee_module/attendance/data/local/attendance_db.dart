@@ -14,6 +14,7 @@ class AttendanceDb {
   static const String reminderPunchesTable = 'reminder_punches';
   static const String reminderDayStateTable = 'reminder_day_state';
   static const String reminderDeliveriesTable = 'reminder_deliveries';
+  static const String locationFlagChecksTable = 'location_flag_checks';
 
   Database? _db;
 
@@ -31,7 +32,9 @@ class AttendanceDb {
   // v5: optional earlier remind-at time per reminder type.
   // v6: persist leave/holiday flags so On Leave rows survive cache restore.
   // v7: reminder punches, clock status, and delivery rows for later API sync.
-  static const int _dbVersion = 7;
+  // v8: 15-minute attendance location flag checks (TRUE/FALSE/NULL).
+  // v9: 5-minute flags, 12 per hour (flag_5 … flag_12).
+  static const int _dbVersion = 9;
 
   Future<Database> _open() async {
     final dbDir = await getDatabasesPath();
@@ -46,6 +49,7 @@ class AttendanceDb {
         await _createReminderTables(db);
         await _addLeaveColumns(db);
         await _createReminderSyncTables(db);
+        await _createLocationFlagChecksTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -74,6 +78,12 @@ class AttendanceDb {
         }
         if (oldVersion < 7) {
           await _createReminderSyncTables(db);
+        }
+        if (oldVersion < 8) {
+          await _createLocationFlagChecksTable(db);
+        }
+        if (oldVersion < 9) {
+          await _addFiveMinuteFlagColumns(db);
         }
       },
     );
@@ -195,6 +205,78 @@ class AttendanceDb {
     await addColumn(reminderSettingsTable, 'synced', 'INTEGER NOT NULL DEFAULT 0');
   }
 
+  Future<void> _createLocationFlagChecksTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $locationFlagChecksTable (
+        id TEXT PRIMARY KEY,
+        employee_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        timestamp TEXT NOT NULL,
+        location_accuracy REAL,
+        assigned_location_id TEXT,
+        office_latitude REAL,
+        office_longitude REAL,
+        allowed_radius REAL,
+        distance REAL,
+        check_in_status INTEGER NOT NULL DEFAULT 0,
+        break_status INTEGER NOT NULL DEFAULT 0,
+        check_out_status INTEGER NOT NULL DEFAULT 0,
+        location_status TEXT NOT NULL,
+        inside_radius INTEGER,
+        flag_number INTEGER NOT NULL,
+        cycle_id TEXT NOT NULL,
+        flag_1 INTEGER,
+        flag_2 INTEGER,
+        flag_3 INTEGER,
+        flag_4 INTEGER,
+        flag_5 INTEGER,
+        flag_6 INTEGER,
+        flag_7 INTEGER,
+        flag_8 INTEGER,
+        flag_9 INTEGER,
+        flag_10 INTEGER,
+        flag_11 INTEGER,
+        flag_12 INTEGER,
+        requires_server_sync INTEGER NOT NULL DEFAULT 0,
+        sync_status TEXT NOT NULL DEFAULT 'local',
+        sync_attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_sync_attempt TEXT,
+        server_synced_at TEXT,
+        created_timestamp TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_location_flag_employee_date '
+      'ON $locationFlagChecksTable(employee_id, date)',
+    );
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_location_flag_slot '
+      'ON $locationFlagChecksTable(employee_id, cycle_id, flag_number)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_location_flag_sync '
+      'ON $locationFlagChecksTable(employee_id, sync_status)',
+    );
+  }
+
+  Future<void> _addFiveMinuteFlagColumns(Database db) async {
+    Future<void> addColumn(String name) async {
+      final info = await db.rawQuery(
+        'PRAGMA table_info($locationFlagChecksTable)',
+      );
+      if (info.any((row) => row['name'] == name)) return;
+      await db.execute(
+        'ALTER TABLE $locationFlagChecksTable ADD COLUMN $name INTEGER',
+      );
+    }
+
+    for (var i = 5; i <= 12; i++) {
+      await addColumn('flag_$i');
+    }
+  }
+
   Future<void> _addRemindMinutesColumn(Database db) async {
     final info = await db.rawQuery(
       'PRAGMA table_info($reminderSettingsTable)',
@@ -272,6 +354,7 @@ class AttendanceDb {
       await txn.delete(reminderPunchesTable);
       await txn.delete(reminderDayStateTable);
       await txn.delete(reminderDeliveriesTable);
+      await txn.delete(locationFlagChecksTable);
     });
   }
 }

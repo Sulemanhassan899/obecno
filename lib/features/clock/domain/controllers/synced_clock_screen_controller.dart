@@ -75,6 +75,7 @@ class SyncedClockScreenController extends ClockScreenController {
       if (!_isStale) {
         isProcessing = false;
         notifyListeners();
+        _syncLocationFlagMonitor(captureImmediately: false);
       }
     });
   }
@@ -320,7 +321,11 @@ class SyncedClockScreenController extends ClockScreenController {
       // Keep loader active during server sync
       isProcessing = true;
       unawaited(_syncReminderLogs());
-      return await _syncIfNeeded(result, previousEvents);
+      final synced = await _syncIfNeeded(result, previousEvents);
+      _syncLocationFlagMonitor(
+        captureImmediately: result == AttendanceActionResult.checkedIn,
+      );
+      return synced;
     } finally {
       isProcessing = false;
       _isHandlingTap = false;
@@ -370,7 +375,9 @@ class SyncedClockScreenController extends ClockScreenController {
       // Keep loader active during server sync
       isProcessing = true;
       unawaited(_syncReminderLogs());
-      return await _syncIfNeeded(result, previousEvents);
+      final synced = await _syncIfNeeded(result, previousEvents);
+      _syncLocationFlagMonitor(captureImmediately: false);
+      return synced;
     } finally {
       isProcessing = false;
       _isHandlingTap = false;
@@ -392,6 +399,21 @@ class SyncedClockScreenController extends ClockScreenController {
   void restoreEvents(List<AttendanceEvent> snapshot) {
     super.restoreEvents(snapshot);
     unawaited(_syncReminderLogs());
+    _syncLocationFlagMonitor(captureImmediately: false);
+  }
+
+  void _syncLocationFlagMonitor({required bool captureImmediately}) {
+    if (_isStale) return;
+    final summary = AttendanceEngine.compute(events);
+    unawaited(
+      bindings.locationFlagMonitor.handleAttendanceState(
+        employeeId: userId,
+        checkedIn: summary.isCheckedIn,
+        onBreak: summary.isOnBreak,
+        checkedOut: !summary.isCheckedIn,
+        captureImmediately: captureImmediately && summary.isCheckedIn,
+      ),
+    );
   }
 
   Future<bool> _validateGeofence() async {

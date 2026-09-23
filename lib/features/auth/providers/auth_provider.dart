@@ -125,6 +125,15 @@ class AuthProvider extends ChangeNotifier {
   AuthLocationModel? get selectedLocation => _selectedLocation;
   String get selectedLocationName => _selectedLocation?.name ?? '';
 
+  /// Manager-assigned default office. Independent of [selectedLocation],
+  /// which is the employee's current working location from the clock sheet.
+  AuthLocationModel? get defaultLocation {
+    for (final loc in _locations) {
+      if (loc.isDefault) return loc;
+    }
+    return null;
+  }
+
   String? get role => _user?.role ?? _restoredRole;
 
   AuthHomeTarget get homeTarget {
@@ -161,8 +170,9 @@ class AuthProvider extends ChangeNotifier {
     }
 
     if (user.locations.isNotEmpty) {
-      if (!AuthLocationModel.isSameLocationList(_locations, user.locations)) {
-        _locations = user.locations;
+      final incoming = _locationsWithPreservedDefault(user.locations);
+      if (!AuthLocationModel.isSameLocationList(_locations, incoming)) {
+        _locations = incoming;
         hasChanged = true;
       }
     }
@@ -195,6 +205,23 @@ class AuthProvider extends ChangeNotifier {
     }
 
     return hasChanged;
+  }
+
+  /// `/auth/me` sometimes omits `is_default` after a working-location switch.
+  /// Keep the last manager-assigned default instead of letting it disappear.
+  List<AuthLocationModel> _locationsWithPreservedDefault(
+    List<AuthLocationModel> incoming,
+  ) {
+    if (incoming.any((location) => location.isDefault)) return incoming;
+
+    String? previousDefaultId;
+    for (final location in _locations) {
+      if (location.isDefault) {
+        previousDefaultId = location.id;
+        break;
+      }
+    }
+    return AuthLocationModel.applyDefaultFlag(incoming, previousDefaultId);
   }
 
   Future<void> restoreCompanyAndLocationsFromCache() async {
@@ -315,9 +342,7 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
 
-    final local = trimmed.contains('@')
-        ? trimmed.split('@').first
-        : trimmed;
+    final local = trimmed.contains('@') ? trimmed.split('@').first : trimmed;
     final parts = local
         .replaceAll(RegExp(r'[^A-Za-z0-9._\-]+'), ' ')
         .split(RegExp(r'[._\-\s]+'))
