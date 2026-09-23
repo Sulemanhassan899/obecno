@@ -32,9 +32,14 @@ import 'package:obecno/features/employee_module/attendance/data/local/attendance
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
+import 'package:obecno/features/clock/location_flags/providers/location_flag_provider.dart';
+import 'package:obecno/features/clock/location_flags/repositories/location_flag_repository.dart';
+import 'package:obecno/features/clock/location_flags/services/location_flag_monitor.dart';
+import 'package:obecno/features/clock/location_flags/services/location_flag_sync_service.dart';
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
+import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
@@ -121,6 +126,10 @@ class AppBindings {
   late final ManagerAttendanceProvider managerAttendanceProvider;
   late final AlertsProvider alertsProvider;
   late final JoinInviteProvider joinInviteProvider;
+  late final LocationFlagRepository locationFlagRepository;
+  late final LocationFlagProvider locationFlagProvider;
+  late final LocationFlagMonitorService locationFlagMonitor;
+  late final LocationFlagSyncService locationFlagSyncService;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -370,6 +379,33 @@ class AppBindings {
     clockSyncService.startListening();
     unawaited(clockSyncService.syncPendingData());
 
+    locationFlagRepository = LocationFlagRepository();
+    locationFlagProvider = LocationFlagProvider(
+      repository: locationFlagRepository,
+      employeeIdProvider: () => authProvider.user?.id,
+    );
+    locationFlagSyncService = LocationFlagSyncService(
+      repository: locationFlagRepository,
+      apiClient: ApihttpClient,
+      connectivity: connectivityService,
+      employeeIdProvider: () => authProvider.user?.id,
+      sessionEpochProvider: () => authProvider.sessionEpoch,
+    );
+    locationFlagMonitor = LocationFlagMonitorService(
+      repository: locationFlagRepository,
+      locationService: LocationServiceImpl(),
+      employeeIdProvider: () => authProvider.user?.id,
+      officeProvider: () => authProvider.selectedLocation,
+      sessionEpochProvider: () => authProvider.sessionEpoch,
+      isOnline: () => networkChecker.isConnected,
+      onRecordsChanged: () {
+        unawaited(locationFlagProvider.reloadForDay(DateTime.now()));
+        unawaited(locationFlagSyncService.syncPending());
+      },
+    );
+    locationFlagSyncService.startListening();
+    unawaited(locationFlagSyncService.syncPending());
+
     authProvider.registerLogoutCleanup(() async {
       // Captured before any cleanup step runs -- registerLogoutCleanup's
       // callback fires *before* AuthProvider clears `_user`, so this is
@@ -390,6 +426,16 @@ class AppBindings {
       await _guardedCleanupStep(
         'syncPendingData',
         clockSyncService.syncPendingData,
+      );
+
+      await _guardedCleanupStep(
+        'syncLocationFlags',
+        locationFlagSyncService.syncPending,
+      );
+
+      await _guardedCleanupStep(
+        'stopLocationFlagMonitor',
+        locationFlagMonitor.stop,
       );
 
       await _guardedCleanupStep('detachSyncCallbacks', () async {
@@ -472,6 +518,8 @@ class AppBindings {
       _locationSyncListener = null;
     }
     clockSyncService.stopListening();
+    locationFlagSyncService.stopListening();
+    locationFlagMonitor.dispose();
     employeeTrustedTime.dispose();
   }
 

@@ -104,6 +104,7 @@ class AuthUserModel {
         });
     final locations = AuthLocationModel.listFrom(
       user['locations'] ?? json['locations'],
+      defaultLocationId: _defaultLocationIdFrom(user, json),
     );
     final token = TokenModel.fromJson(json);
     // Login may send nested policy maps under `permissions`, or structured
@@ -201,4 +202,22 @@ class AuthUserModel {
       'AuthUserModel(id: $id, name: $name, email: $email, role: $role, '
       'company: $company, locations: ${locations.length}, '
       'permissions: ${permissions.length}, hasToken: ${token != null})';
+}
+
+/// Manager-assigned default office id. Never treat `location_id` as default —
+/// that field is often the employee's currently selected working location.
+String? _defaultLocationIdFrom(
+  Map<String, dynamic> user,
+  Map<String, dynamic> json,
+) {
+  final nestedDefault = user['default_location'] ?? json['default_location'];
+  final raw =
+      user['default_location_id'] ??
+      json['default_location_id'] ??
+      user['default_office_id'] ??
+      json['default_office_id'] ??
+      (nestedDefault is Map ? nestedDefault['id'] : nestedDefault);
+  if (raw == null) return null;
+  final value = raw.toString().trim();
+  return value.isEmpty ? null : value;
 }

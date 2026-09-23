@@ -52,6 +52,9 @@ abstract class LocationService {
   Future<LocationModel> getCurrentLocation();
   Future<GpsReading> getCurrentReading();
   Future<GpsReading?> getLastKnownReading();
+
+  /// Fresh GPS only. Never falls back to last-known location.
+  Future<GpsReading> getFreshReading();
 }
 
 class LocationServiceImpl implements LocationService {
@@ -90,6 +93,19 @@ class LocationServiceImpl implements LocationService {
           await _androidGpsFallback() ?? await getLastKnownReading();
       if (fallback != null) return fallback;
       rethrow;
+    }
+  }
+
+  @override
+  Future<GpsReading> getFreshReading() async {
+    await _ensureLocationReady();
+    try {
+      return await _readCurrent(
+        forceLocationManager: false,
+        timeLimit: _positionTimeout,
+      );
+    } on TimeoutException {
+      throw const LocationTimeoutException();
     }
   }
 

@@ -76,17 +76,44 @@ class AuthService {
     }
 
     if (user.locations.isEmpty) return;
+    final locations = resetSelection
+        ? user.locations
+        : await _locationsWithCachedDefault(user.locations);
     await _tokenService.cacheLocations(
-      user.locations.map((l) => l.toJson()).toList(),
+      locations.map((l) => l.toJson()).toList(),
     );
 
     final existingId = await _tokenService.selectedLocationId;
     final stillValid =
-        existingId != null && user.locations.any((l) => l.id == existingId);
+        existingId != null && locations.any((l) => l.id == existingId);
 
     if (resetSelection || !stillValid) {
-      await _tokenService.setSelectedLocationId(user.locations.first.id);
+      AuthLocationModel? defaultLocation;
+      for (final location in locations) {
+        if (location.isDefault) {
+          defaultLocation = location;
+          break;
+        }
+      }
+      await _tokenService.setSelectedLocationId(
+        (defaultLocation ?? locations.first).id,
+      );
     }
+  }
+
+  Future<List<AuthLocationModel>> _locationsWithCachedDefault(
+    List<AuthLocationModel> incoming,
+  ) async {
+    if (incoming.any((location) => location.isDefault)) return incoming;
+    final cached = await getCachedLocations();
+    String? previousDefaultId;
+    for (final location in cached) {
+      if (location.isDefault) {
+        previousDefaultId = location.id;
+        break;
+      }
+    }
+    return AuthLocationModel.applyDefaultFlag(incoming, previousDefaultId);
   }
 
   Future<AuthCompanyModel?> getCachedCompany() async {

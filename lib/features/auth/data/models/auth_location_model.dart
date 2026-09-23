@@ -38,6 +38,38 @@ class AuthLocationModel {
     return parts.join(', ');
   }
 
+  AuthLocationModel copyWith({
+    String? id,
+    String? name,
+    String? latLon,
+    String? address,
+    String? city,
+    String? country,
+    Object? cityId,
+    Object? countryId,
+    String? timezone,
+    Object? timezoneId,
+    String? image,
+    bool? isDefault,
+    int? radiusMeters,
+  }) {
+    return AuthLocationModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      latLon: latLon ?? this.latLon,
+      address: address ?? this.address,
+      city: city ?? this.city,
+      country: country ?? this.country,
+      cityId: cityId ?? this.cityId,
+      countryId: countryId ?? this.countryId,
+      timezone: timezone ?? this.timezone,
+      timezoneId: timezoneId ?? this.timezoneId,
+      image: image ?? this.image,
+      isDefault: isDefault ?? this.isDefault,
+      radiusMeters: radiusMeters ?? this.radiusMeters,
+    );
+  }
+
   factory AuthLocationModel.fromJson(Map<String, dynamic> json) {
     final rawImage = (json['photo_url'] ?? json['photo'])?.toString() ?? '';
 
@@ -71,9 +103,11 @@ class AuthLocationModel {
       address: json['address']?.toString(),
       city: _placeName(json['city'] ?? json['city_name']),
       country: _placeName(json['country'] ?? json['country_name']),
-      cityId: _placeId(json['city_id']) ??
+      cityId:
+          _placeId(json['city_id']) ??
           (json['city'] is Map ? _placeId(json['city']) : null),
-      countryId: _placeId(json['country_id']) ??
+      countryId:
+          _placeId(json['country_id']) ??
           (json['country'] is Map ? _placeId(json['country']) : null),
       timezone: _placeName(
         json['timezone_name'] ?? json['timezone'] ?? json['time_zone'],
@@ -106,12 +140,36 @@ class AuthLocationModel {
     'radius_meters': radiusMeters,
   };
 
-  static List<AuthLocationModel> listFrom(dynamic raw) {
+  static List<AuthLocationModel> listFrom(
+    dynamic raw, {
+    String? defaultLocationId,
+  }) {
     if (raw is! List) return const [];
-    return raw
+    final list = raw
         .whereType<Map>()
         .map((e) => AuthLocationModel.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
+    return applyDefaultFlag(list, defaultLocationId);
+  }
+
+  /// Marks the manager-assigned default office. Never uses the employee's
+  /// working/selected location — that lives separately as selectedLocation.
+  static List<AuthLocationModel> applyDefaultFlag(
+    List<AuthLocationModel> locations, [
+    String? defaultLocationId,
+  ]) {
+    if (locations.isEmpty) return locations;
+    if (locations.any((location) => location.isDefault)) return locations;
+
+    final defaultId = defaultLocationId?.trim();
+    if (defaultId == null || defaultId.isEmpty) return locations;
+
+    return [
+      for (final location in locations)
+        location.id == defaultId
+            ? location.copyWith(isDefault: true)
+            : location,
+    ];
   }
 
   static AuthLocationModel? fromJsonOrNull(dynamic raw) {

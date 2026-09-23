@@ -30,6 +30,7 @@ import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/join/services/join_deep_link_service.dart';
 import 'package:obecno/features/more/services/reminder_notification_service.dart';
+import 'package:obecno/features/clock/location_flags/providers/location_flag_provider.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -162,6 +163,10 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<JoinInviteProvider>(
           notifier: bindings.joinInviteProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<LocationFlagProvider>(
+          notifier: bindings.locationFlagProvider,
           child: child,
         ),
         (child) => ChangeNotifierProvider<ThemeProvider>(
