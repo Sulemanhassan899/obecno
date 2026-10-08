@@ -62,18 +62,52 @@ class CommonImageView extends StatelessWidget {
     return BorderRadius.circular(radius ?? 0);
   }
 
+  bool get _hasRadius {
+    return (radius ?? 0) > 0 ||
+        topLeftRadius > 0 ||
+        topRightRadius > 0 ||
+        bottomLeftRadius > 0 ||
+        bottomRightRadius > 0;
+  }
+
+  /// One-sided decode size so aspect ratio is preserved (both sides stretch).
+  ({int? width, int? height}) _decodeSize(BuildContext context) {
+    final logicalWidth = width;
+    final logicalHeight = height;
+    final hasWidth =
+        logicalWidth != null && logicalWidth.isFinite && logicalWidth > 0;
+    final hasHeight =
+        logicalHeight != null && logicalHeight.isFinite && logicalHeight > 0;
+    if (!hasWidth && !hasHeight) {
+      return (width: null, height: null);
+    }
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    final pxWidth = hasWidth ? (logicalWidth! * ratio).round() : 0;
+    final pxHeight = hasHeight ? (logicalHeight! * ratio).round() : 0;
+    final maxSide = pxWidth >= pxHeight ? pxWidth : pxHeight;
+    if (maxSide <= 0) {
+      return (width: null, height: null);
+    }
+    return (width: maxSide, height: null);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(borderRadius: _borderRadius, child: _buildImageView());
+    final image = _buildImageView(context);
+    if (!_hasRadius) return image;
+    return ClipRRect(borderRadius: _borderRadius, child: image);
   }
 
   /// CENTRALIZED ERROR HANDLER — never throws if the fallback asset is missing.
-  Widget _errorWidget() {
+  Widget _errorWidget(BuildContext context) {
+    final decode = _decodeSize(context);
     return Image.asset(
       errorImage ?? placeHolder,
       height: height,
       width: width,
       fit: fit,
+      cacheWidth: decode.width,
+      cacheHeight: decode.height,
       errorBuilder: (_, __, ___) => SizedBox(
         height: height,
         width: width,
@@ -82,12 +116,14 @@ class CommonImageView extends StatelessWidget {
     );
   }
 
-  Widget _buildImageView() {
+  Widget _buildImageView(BuildContext context) {
     /// =========================
     /// SVG (fallback)
     /// =========================
+    final decode = _decodeSize(context);
+
     if (svgPath != null && svgPath!.isNotEmpty) {
-      return _errorWidget();
+      return _errorWidget(context);
     }
 
     /// =========================
@@ -99,7 +135,9 @@ class CommonImageView extends StatelessWidget {
         height: height,
         width: width,
         fit: fit,
-        errorBuilder: (_, __, ___) => _errorWidget(),
+        cacheWidth: decode.width,
+        cacheHeight: decode.height,
+        errorBuilder: (_, __, ___) => _errorWidget(context),
       );
     }
 
@@ -113,6 +151,8 @@ class CommonImageView extends StatelessWidget {
         height: height,
         width: width,
         fit: fit,
+        memCacheWidth: decode.width,
+        memCacheHeight: decode.height,
 
         /// Loading shimmer
         placeholder: (context, url) => AppShimmer(
@@ -122,7 +162,7 @@ class CommonImageView extends StatelessWidget {
         ),
 
         /// Error fallback
-        errorWidget: (_, __, ___) => _errorWidget(),
+        errorWidget: (_, __, ___) => _errorWidget(context),
       );
     }
 
@@ -135,14 +175,16 @@ class CommonImageView extends StatelessWidget {
         height: height,
         width: width,
         fit: fit,
-        errorBuilder: (_, __, ___) => _errorWidget(),
+        cacheWidth: decode.width,
+        cacheHeight: decode.height,
+        errorBuilder: (_, __, ___) => _errorWidget(context),
       );
     }
 
     /// =========================
     /// NOTHING PROVIDED → DEFAULT
     /// =========================
-    return _errorWidget();
+    return _errorWidget(context);
   }
 
   static String? _networkUrl(String? value) {

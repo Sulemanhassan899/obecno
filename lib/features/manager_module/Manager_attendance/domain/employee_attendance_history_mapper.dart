@@ -196,6 +196,7 @@ class ManagerEmployeeHistoryMapper {
           checkOut: checkOut,
           status: status,
           weekendLabel: weekendLabel,
+          hasEditedTime: punched?.isEdited ?? false,
         ),
       );
     }

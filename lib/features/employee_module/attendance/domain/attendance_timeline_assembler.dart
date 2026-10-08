@@ -9,11 +9,9 @@ import 'package:obecno/features/more/data/models/reminder_log.dart';
 
 /// Builds Clock / Attendance timelines without dummy midnight punches.
 ///
-/// Example (18 Sep):
-/// check-in 3:02 with request 12:25, pending add break 1:00 / 2:30,
-/// later real break 6:00 / 7:49.
-/// Dummy 12:01 / 12:02 AM cards are hidden. The 1:00 / 2:30 request stays
-/// under the live 6:00 / 7:49 cards.
+/// Pending add / fix requests only stay on a live punch when the requested
+/// `newTime` matches that punch. Different requested times (e.g. check-in
+/// 12:00 PM and 4:00 PM) each get their own card, including breaks.
 class AttendanceTimelineAssembler {
   AttendanceTimelineAssembler._();
 
@@ -24,6 +22,9 @@ class AttendanceTimelineAssembler {
 
   static bool isHiddenPlaceholder(DateTime time) =>
       AttendanceEditRequest.isPlaceholderMint(time);
+
+  static String _pendingAddId(String eventType, DateTime time) =>
+      '$pendingAddIdPrefix${eventType}_${time.hour}_${time.minute}';
 
   static ClockTimelineAssembly clock({
     required List<AttendanceEvent> events,
@@ -62,7 +63,7 @@ class AttendanceTimelineAssembler {
     final pendingAdds = [
       for (final add in bound.pendingAdds)
         AttendanceEvent(
-          id: '$pendingAddIdPrefix${add.eventType}',
+          id: _pendingAddId(add.eventType, add.time),
           type: _clockType(add.eventType),
           time: add.time,
           location: location,
@@ -110,7 +111,7 @@ class AttendanceTimelineAssembler {
     final pendingAdds = [
       for (final add in bound.pendingAdds)
         HistoryAttendanceEvent(
-          id: '$pendingAddIdPrefix${add.eventType}',
+          id: _pendingAddId(add.eventType, add.time),
           type: _historyType(add.eventType),
           time: add.time,
           location: location,
@@ -198,22 +199,27 @@ class AttendanceTimelineAssembler {
         for (final request in requests) _key(request),
     };
 
-    // Pending add-break (1:00 / 2:30) stays under the live punch of that
-    // type (6:00 / 7:49). Only mint a standalone card when that punch is missing.
-    final claimedTypes = <String>{};
+    // Pending adds only attach to a live punch when the requested new time
+    // matches that punch. A 4:00 PM check-in request must not land on a
+    // 12:00 PM check-in card.
     for (var i = 0; i < punches.length; i++) {
-      final type = punches[i].type;
-      if (!claimedTypes.add(type)) continue;
+      final punch = punches[i];
       for (final request in candidates) {
         if (boundKeys.contains(_key(request))) continue;
         if (!_isPendingAddStyle(request)) continue;
         if (AttendanceEditRequest.normalizedEventType(request.eventType) !=
-            type) {
+            punch.type) {
           continue;
         }
+        final newTime = AttendanceEditRequest.parseClockTime(
+          request.newTime,
+          date: day,
+        );
+        if (newTime == null || !_sameMinute(newTime, punch.time)) continue;
         if (forPunch[i].any(
           (existing) =>
-              _isPendingAddStyle(existing) && existing.newTime == request.newTime,
+              _isPendingAddStyle(existing) &&
+              existing.newTime == request.newTime,
         )) {
           boundKeys.add(_key(request));
           continue;
@@ -223,32 +229,39 @@ class AttendanceTimelineAssembler {
       }
     }
 
-    final pendingAdds = <_PendingAdd>[];
-    final pendingTypes = <String>{};
+    // One standalone card per event type + requested clock time.
+    final pendingBySlot = <String, _PendingAdd>{};
     for (final request in candidates) {
       if (boundKeys.contains(_key(request))) continue;
       if (!_isPendingAddStyle(request)) continue;
       final type = AttendanceEditRequest.normalizedEventType(request.eventType);
-      if (type == null || type.isEmpty || !pendingTypes.add(type)) continue;
-      final time = AttendanceEditRequest.parseClockTime(request.newTime, date: day);
+      if (type == null || type.isEmpty) continue;
+      final time = AttendanceEditRequest.parseClockTime(
+        request.newTime,
+        date: day,
+      );
       if (time == null || isHiddenPlaceholder(time)) continue;
-      if (punches.any((punch) => punch.type == type)) continue;
-      pendingAdds.add(
-        _PendingAdd(
+      final slot = '$type|${time.hour}:${time.minute}';
+      final existing = pendingBySlot[slot];
+      if (existing == null) {
+        pendingBySlot[slot] = _PendingAdd(
           eventType: type,
           time: time,
-          requests: [
-            for (final match in candidates)
-              if (AttendanceEditRequest.normalizedEventType(match.eventType) ==
-                      type &&
-                  _isPendingAddStyle(match))
-                match,
-          ],
-        ),
-      );
+          requests: [request],
+        );
+      } else {
+        pendingBySlot[slot] = _PendingAdd(
+          eventType: type,
+          time: existing.time,
+          requests: [...existing.requests, request],
+        );
+      }
     }
 
-    return _BoundRequests(forPunch: forPunch, pendingAdds: pendingAdds);
+    return _BoundRequests(
+      forPunch: forPunch,
+      pendingAdds: pendingBySlot.values.toList(),
+    );
   }
 
   static bool _belongsToPunch(
@@ -296,7 +309,7 @@ class AttendanceTimelineAssembler {
       a.hour == b.hour && a.minute == b.minute;
 
   static String _key(AttendanceEditRequest request) =>
-      '${request.eventType}|${request.status.name}|${request.originalTime}|${request.newTime}';
+      AttendanceEditRequest.semanticKey(request);
 
   static String? _firstClockLocation(List<AttendanceEvent> events) {
     for (final event in events) {

@@ -94,7 +94,11 @@ void main() {
       enabled:
           enabled ??
           allOn(
-            except: {ReminderType.enterLocation, ReminderType.leaveLocation},
+            except: {
+              ReminderType.enterLocation,
+              ReminderType.leaveLocation,
+              ReminderType.smartAttendance,
+            },
           ),
       checkInTime: checkInTime ?? policyIn,
       checkOutTime: checkOutTime ?? policyOut,

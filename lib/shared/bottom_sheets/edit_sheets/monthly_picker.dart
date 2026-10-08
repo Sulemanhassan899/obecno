@@ -216,6 +216,7 @@ class MonthYearContentState extends State<MonthYearContent> {
                   child: MyButton(
                     size: MyButtonSize.normal,
                     backgroundColor: kWhite,
+                    outlineColor: kBorderColor,
                     buttonText: "Reset",
                     fontColor: kBlack,
                     onTap: () async {

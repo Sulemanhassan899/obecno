@@ -4,6 +4,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class DateMonthYearPickerSheet {
   static void show(
@@ -12,7 +13,7 @@ class DateMonthYearPickerSheet {
     required Function(DateTime) onSelected,
     DateTime? minDate,
   }) {
-    showModalBottomSheet(
+    AppSheet.show(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -173,7 +174,7 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
   }
 
   void _openMonthYearPicker() {
-    showModalBottomSheet<void>(
+    AppSheet.show<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -263,6 +264,7 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
                   child: MyButton(
                     size: MyButtonSize.normal,
                     backgroundColor: kWhite,
+                    outlineColor: kBorderColor,
                     buttonText: "Reset",
                     fontColor: kBlack,
                     onTap: () async {

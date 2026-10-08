@@ -84,14 +84,14 @@ class PermissionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool force = false}) async {
     _isLoading = true;
     _hasError = false;
     notifyListeners();
 
     try {
       final fetched = await _policyService.refreshFromNetwork(
-        force: _sections.isEmpty,
+        force: force || _sections.isEmpty,
       );
       // Always rebuild UI state from whatever is now in cache.
       await _rebuildFromCache();

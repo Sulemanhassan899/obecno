@@ -29,6 +29,7 @@ import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ManagerEmployeeAttendanceSheet {
   ManagerEmployeeAttendanceSheet._();
@@ -47,7 +48,7 @@ class ManagerEmployeeAttendanceSheet {
   }) {
     final isLocation = locationName != null && locationName.trim().isNotEmpty;
 
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -327,6 +328,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           ? null
           : () =>
                 provider.loadEmployeeDay(employee: employee, day: record.date),
+      showEmployeeHeader: false,
     );
     if (!mounted) return;
     if (saved != null) {
@@ -392,6 +394,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                   ? (_hasPunchTime(record.checkOut) ? record.checkOut : null)
                   : _formatTimeOfDay(saved.checkOut!),
               status: AttendanceDayStatus.normal,
+              hasEditedTime: true,
             )
           else
             record,
@@ -497,9 +500,14 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                     child: AppText.p2(_error!, color: kGreyColor),
                   )
                 : ShimmerRefreshIndicator(
+                    instagramStyle: true,
+                    triggerFraction: 0.48,
                     onRefresh: _load,
                     child: ListView.builder(
                       shrinkWrap: true,
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: ClampingScrollPhysics(),
+                      ),
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       itemCount: _records.length + 1,
                       itemBuilder: (context, index) {

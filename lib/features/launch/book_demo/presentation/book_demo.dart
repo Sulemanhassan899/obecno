@@ -106,40 +106,41 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
       },
       child: Scaffold(
         body: Padding(
-          padding: AppSizes.DEFAULT,
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-
-              /// BACK
-              Padding(
-                padding: const EdgeInsets.only(top: 40),
-                child: BackButtonBg(),
-              ),
-
-              const SizedBox(height: 20),
-
-              /// TITLE
-              AppText.h4("Book a Demo"),
-              const SizedBox(height: 10),
-
-              /// SUBTITLE
-              AppText.p2(
-                "Fill in the details below and our team will reach out to schedule your demo.",
-                color: kGreyColor,
-                weight: FontWeight.w400,
-              ),
-              const SizedBox(height: 16),
-
-              /// ===============================
-              /// FORM
-              /// ===============================
-              Expanded(
-                child: Form(
-                  key: _formKey,
+          padding: AppSizes.defaultOf(context),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                Expanded(
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        const SizedBox(height: 10),
+
+                        /// BACK
+                        Padding(
+                          padding: const EdgeInsets.only(top: 40),
+                          child: BackButtonBg(),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        /// TITLE
+                        AppText.h4("Book a Demo"),
+                        const SizedBox(height: 10),
+
+                        /// SUBTITLE
+                        AppText.p2(
+                          "Fill in the details below and our team will reach out to schedule your demo.",
+                          color: kGreyColor,
+                          weight: FontWeight.w400,
+                        ),
+                        const SizedBox(height: 16),
+
+                        /// ===============================
+                        /// FORM
+                        /// ===============================
+
                         /// NAME (required)
                         CustomTextField(
                           controller: nameController,
@@ -150,7 +151,6 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                           validator: (value) =>
                               Validators.required(value, label: "Name"),
                         ),
-                        const SizedBox(height: 10),
 
                         /// EMAIL (required)
                         CustomTextField(
@@ -161,7 +161,6 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                           isExpanded: true,
                           validator: Validators.email,
                         ),
-                        const SizedBox(height: 10),
 
                         PhoneField(
                           controller: phoneController,
@@ -169,21 +168,25 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                           onCodeChanged: (String p1) {
                             setState(() => selectedCode = p1);
                           },
+                          validator: Validators.phoneNumber,
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
                         CustomDropDown(
                           labelText: "Industry or Sector",
+                          hasStar: true,
                           items: industries,
                           onChanged: (val) {
                             setState(() => selectedIndustry = val);
                           },
                           hint: "Select ",
                           selectedValue: selectedIndustry ?? '',
+                          validator: (value) =>
+                              Validators.selection(value, label: 'Industry'),
                         ),
 
-                        const SizedBox(height: 20),
+                  
 
                         /// TERMS
                         CustomRichText(
@@ -215,21 +218,21 @@ class _BookDemoScreenState extends State<BookDemoScreen> {
                     ),
                   ),
                 ),
-              ),
 
-              /// ===============================
-              /// SUBMIT BUTTON
-              /// ===============================
-              MyButton(
-                mTop: 8,
-                mBottom: 16,
-                buttonText: _isSubmitting ? 'Sending...' : 'Send request',
-                isactive: !_isSubmitting,
-                onTap: () async {
-                  await _submit();
-                },
-              ),
-            ],
+                /// ===============================
+                /// SUBMIT BUTTON (pinned to bottom)
+                /// ===============================
+                MyButton(
+                  mTop: 8,
+                  mBottom: 16,
+                  buttonText: _isSubmitting ? 'Sending...' : 'Send request',
+                  isactive: !_isSubmitting,
+                  onTap: () async {
+                    await _submit();
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),

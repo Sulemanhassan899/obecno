@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/responsive/responsive.dart';
 
 import 'package:obecno/core/services/token_service.dart';
 
@@ -161,8 +162,7 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
   @override
   Widget build(BuildContext context) {
     final Size screenSize = MediaQuery.of(context).size;
-    final bool isTablet = screenSize.shortestSide >= 600;
-    final double horizontalPadding = isTablet ? 32 : 10;
+    final double horizontalPadding = Responsive.pagePadding(context);
     final double titleSpacing = screenSize.height * 0.015;
     final double sectionSpacing = screenSize.height * 0.02;
 
@@ -170,7 +170,8 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
       body: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: horizontalPadding,
-        ).add(AppSizes.DEFAULT),
+          vertical: 40,
+        ),
         child: Column(
           children: [
             SizedBox(height: sectionSpacing),

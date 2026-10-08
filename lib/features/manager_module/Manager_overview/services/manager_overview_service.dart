@@ -23,6 +23,7 @@ class ManagerOverviewService {
   Future<ApiResponse<OverviewSnapshot>> loadOverview({
     required DateTime date,
     ApiCancelToken? cancelToken,
+    void Function(OverviewSnapshot snapshot)? onPreliminary,
   }) async {
     final dashboardFuture = _repository.getDashboard(cancelToken: cancelToken);
     final membersFuture = _loadMembers(cancelToken);
@@ -43,27 +44,31 @@ class ManagerOverviewService {
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     if (selected == todayOnly) {
+      final merged = TeamAttendanceMapper.mergeWithMembers(
+        attendance: dashboard.teamAttendanceToday,
+        members: members,
+      );
+      _publishPreliminary(
+        onPreliminary,
+        date: selected,
+        dashboard: dashboard,
+        attendance: merged,
+        members: members,
+      );
+      if (cancelToken?.isCancelled == true) {
+        return ApiResponse.failure('Cancelled');
+      }
       final attendance = await _withOwner(
-        TeamAttendanceMapper.mergeWithMembers(
-          attendance: dashboard.teamAttendanceToday,
-          members: members,
-        ),
+        merged,
         members: members,
         date: selected,
       );
       return ApiResponse.success(
-        OverviewSnapshot(
+        _snapshot(
           date: selected,
           dashboard: dashboard,
           attendance: attendance,
-          summary: OverviewSummary.fromAttendance(
-            attendance: attendance,
-            teamMemberCount: _teamCount(
-              dashboardCount: dashboard.teamMemberCount,
-              members: members,
-              attendanceCount: attendance.length,
-            ),
-          ),
+          members: members,
         ),
         message: dashboardResponse.message,
         statusCode: dashboardResponse.statusCode,
@@ -82,30 +87,72 @@ class ManagerOverviewService {
       );
     }
 
+    final merged = TeamAttendanceMapper.mergeWithMembers(
+      attendance: attendanceResponse.data!.attendance,
+      members: members,
+    );
+    _publishPreliminary(
+      onPreliminary,
+      date: selected,
+      dashboard: dashboard,
+      attendance: merged,
+      members: members,
+    );
+    if (cancelToken?.isCancelled == true) {
+      return ApiResponse.failure('Cancelled');
+    }
     final attendance = await _withOwner(
-      TeamAttendanceMapper.mergeWithMembers(
-        attendance: attendanceResponse.data!.attendance,
-        members: members,
-      ),
+      merged,
       members: members,
       date: selected,
     );
     return ApiResponse.success(
-      OverviewSnapshot(
+      _snapshot(
         date: selected,
         dashboard: dashboard,
         attendance: attendance,
-        summary: OverviewSummary.fromAttendance(
-          attendance: attendance,
-          teamMemberCount: _teamCount(
-            dashboardCount: dashboard.teamMemberCount,
-            members: members,
-            attendanceCount: attendance.length,
-          ),
-        ),
+        members: members,
       ),
       message: attendanceResponse.message,
       statusCode: attendanceResponse.statusCode,
+    );
+  }
+
+  void _publishPreliminary(
+    void Function(OverviewSnapshot snapshot)? onPreliminary, {
+    required DateTime date,
+    required ManagerDashboardModel dashboard,
+    required List<ManagerTeamAttendanceItem> attendance,
+    required List<ManagerEmployeeModel> members,
+  }) {
+    onPreliminary?.call(
+      _snapshot(
+        date: date,
+        dashboard: dashboard,
+        attendance: attendance,
+        members: members,
+      ),
+    );
+  }
+
+  OverviewSnapshot _snapshot({
+    required DateTime date,
+    required ManagerDashboardModel dashboard,
+    required List<ManagerTeamAttendanceItem> attendance,
+    required List<ManagerEmployeeModel> members,
+  }) {
+    return OverviewSnapshot(
+      date: date,
+      dashboard: dashboard,
+      attendance: attendance,
+      summary: OverviewSummary.fromAttendance(
+        attendance: attendance,
+        teamMemberCount: _teamCount(
+          dashboardCount: dashboard.teamMemberCount,
+          members: members,
+          attendanceCount: attendance.length,
+        ),
+      ),
     );
   }
 
@@ -145,12 +192,31 @@ class ManagerOverviewService {
     final repo = _employeesRepository;
     if (repo == null) return const [];
     try {
-      var response = await repo.getEmployees(cancelToken: cancelToken);
-      if (!response.success || response.data == null) {
-        response = await repo.getTeamMembers(cancelToken: cancelToken);
+      final employees = await repo.getEmployees(
+        pageSize: 200,
+        cancelToken: cancelToken,
+      );
+      final team = await repo.getTeamMembers(
+        pageSize: 200,
+        cancelToken: cancelToken,
+      );
+
+      final byId = <String, ManagerEmployeeModel>{};
+      void addAll(List<ManagerEmployeeModel> list) {
+        for (final member in list) {
+          final id = member.id.trim();
+          if (id.isEmpty) continue;
+          byId.putIfAbsent(id, () => member);
+        }
       }
-      if (!response.success || response.data == null) return const [];
-      return response.data!.members;
+
+      if (employees.success && employees.data != null) {
+        addAll(employees.data!.members);
+      }
+      if (team.success && team.data != null) {
+        addAll(team.data!.members);
+      }
+      return byId.values.toList(growable: false);
     } catch (_) {
       return const [];
     }

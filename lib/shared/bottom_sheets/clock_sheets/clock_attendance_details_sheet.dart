@@ -25,6 +25,7 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/attendance_edit_his
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ClockAttendanceDetailsSheet {
   ClockAttendanceDetailsSheet._();
@@ -39,7 +40,7 @@ class ClockAttendanceDetailsSheet {
     VoidCallback? onEditAttendance,
     ValueChanged<List<AttendanceEvent>>? onTodayEventsLoaded,
   }) {
-    return showModalBottomSheet(
+    return AppSheet.show(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -92,7 +93,7 @@ class _ClockAttendanceDetailsSheetBodyState
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
   List<AttendanceEvent> _pendingAddEvents = const [];
-  TimelineSortMode _sortMode = TimelineSortMode.newestFirst;
+  TimelineSortMode _sortMode = TimelineSortMode.oldestFirst;
 
   @override
   void initState() {
@@ -592,19 +593,21 @@ class _ClockAttendanceDetailsSheetBodyState
                           height: 16,
                         ),
                         onTap: () async {
+                          final allEvents = AttendanceEngine.sortedOldestFirst([
+                            ..._events,
+                            ..._pendingAddEvents,
+                          ]);
                           AttendanceEvent? checkIn;
                           AttendanceEvent? checkOut;
                           AttendanceEvent? breakStart;
                           AttendanceEvent? breakEnd;
-                          for (final e in AttendanceEngine.sortedOldestFirst(
-                            _events,
-                          )) {
+                          for (final e in allEvents) {
                             switch (e.type) {
                               case AttendanceEventType.checkIn:
                                 checkIn ??= e;
                                 break;
                               case AttendanceEventType.checkOut:
-                                checkOut = e;
+                                checkOut ??= e;
                                 break;
                               case AttendanceEventType.breakStart:
                                 breakStart ??= e;
@@ -640,14 +643,50 @@ class _ClockAttendanceDetailsSheetBodyState
                                 editBreakStart?.effectiveTime,
                               ),
                               initialBreakEnd: tod(editBreakEnd?.effectiveTime),
-                              checkInDetailId: editCheckIn?.id,
-                              checkOutDetailId: editCheckOut?.id,
-                              breakStartDetailId: editBreakStart?.id,
-                              breakEndDetailId: editBreakEnd?.id,
-                              hadInitialCheckIn: editCheckIn != null,
-                              hadInitialCheckOut: editCheckOut != null,
-                              hadInitialBreakStart: editBreakStart != null,
-                              hadInitialBreakEnd: editBreakEnd != null,
+                              checkInDetailId:
+                                  AttendanceTimelineAssembler.isPendingAddId(
+                                    editCheckIn?.id,
+                                  )
+                                  ? null
+                                  : editCheckIn?.id,
+                              checkOutDetailId:
+                                  AttendanceTimelineAssembler.isPendingAddId(
+                                    editCheckOut?.id,
+                                  )
+                                  ? null
+                                  : editCheckOut?.id,
+                              breakStartDetailId:
+                                  AttendanceTimelineAssembler.isPendingAddId(
+                                    editBreakStart?.id,
+                                  )
+                                  ? null
+                                  : editBreakStart?.id,
+                              breakEndDetailId:
+                                  AttendanceTimelineAssembler.isPendingAddId(
+                                    editBreakEnd?.id,
+                                  )
+                                  ? null
+                                  : editBreakEnd?.id,
+                              hadInitialCheckIn:
+                                  editCheckIn != null &&
+                                  !AttendanceTimelineAssembler.isPendingAddId(
+                                    editCheckIn.id,
+                                  ),
+                              hadInitialCheckOut:
+                                  editCheckOut != null &&
+                                  !AttendanceTimelineAssembler.isPendingAddId(
+                                    editCheckOut.id,
+                                  ),
+                              hadInitialBreakStart:
+                                  editBreakStart != null &&
+                                  !AttendanceTimelineAssembler.isPendingAddId(
+                                    editBreakStart.id,
+                                  ),
+                              hadInitialBreakEnd:
+                                  editBreakEnd != null &&
+                                  !AttendanceTimelineAssembler.isPendingAddId(
+                                    editBreakEnd.id,
+                                  ),
                             );
                           });
                         },
@@ -791,7 +830,7 @@ class _TimelineTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isEdited)
+              if (event.editRequests.isNotEmpty)
                 AttendanceEditHistorySection(requests: event.editRequests),
             ],
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
@@ -5,6 +7,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_overview_screen.dart';
@@ -14,8 +17,9 @@ import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
-class AddMembersSheet {
+class  AddMembersSheet {
   AddMembersSheet._();
 
   static Future<bool?> show(
@@ -32,7 +36,7 @@ class AddMembersSheet {
       apiNeeds: 'location_id, employee_ids',
       extra: {'title': title},
     );
-    return showModalBottomSheet<bool>(
+    return AppSheet.show<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -98,9 +102,11 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       return;
     }
 
-    final people = result.data!.members
-        .where((e) => e.status != ManagerEmployeeStatus.deleted)
-        .toList(growable: false);
+    final people = ManagerEmployeeFilters.roleFirst(
+      result.data!.members
+          .where((e) => e.status != ManagerEmployeeStatus.deleted)
+          .toList(growable: false),
+    );
     final assigned = <String>{};
     for (final person in people) {
       if (person.assignedToLocation(
@@ -133,14 +139,16 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
   List<ManagerEmployeeModel> get _filtered {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return _employees;
-    return _employees
-        .where(
-          (e) =>
-              e.name.toLowerCase().contains(q) ||
-              e.role.toLowerCase().contains(q) ||
-              (e.email ?? '').toLowerCase().contains(q),
-        )
-        .toList();
+    return ManagerEmployeeFilters.roleFirst(
+      _employees
+          .where(
+            (e) =>
+                e.name.toLowerCase().contains(q) ||
+                e.role.toLowerCase().contains(q) ||
+                (e.email ?? '').toLowerCase().contains(q),
+          )
+          .toList(),
+    );
   }
 
   Future<void> _onAdd() async {
@@ -204,6 +212,9 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
       );
       return;
     }
+
+    unawaited(bindings.managerLocationsProvider.refresh());
+    unawaited(bindings.managerEmployeesProvider.refresh());
 
     if (!widget.openSetupOnAdd) {
       Navigator.pop(context, true);
@@ -320,34 +331,48 @@ class _AddMembersSheetBodyState extends State<_AddMembersSheetBody> {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: CustomTextField(
-                    controller: _searchController,
-                    hintText: 'Search',
-                    radius: 25,
-                    hintTextFontColor: kBlack,
-                    hintTextFontSize: 15,
-                    preffixWidget: CommonImageView(
-                      imagePath: Assets.Search,
-                      height: 16,
-                    ),
-                    havePrefixIcon: true,
-                    onChanged: (v) => setState(() => _query = v),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: AppText.h6(
-                      'Employees',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
+                SizedBox(height: 10),
+                Divider(height: 1, color: kDividerColor),
+                ColoredBox(
+                  color: kbackground2,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    child: CustomTextField(
+                      controller: _searchController,
+                      hintText: 'Search',
+                      radius: 25,
+                      hintTextFontColor: kBlack,
+                      hintTextFontSize: 15,
+                      backgroundColor: kWhite,
+                      preffixWidget: CommonImageView(
+                        imagePath: Assets.Search,
+                        height: 16,
+                      ),
+                      havePrefixIcon: true,
+                      onChanged: (v) => setState(() => _query = v),
                     ),
                   ),
                 ),
-                Flexible(child: _buildList(people)),
+                ColoredBox(
+                  color: kbackground2,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: AppText.h6(
+                        'Employees',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
+                      ),
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ColoredBox(
+                    color: kbackground2,
+                    child: _buildList(people),
+                  ),
+                ),
                 const Divider(height: 1, color: kDividerColor),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),

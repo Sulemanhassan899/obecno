@@ -1,25 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:obecno/core/constants/app_strings.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/auth/services/company_policy_service.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:obecno/features/clock/domain/controllers/clock_controller.dart';
 import 'package:obecno/shared/location/data/location_model.dart';
 import 'package:obecno/shared/location/service/attendance_payload_model.dart';
 import 'package:obecno/shared/location/service/attendance_permission_service.dart';
 import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:obecno/shared/location/service/geofence_helper.dart';
+import 'package:obecno/shared/location/service/office_geofence_matcher.dart';
 import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 
 import '../../repositories/clock_attendance_repository.dart';
 import '../../presentation/widgets/clock_attendance_engine.dart';
 import '../../services/sync_service.dart';
 import '../../services/employee_trusted_time.dart';
-import 'package:obecno/features/more/data/models/reminder_log.dart';
+import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/core/constants/app_enums.dart' show AttendanceDayStatus;
 
 class SyncedClockScreenController extends ClockScreenController {
   SyncedClockScreenController({
@@ -40,6 +44,8 @@ class SyncedClockScreenController extends ClockScreenController {
          userId: userId,
          trustedTime: trustedTime ?? bindings.employeeTrustedTime,
        ) {
+    bindings.smartAttendanceService.clockScreenActive = true;
+    bindings.smartAttendanceService.addListener(_onSmartAttendanceChanged);
     isProcessing = true;
     syncService?.onQueuedItemSynced = _onQueuedItemSynced;
     // Phase 6: when the background sync service completes a pass that
@@ -61,6 +67,13 @@ class SyncedClockScreenController extends ClockScreenController {
     if (!_isStale) notifyListeners();
   }
 
+  void _onSmartAttendanceChanged() {
+    if (_isStale) return;
+    unawaited(_reloadEventsFromPrefs().then((_) {
+      if (!_isStale) notifyListeners();
+    }));
+  }
+
   Future<void> _bootstrap() async {
     await trustedTime?.ensureLogin(userId: userId, createIfMissing: false);
     if (_isStale) return;
@@ -75,7 +88,11 @@ class SyncedClockScreenController extends ClockScreenController {
       if (!_isStale) {
         isProcessing = false;
         notifyListeners();
-        _syncLocationFlagMonitor(captureImmediately: false);
+        if (bindings.smartAttendanceService.isEnabled) {
+          unawaited(
+            bindings.smartAttendanceService.evaluate(reason: 'clock_open'),
+          );
+        }
       }
     });
   }
@@ -143,6 +160,14 @@ class SyncedClockScreenController extends ClockScreenController {
 
   GpsReading? _lastGpsReading;
   bool _geofenceSampled = false;
+  bool _locationManuallyChosen = false;
+  String? nearbyLocationId;
+  bool _smartAttendanceInFlight = false;
+
+  /// Sheet pick: keep this office even if GPS currently matches another one.
+  void markLocationChosenManually() {
+    _locationManuallyChosen = true;
+  }
 
   void _captureRealLocationIfOutOfRange(AttendanceActionResult result) {
     if (isInRange ||
@@ -271,6 +296,9 @@ class SyncedClockScreenController extends ClockScreenController {
 
   @override
   void dispose() {
+    bindings.smartAttendanceService
+        .removeListener(_onSmartAttendanceChanged);
+    bindings.smartAttendanceService.clockScreenActive = false;
     trustedTime?.removeListener(_onTrustedTimeChanged);
     _localDisposed = true;
     super.dispose();
@@ -321,11 +349,7 @@ class SyncedClockScreenController extends ClockScreenController {
       // Keep loader active during server sync
       isProcessing = true;
       unawaited(_syncReminderLogs());
-      final synced = await _syncIfNeeded(result, previousEvents);
-      _syncLocationFlagMonitor(
-        captureImmediately: result == AttendanceActionResult.checkedIn,
-      );
-      return synced;
+      return await _syncIfNeeded(result, previousEvents);
     } finally {
       isProcessing = false;
       _isHandlingTap = false;
@@ -375,9 +399,7 @@ class SyncedClockScreenController extends ClockScreenController {
       // Keep loader active during server sync
       isProcessing = true;
       unawaited(_syncReminderLogs());
-      final synced = await _syncIfNeeded(result, previousEvents);
-      _syncLocationFlagMonitor(captureImmediately: false);
-      return synced;
+      return await _syncIfNeeded(result, previousEvents);
     } finally {
       isProcessing = false;
       _isHandlingTap = false;
@@ -386,7 +408,9 @@ class SyncedClockScreenController extends ClockScreenController {
   }
 
   Future<void> _syncReminderLogs() async {
-    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(events);
+    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(
+      events,
+    );
     await bindings.reminderSettingsProvider.syncForDay(
       day: clockNow,
       punches: punches,
@@ -399,35 +423,10 @@ class SyncedClockScreenController extends ClockScreenController {
   void restoreEvents(List<AttendanceEvent> snapshot) {
     super.restoreEvents(snapshot);
     unawaited(_syncReminderLogs());
-    _syncLocationFlagMonitor(captureImmediately: false);
-  }
-
-  void _syncLocationFlagMonitor({required bool captureImmediately}) {
-    if (_isStale) return;
-    final summary = AttendanceEngine.compute(events);
-    unawaited(
-      bindings.locationFlagMonitor.handleAttendanceState(
-        employeeId: userId,
-        checkedIn: summary.isCheckedIn,
-        onBreak: summary.isOnBreak,
-        checkedOut: !summary.isCheckedIn,
-        captureImmediately: captureImmediately && summary.isCheckedIn,
-      ),
-    );
   }
 
   Future<bool> _validateGeofence() async {
     lastServerMessage = null;
-
-    final selectedLoc = bindings.authProvider.selectedLocation;
-    final locName = (selectedLoc?.name != null && selectedLoc!.name.isNotEmpty)
-        ? selectedLoc.name
-        : selectedLocationName;
-    if (locName.isNotEmpty) {
-      selectedLocationName = locName;
-    }
-
-    final companyPoint = GeoPoint.tryParse(selectedLoc?.latLon);
 
     GpsReading? reading;
     try {
@@ -481,24 +480,95 @@ class SyncedClockScreenController extends ClockScreenController {
       return false;
     }
 
+    _lastGpsReading = reading;
+    final userPoint = GeoPoint(
+      lat: reading.location.lat,
+      lon: reading.location.lon,
+    );
+    await _syncWorkingOfficeFromGps(userPoint);
+
+    final selectedLoc = bindings.authProvider.selectedLocation;
+    final locName = (selectedLoc?.name != null && selectedLoc!.name.isNotEmpty)
+        ? selectedLoc.name
+        : selectedLocationName;
+    if (locName.isNotEmpty) {
+      selectedLocationName = locName;
+    }
+
     final result = GeofenceHelper.evaluate(
-      companyLocation: companyPoint,
-      user: GeoPoint(lat: reading.location.lat, lon: reading.location.lon),
+      companyLocation: GeoPoint.tryParse(selectedLoc?.latLon),
+      user: userPoint,
       radiusMeters: selectedLoc?.radiusMeters,
       locationName: locName,
     );
 
     final wasInside = isInRange;
     isInRange = result.isInside;
-    _lastGpsReading = reading;
     unawaited(persistGeofenceState());
-    if (_geofenceSampled && wasInside != isInRange) {
+    final edge = _geofenceSampled && wasInside != isInRange;
+    _geofenceSampled = true;
+
+    // Smart Attendance uses physical presence in ANY assigned office+radius.
+    // Manual location picks only change the selected label — they must NOT
+    // auto check-out while the user is still on assigned premises.
+    final premisesMatch = OfficeGeofenceMatcher.bestInside(
+      offices: bindings.authProvider.locations,
+      user: userPoint,
+    );
+    final onAssignedPremises = premisesMatch != null;
+    final premisesName =
+        (premisesMatch != null && premisesMatch.location.name.isNotEmpty)
+        ? premisesMatch.location.name
+        : locName;
+
+    final reminders = bindings.reminderSettingsProvider;
+    if (onAssignedPremises &&
+        (reminders.isEnabled(ReminderType.smartAttendance) ||
+            reminders.isEnabled(ReminderType.enterLocation))) {
+      unawaited(
+        _maybeSmartAttendance(entered: true, locationName: premisesName),
+      );
+    } else if (!onAssignedPremises &&
+        (reminders.isEnabled(ReminderType.smartAttendance) ||
+            reminders.isEnabled(ReminderType.leaveLocation))) {
+      unawaited(
+        _maybeSmartAttendance(entered: false, locationName: premisesName),
+      );
+    } else if (edge) {
       unawaited(
         _notifyGeofenceTransition(entered: isInRange, locationName: locName),
       );
     }
-    _geofenceSampled = true;
     return true;
+  }
+
+  /// Auto-selects the assigned office whose geofence contains the current GPS
+  /// point. A manual sheet pick is kept until the user leaves every office.
+  Future<void> _syncWorkingOfficeFromGps(GeoPoint user) async {
+    final match = OfficeGeofenceMatcher.bestInside(
+      offices: bindings.authProvider.locations,
+      user: user,
+    );
+    nearbyLocationId = match?.location.id;
+
+    if (match == null) {
+      // Not inside any assigned office — next time they enter one, auto-select.
+      _locationManuallyChosen = false;
+      return;
+    }
+
+    final selectedId = bindings.authProvider.selectedLocation?.id;
+    if (selectedId == match.location.id) {
+      _locationManuallyChosen = false;
+      return;
+    }
+    if (_locationManuallyChosen) return;
+
+    await bindings.authProvider.selectLocation(
+      match.location,
+      refreshProfile: false,
+    );
+    selectedLocationName = match.location.name;
   }
 
   /// Offline GPS (especially A-GPS / fused location) often fails. Keep the
@@ -515,13 +585,60 @@ class SyncedClockScreenController extends ClockScreenController {
     required bool entered,
     required String locationName,
   }) async {
-    final punches = AttendanceTimelineAssembler.reminderPunchesFromClock(events);
-    await bindings.reminderSettingsProvider.notifyGeofenceTransition(
+    await _maybeSmartAttendance(
       entered: entered,
-      now: clockNow,
-      punches: punches,
       locationName: locationName,
     );
+  }
+
+  /// Smart Attendance auto check-in / premises notifications on geofence edge.
+  Future<void> _maybeSmartAttendance({
+    required bool entered,
+    required String locationName,
+  }) async {
+    if (_isStale || _isHandlingTap || _smartAttendanceInFlight) return;
+
+    final reminders = bindings.reminderSettingsProvider;
+    final smartOn = reminders.isEnabled(ReminderType.smartAttendance);
+    final enterOn = reminders.isEnabled(ReminderType.enterLocation);
+    final leaveOn = reminders.isEnabled(ReminderType.leaveLocation);
+
+    if (entered && !smartOn && !enterOn) return;
+    if (!entered && !smartOn && !leaveOn) return;
+
+    _smartAttendanceInFlight = true;
+    try {
+      final didPunch = await bindings.smartAttendanceService.handleTransition(
+        entered: entered,
+        locationName: locationName,
+        location: _lastGpsReading?.location,
+      );
+      if (!didPunch || _isStale) return;
+
+      await _reloadEventsFromPrefs();
+      unawaited(_syncReminderLogs());
+      if (!_isStale) notifyListeners();
+    } finally {
+      _smartAttendanceInFlight = false;
+    }
+  }
+
+  Future<void> _reloadEventsFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = clockNow;
+      final key =
+          'clock_events_${userId}_${now.year}-${now.month}-${now.day}';
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final restored = decoded
+          .whereType<Map>()
+          .map((e) => AttendanceEvent.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      restoreEvents(restored);
+    } catch (_) {}
   }
 
   Future<void> refreshGeofenceStatus() async {
@@ -530,6 +647,13 @@ class SyncedClockScreenController extends ClockScreenController {
     if (_isStale) return;
     await _validateGeofence();
     if (!_isStale) notifyListeners();
+    // Force Smart Attendance after a Clock geofence refresh so "already
+    // inside + Enter ON" auto-checks in without waiting for an edge.
+    if (bindings.smartAttendanceService.isEnabled) {
+      unawaited(
+        bindings.smartAttendanceService.evaluate(reason: 'clock_refresh'),
+      );
+    }
   }
 
   Future<void> _refreshPolicyBeforeAction() async {
@@ -608,6 +732,22 @@ class SyncedClockScreenController extends ClockScreenController {
     return localResult;
   }
 
+  bool _samePunchList(List<AttendanceEvent> a, List<AttendanceEvent> b) {
+    if (a.length != b.length) return false;
+    final left = [...a]
+      ..sort((x, y) => x.effectiveTime.compareTo(y.effectiveTime));
+    final right = [...b]
+      ..sort((x, y) => x.effectiveTime.compareTo(y.effectiveTime));
+    for (var i = 0; i < left.length; i++) {
+      if (left[i].type != right[i].type) return false;
+      if (left[i].effectiveTime.difference(right[i].effectiveTime).inSeconds !=
+          0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<bool> reconcileWithServer({bool force = false}) async {
     if (_isStale) return false;
     if (_reconcileInFlight) return false;
@@ -654,11 +794,15 @@ class SyncedClockScreenController extends ClockScreenController {
       // Clock UI must never mix other days into today's timeline.
       final serverToday = serverEvents
           .where(isToday)
-          .where((e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time))
+          .where(
+            (e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time),
+          )
           .toList();
       final localToday = events
           .where(isToday)
-          .where((e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time))
+          .where(
+            (e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time),
+          )
           .toList();
 
       final merged = serverToday.isEmpty
@@ -670,6 +814,10 @@ class SyncedClockScreenController extends ClockScreenController {
         '${serverToday.length} server event(s) with ${localToday.length} '
         'local event(s) -> ${merged.length} total (today only)',
       );
+      if (_samePunchList(merged, localToday)) {
+        _lastReconcileAt = DateTime.now();
+        return true;
+      }
       restoreEvents(merged); // already calls notifyListeners()
       blockNextAction = false;
       _lastReconcileAt = DateTime.now();

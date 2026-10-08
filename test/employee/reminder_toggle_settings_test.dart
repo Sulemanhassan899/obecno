@@ -32,7 +32,8 @@ void main() {
       value:
           !except.contains(value) &&
           value != ReminderType.enterLocation &&
-          value != ReminderType.leaveLocation,
+          value != ReminderType.leaveLocation &&
+          value != ReminderType.smartAttendance,
   };
 
   Map<ReminderType, bool> combine(Set<ReminderType> types) => {

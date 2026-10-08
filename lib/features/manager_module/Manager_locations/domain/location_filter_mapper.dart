@@ -7,8 +7,12 @@ class LocationFilterMapper {
   static List<LocationFilterOption> toFilterOptions(
     List<ManagerLocationModel> locations, {
     String? nearestId,
+    bool activeOnly = false,
   }) {
-    return locations
+    final source = activeOnly
+        ? locations.where((location) => location.isActive)
+        : locations;
+    return source
         .map(
           (location) => LocationFilterOption(
             id: location.id,

@@ -1,6 +1,7 @@
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
@@ -10,9 +11,12 @@ import 'package:obecno/features/manager_module/Manager_locations/providers/manag
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/add_members_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/google_map_location_picker.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 Future<void> _openCreatedLocationFlow(
   BuildContext context,
@@ -41,9 +45,11 @@ class NewLocationSheet {
       phase: 'sheet open',
       api: 'POST /manager/locations',
       apiNeeds: AddLocationLog.createApiNeeds,
-      extra: {'userFields': 'Office / Location Name'},
+      extra: {
+        'userFields': 'Office / Location Name, Office / Location Lat long',
+      },
     );
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -61,39 +67,103 @@ class _NewLocationSheetBody extends StatefulWidget {
 
 class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
   final _nameController = TextEditingController();
+  final _latLongController = TextEditingController();
+  PickedOfficeLocation? _selectedLocation;
   bool _saving = false;
+  String? _nameError;
+  String? _latLongError;
 
   @override
   void dispose() {
     _nameController.dispose();
+    _latLongController.dispose();
     super.dispose();
+  }
+
+  void _clear() {
+    _nameController.clear();
+    _latLongController.clear();
+    setState(() {
+      _selectedLocation = null;
+      _nameError = null;
+      _latLongError = null;
+    });
+  }
+
+  Future<void> _pickLocation() async {
+    final selected = await GoogleMapLocationPicker.open(
+      context,
+      initialAddress: _selectedLocation?.address,
+      initialLatitude: _selectedLocation?.latitude,
+      initialLongitude: _selectedLocation?.longitude,
+      initialRadiusMeters: _selectedLocation?.radiusMeters,
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _selectedLocation = selected;
+      _latLongController.text = selected.address;
+      _latLongError = null;
+    });
   }
 
   Future<void> _onCreate() async {
     final name = _nameController.text.trim();
+    final selected = _selectedLocation;
+    final radiusMeters =
+        selected?.radiusMeters ?? ManagerLocationModel.defaultRadiusMeters;
     AddLocationLog.dump(
       sheet: 'New Location',
       phase: 'user sending',
       api: 'POST /manager/locations',
       apiNeeds: AddLocationLog.createApiNeeds,
-      userSending: {'name': name},
+      userSending: {
+        'name': name,
+        'address': selected?.address,
+        'latitude': selected?.latitude,
+        'longitude': selected?.longitude,
+        'radius_meters': radiusMeters,
+      },
     );
-    if (name.isEmpty) {
-      AddLocationLog.dump(
-        sheet: 'New Location',
-        phase: 'response',
-        api: 'POST /manager/locations',
-        success: false,
-        message: 'Enter an office / location name.',
-        userSending: {'name': name},
-      );
-      ToastHelper.error(context, message: 'Enter an office / location name.');
+
+    final nameError = name.isEmpty ? 'Enter an office / location name.' : null;
+    final latLongError = selected == null
+        ? 'Select an office / location on the map.'
+        : null;
+
+    if (nameError != null || latLongError != null) {
+      setState(() {
+        _nameError = nameError;
+        _latLongError = latLongError;
+      });
+      if (nameError != null) {
+        AddLocationLog.dump(
+          sheet: 'New Location',
+          phase: 'response',
+          api: 'POST /manager/locations',
+          success: false,
+          message: nameError,
+          userSending: {'name': name},
+        );
+      } else if (latLongError != null) {
+        AddLocationLog.dump(
+          sheet: 'New Location',
+          phase: 'response',
+          api: 'POST /manager/locations',
+          success: false,
+          message: latLongError,
+          userSending: {'name': name},
+        );
+      }
       return;
     }
 
     setState(() => _saving = true);
     final result = await bindings.managerLocationsService.createLocation(
       name: name,
+      address: selected!.address,
+      latitude: selected.latitude,
+      longitude: selected.longitude,
+      radiusMeters: radiusMeters,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -151,7 +221,7 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 16),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
                   child: Row(
                     children: [
                       Expanded(
@@ -171,19 +241,59 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
                     ],
                   ),
                 ),
-                const Divider(height: 1, color: kDividerColor),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-                  child: CustomTextField(
-                    controller: _nameController,
-                    hintText: '',
-                    labelText: 'Office / Location Name',
-                    haveLebelText: true,
-                    hasStar: true,
-                    backgroundColor: kWhite,
-                    enabledBorderColor: kBorderColor,
-                    focusedBorderColor: kBorderColor,
-                    radius: 14,
+                Divider(height: 1, color: kDividerColor),
+                Flexible(
+                  child: Container(
+                    decoration: BoxDecoration(color: kbackground2),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomTextField(
+                            controller: _nameController,
+                            hintText: '',
+                            labelText: 'Office / Location Name',
+                            haveLebelText: true,
+                            hasStar: true,
+                            backgroundColor: kWhite,
+                            enabledBorderColor: kBorderColor,
+                            focusedBorderColor: kBorderColor,
+                            radius: 14,
+                            bottom: 0,
+                            reserveHelperSpace: false,
+                            errorText: _nameError,
+                            onChanged: (_) {
+                              if (_nameError == null) return;
+                              setState(() => _nameError = null);
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          CustomTextField(
+                            controller: _latLongController,
+                            hintText: '',
+                            labelText: 'Office / Location Lat long',
+                            haveLebelText: true,
+                            hasStar: true,
+                            readOnly: true,
+                            onTextFieldTap: _saving ? null : _pickLocation,
+                            havePrefixIcon: true,
+                            preffixWidget: CommonImageView(
+                              imagePath: Assets.imagesLocationDot,
+                              height: 18,
+                            ),
+                            backgroundColor: kWhite,
+                            enabledBorderColor: kBorderColor,
+                            focusedBorderColor: kBorderColor,
+                            radius: 14,
+                            bottom: 0,
+                            reserveHelperSpace: false,
+                            errorText: _latLongError,
+                          ),
+                          SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 const Divider(height: 1, color: kDividerColor),
@@ -200,7 +310,7 @@ class _NewLocationSheetBodyState extends State<_NewLocationSheetBody> {
                           fontColor: kBlack,
                           outlineColor: kBorderColor,
                           isactive: !_saving,
-                          onTap: () async => _nameController.clear(),
+                          onTap: () async => _clear(),
                         ),
                       ),
                       const SizedBox(width: 10),

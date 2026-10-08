@@ -25,6 +25,7 @@ import 'package:obecno/shared/location/service/geofence_helper.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 /// Timeline event types for manager attendance details.
 enum ManagerAttendanceEventType {
@@ -368,8 +369,9 @@ class ManagerAttendanceDetailsSheet {
     VoidCallback? onAttendanceTap,
     VoidCallback? onAddAttendance,
     VoidCallback? onEditAttendance,
+    bool showEmployeeHeader = true,
   }) {
-    return showModalBottomSheet<AddAttendanceSaveResult>(
+    return AppSheet.show<AddAttendanceSaveResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -380,6 +382,7 @@ class ManagerAttendanceDetailsSheet {
         onAttendanceTap: onAttendanceTap,
         onAddAttendance: onAddAttendance,
         onEditAttendance: onEditAttendance,
+        showEmployeeHeader: showEmployeeHeader,
       ),
     );
   }
@@ -393,6 +396,7 @@ class _ManagerAttendanceDetailsSheetBody extends StatefulWidget {
     this.onAttendanceTap,
     this.onAddAttendance,
     this.onEditAttendance,
+    this.showEmployeeHeader = true,
   });
 
   final ManagerAttendanceDetailsData data;
@@ -401,6 +405,7 @@ class _ManagerAttendanceDetailsSheetBody extends StatefulWidget {
   final VoidCallback? onAttendanceTap;
   final VoidCallback? onAddAttendance;
   final VoidCallback? onEditAttendance;
+  final bool showEmployeeHeader;
 
   @override
   State<_ManagerAttendanceDetailsSheetBody> createState() =>
@@ -472,7 +477,8 @@ class _ManagerAttendanceDetailsSheetBodyState
       await _syncReminders();
       return;
     }
-    if (!silent) {
+    final hasPreview = _data.name.trim().isNotEmpty;
+    if (!silent && !hasPreview) {
       setState(() => _loading = true);
     }
     try {
@@ -769,65 +775,69 @@ class _ManagerAttendanceDetailsSheetBodyState
                   ],
                 ),
               ),
-              const Divider(height: 1, color: kDividerColor),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Row(
-                  children: [
-                    ClipOval(
-                      child: CommonImageView(
-                        url: _data.hasNetworkPhoto ? _data.photo : null,
-                        imagePath: _data.hasNetworkPhoto
-                            ? null
-                            : _data.photoPath,
-                        height: 48,
-                        width: 48,
-                        fit: BoxFit.cover,
+              if (!widget.showEmployeeHeader)
+                const Divider(height: 1, color: kDividerColor),
+              if (widget.showEmployeeHeader) ...[
+                const Divider(height: 1, color: kDividerColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: Row(
+                    children: [
+                      ClipOval(
+                        child: CommonImageView(
+                          url: _data.hasNetworkPhoto ? _data.photo : null,
+                          imagePath: _data.hasNetworkPhoto
+                              ? null
+                              : _data.photoPath,
+                          height: 48,
+                          width: 48,
+                          fit: BoxFit.cover,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AppText.p2(
-                            _data.name,
-                            color: kBlack,
-                            weight: FontWeight.w600,
-                            align: TextAlign.left,
-                          ),
-                          if (_data.role != null &&
-                              _data.role!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            AppText.caption(
-                              _data.role!,
-                              color: kGreyColor,
-                              weight: FontWeight.w400,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AppText.p2(
+                              _data.name,
+                              color: kBlack,
+                              weight: FontWeight.w600,
                               align: TextAlign.left,
                             ),
+                            if (_data.role != null &&
+                                _data.role!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              AppText.caption(
+                                _data.role!,
+                                color: kGreyColor,
+                                weight: FontWeight.w400,
+                                align: TextAlign.left,
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                    ButtonAnimations.press(
-                      onTap: _openProfile,
-                      child: CommonImageView(
-                        imagePath: Assets.PersonIconSheet,
-                        height: 45,
+                      ButtonAnimations.press(
+                        onTap: _openProfile,
+                        child: CommonImageView(
+                          imagePath: Assets.PersonIconSheet,
+                          height: 45,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    ButtonAnimations.press(
-                      onTap: _openAttendance,
-                      child: CommonImageView(
-                        imagePath: Assets.AttendanceIconSheet,
-                        height: 45,
+                      const SizedBox(width: 8),
+                      ButtonAnimations.press(
+                        onTap: _openAttendance,
+                        child: CommonImageView(
+                          imagePath: Assets.AttendanceIconSheet,
+                          height: 45,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: kDividerColor),
+                const Divider(height: 1, color: kDividerColor),
+              ],
               Flexible(
                 child: Container(
                   color: kbackground2,
@@ -1007,7 +1017,7 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _AttendanceLocationLine(
-                  name: _officeName(
+                  place: _punchPlace(
                     lat: data.checkInLat,
                     lon: data.checkInLon,
                     raw: data.checkInLocation,
@@ -1020,7 +1030,7 @@ class _SummaryCard extends StatelessWidget {
               ),
               Expanded(
                 child: _AttendanceLocationLine(
-                  name: _officeName(
+                  place: _punchPlace(
                     lat: data.checkOutLat,
                     lon: data.checkOutLon,
                     raw: data.checkOutLocation,
@@ -1170,7 +1180,7 @@ class _ManagerTimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final locationName = _officeName(
+    final place = _punchPlace(
       lat: event.lat,
       lon: event.lon,
       raw: event.location,
@@ -1220,7 +1230,7 @@ class _ManagerTimelineTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     _AttendanceLocationLine(
-                      name: locationName,
+                      place: place,
                       lat: event.lat,
                       lon: event.lon,
                       raw: event.location,
@@ -1237,16 +1247,23 @@ class _ManagerTimelineTile extends StatelessWidget {
   }
 }
 
+class _PunchPlace {
+  const _PunchPlace(this.text, {this.outside = false});
+
+  final String text;
+  final bool outside;
+}
+
 class _AttendanceLocationLine extends StatelessWidget {
   const _AttendanceLocationLine({
-    this.name,
+    this.place,
     this.lat,
     this.lon,
     this.raw,
     this.isRight = false,
   });
 
-  final String? name;
+  final _PunchPlace? place;
   final double? lat;
   final double? lon;
   final String? raw;
@@ -1266,8 +1283,9 @@ class _AttendanceLocationLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = name?.trim();
+    final label = place?.text.trim();
     final hasName = label != null && label.isNotEmpty;
+    final outside = place?.outside ?? false;
     final point = _coords;
     if (!hasName && point == null) {
       return Align(
@@ -1291,7 +1309,7 @@ class _AttendanceLocationLine extends StatelessWidget {
           child: hasName
               ? AppText.caption(
                   label,
-                  color: kGreyColor,
+                  color: outside ? kredColor : kGreyColor,
                   weight: FontWeight.w500,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
@@ -1317,28 +1335,42 @@ class _AttendanceLocationLine extends StatelessWidget {
   }
 }
 
-String? _officeName({
+_PunchPlace? _punchPlace({
   required double? lat,
   required double? lon,
   required String? raw,
   required List<ManagerLocationModel> locations,
 }) {
-  if (lat != null && lon != null) {
-    String? best;
-    var bestDistance = double.infinity;
+  final point = _punchPoint(lat: lat, lon: lon, raw: raw);
+  if (point != null) {
+    String? insideName;
+    var insideDistance = double.infinity;
+    String? nearestName;
+    var nearestDistance = double.infinity;
+
     for (final location in locations) {
       if (location.latitude == null || location.longitude == null) continue;
+      final name = location.name.trim();
+      if (name.isEmpty) continue;
       final distance = GeofenceHelper.distanceMeters(
-        GeoPoint(lat: lat, lon: lon),
+        point,
         GeoPoint(lat: location.latitude!, lon: location.longitude!),
       );
       final radius = location.radiusMeters ?? kDefaultGeofenceRadiusMeters;
-      if (distance <= radius && distance < bestDistance) {
-        bestDistance = distance;
-        best = location.name;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestName = name;
+      }
+      if (distance <= radius && distance < insideDistance) {
+        insideDistance = distance;
+        insideName = name;
       }
     }
-    if (best != null && best.trim().isNotEmpty) return best;
+
+    if (insideName != null) return _PunchPlace(insideName);
+    if (nearestName != null) {
+      return _PunchPlace('Outside $nearestName', outside: true);
+    }
   }
 
   final value = raw?.trim();
@@ -1346,5 +1378,21 @@ String? _officeName({
   if (RegExp(r'^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$').hasMatch(value)) {
     return null;
   }
-  return value;
+  return _PunchPlace(value);
+}
+
+GeoPoint? _punchPoint({
+  required double? lat,
+  required double? lon,
+  required String? raw,
+}) {
+  if (lat != null && lon != null) return GeoPoint(lat: lat, lon: lon);
+  final value = raw?.trim();
+  if (value == null || value.isEmpty) return null;
+  final parts = value.split(',');
+  if (parts.length != 2) return null;
+  final parsedLat = double.tryParse(parts[0].trim());
+  final parsedLon = double.tryParse(parts[1].trim());
+  if (parsedLat == null || parsedLon == null) return null;
+  return GeoPoint(lat: parsedLat, lon: parsedLon);
 }

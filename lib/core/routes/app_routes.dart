@@ -1,10 +1,9 @@
-import 'package:obecno/features/auth/presentation/screens/enable_permission.dart';
-import 'package:obecno/features/auth/presentation/screens/login_email.dart';
-import 'package:obecno/features/auth/presentation/screens/login_pass.dart';
+import 'package:obecno/features/auth/presentation/enable_permission.dart';
+import 'package:obecno/features/auth/presentation/login_email.dart';
+import 'package:obecno/features/auth/presentation/login_pass.dart';
 import 'package:obecno/features/more/presentation/screens/device_blocked_screen.dart';
 
 import 'package:obecno/demo/monotonic_clock/presentation/monotonic_clock_demo_screen.dart';
-import 'package:obecno/demo/location_flags/presentation/location_flag_demo_screen.dart';
 
 import 'package:obecno/features/join/presentation/screens/youve_joined_screen.dart';
 import 'package:obecno/features/launch/book_demo/presentation/book_demo.dart';
@@ -80,10 +79,5 @@ final GoRouter router = GoRouter(
       path: MonotonicClockDemoScreen.routePath,
       builder: (context, state) => const MonotonicClockDemoScreen(),
     ),
-    GoRoute(
-      path: LocationFlagDemoScreen.routePath,
-      builder: (context, state) => const LocationFlagDemoScreen(),
-    ),
-   
   ],
 );

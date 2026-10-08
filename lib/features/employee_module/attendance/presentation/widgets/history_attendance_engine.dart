@@ -150,14 +150,15 @@ class HistoryAttendanceEngine {
       ..sort((a, b) {
         final byTime = b.time.compareTo(a.time);
         if (byTime != 0) return byTime;
+        // Reverse of oldest-first type order.
         return _typeOrder(b.type).compareTo(_typeOrder(a.type));
       });
     return sorted;
   }
 
   /// Events sorted oldest-first (chronological). Equal times keep
-  /// check-in → break start → break end → check-out so paired punches
-  /// at the same minute still read in work order.
+  /// check-out → check-in → break start → break end so a segment boundary
+  /// at the same minute (e.g. 11:30 out then 11:30 in) stays in work order.
   static List<HistoryAttendanceEvent> sortedOldestFirst(
     List<HistoryAttendanceEvent> events,
   ) {
@@ -172,13 +173,13 @@ class HistoryAttendanceEngine {
 
   static int _typeOrder(AttendanceHisotryEventType type) {
     switch (type) {
-      case AttendanceHisotryEventType.checkIn:
-        return 0;
-      case AttendanceHisotryEventType.breakStart:
-        return 1;
-      case AttendanceHisotryEventType.breakEnd:
-        return 2;
       case AttendanceHisotryEventType.checkOut:
+        return 0;
+      case AttendanceHisotryEventType.checkIn:
+        return 1;
+      case AttendanceHisotryEventType.breakStart:
+        return 2;
+      case AttendanceHisotryEventType.breakEnd:
         return 3;
     }
   }

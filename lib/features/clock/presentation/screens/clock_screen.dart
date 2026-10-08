@@ -18,6 +18,7 @@ import 'package:obecno/features/clock/domain/controllers/synced_clock_screen_con
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/demo/location_flags/presentation/location_flag_demo_entry.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
 
 import 'package:obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
@@ -27,12 +28,11 @@ import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/monitors/device_approval_guard.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 
-import 'package:obecno/demo/location_flags/presentation/location_flag_demo_screen.dart';
 import 'package:obecno/widgets/check_in_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ClockScreen extends StatefulWidget {
   const ClockScreen({super.key});
@@ -54,6 +54,7 @@ class ClockScreenState extends State<ClockScreen>
   Timer? _permissionPollTimer;
   Timer? _statusSyncTimer;
   bool _permissionDialogShowing = false;
+  String? _lastPermissionSnapshot;
   bool _notificationNudgeShown = false;
 
   /// How often the open Clock screen re-fetches today's attendance status
@@ -67,12 +68,7 @@ class ClockScreenState extends State<ClockScreen>
     duration: const Duration(milliseconds: 900),
   );
 
-  // Slow, continuous pulse driving the soft glow behind the company name --
-  // purely decorative, no bearing on any attendance/device logic.
-  late final AnimationController _companyGlowController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  )..repeat(reverse: true);
+  final List<CurvedAnimation> _entranceAnimations = [];
 
   @override
   void initState() {
@@ -259,6 +255,11 @@ class ClockScreenState extends State<ClockScreen>
 
     if (!mounted || !_isActive) return;
 
+    final snapshot =
+        '$locationStatus|$motionStatus|$notificationStatus|$gpsEnabled|$online';
+    if (snapshot == _lastPermissionSnapshot) return;
+    _lastPermissionSnapshot = snapshot;
+
     _applyConnectivity(online);
 
     final locationAllowed = PermissionService.isAllowed(locationStatus);
@@ -399,8 +400,10 @@ class ClockScreenState extends State<ClockScreen>
     _connectivitySub?.cancel();
     _permissionPollTimer?.cancel();
     _statusSyncTimer?.cancel();
+    for (final animation in _entranceAnimations) {
+      animation.dispose();
+    }
     _entranceController.dispose();
-    _companyGlowController.dispose();
     super.dispose();
   }
 
@@ -417,72 +420,85 @@ class ClockScreenState extends State<ClockScreen>
       '${_formattedClock(now)} ${_ampm(now)}';
 
   void _openLocationSheet() async {
-    // 1. Permission Gate (Check & Request Permissions)
-    final permissionService = const AttendancePermissionService();
-    final hasPermission = await permissionService.checkAndRequestPermissions();
-    if (!hasPermission) {
-      if (mounted) {
-        ToastHelper.locationRequiredForOffice(context);
-      }
-      return;
-    }
-
-    // 2. Offline Restore & Network Data Refresh
-    if (bindings.authProvider.locations.isEmpty) {
-      await bindings.authProvider.restoreCompanyAndLocationsFromCache();
-    }
-
-    await bindings.companyPolicyService.refreshFromNetwork().timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => false,
-    );
-    await _controller.loadPolicyFrom(bindings.companyPolicyService);
+    if (!AppSheet.acquire()) return;
+    var sheetOpened = false;
     try {
-      await bindings.authProvider.refreshCurrentUser().timeout(
-        const Duration(seconds: 5),
-      );
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    // 3. UI Rendering (Get fresh locations & open bottom sheet)
-    final authLocations = bindings.authProvider.locations;
-    final locations = authLocations.map((l) {
-      final point = GeoPoint.tryParse(l.latLon);
-      return LocationModel(
-        name: l.name,
-        address: l.displayAddress,
-        image: l.image ?? '',
-        latitude: point?.lat,
-        longitude: point?.lon,
-      );
-    }).toList();
-
-    final result = await showModalBottomSheet<LocationModel>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => LocationBottomSheet(
-        locations: locations,
-        selected: _controller.selectedLocationName,
-      ),
-    );
-    if (result == null || !mounted) return;
-
-    // Local controller selection
-    _controller.selectLocation(result.name, inRange: true);
-
-    for (final loc in authLocations) {
-      if (loc.name == result.name) {
-        await bindings.authProvider.selectLocation(loc);
-        break;
+      // 1. Permission Gate (Check & Request Permissions)
+      final permissionService = const AttendancePermissionService();
+      final hasPermission = await permissionService
+          .checkAndRequestPermissions();
+      if (!hasPermission) {
+        if (mounted) {
+          ToastHelper.locationRequiredForOffice(context);
+        }
+        return;
       }
-    }
 
-    // Refresh geofence status
-    final controller = _controller;
-    if (controller is SyncedClockScreenController) {
-      await controller.refreshGeofenceStatus();
+      // Fresh /auth/me so assign/deactivate shows up without app restart.
+      try {
+        await bindings.authProvider
+            .refreshWorkspaceFromNetwork()
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        if (bindings.authProvider.locations.isEmpty) {
+          await bindings.authProvider.restoreCompanyAndLocationsFromCache();
+        }
+      }
+      if (!mounted) return;
+
+      final controller = _controller;
+      final authLocations = bindings.authProvider.locations;
+      final nearbyId = controller is SyncedClockScreenController
+          ? controller.nearbyLocationId
+          : null;
+      final locations = authLocations.map((l) {
+        final point = GeoPoint.tryParse(l.latLon);
+        return LocationModel(
+          id: l.id,
+          name: l.name,
+          address: l.displayAddress,
+          image: l.image ?? '',
+          latitude: point?.lat,
+          longitude: point?.lon,
+          isNear: nearbyId != null && nearbyId == l.id,
+        );
+      }).toList();
+
+      sheetOpened = true;
+      final result = await AppSheet.show<LocationModel>(
+        context: context,
+        acquired: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => LocationBottomSheet(
+          locations: locations,
+          selected: bindings.authProvider.selectedLocationName.isNotEmpty
+              ? bindings.authProvider.selectedLocationName
+              : _controller.selectedLocationName,
+        ),
+      );
+      if (result == null || !mounted) return;
+
+      if (controller is SyncedClockScreenController) {
+        controller.markLocationChosenManually();
+      }
+
+      // Local controller selection — geofence refresh below sets in-range.
+      _controller.selectLocation(result.name, inRange: result.isNear);
+
+      for (final loc in authLocations) {
+        if (loc.id == result.id || loc.name == result.name) {
+          await bindings.authProvider.selectLocation(loc);
+          break;
+        }
+      }
+
+      // Refresh geofence status against the office the user picked.
+      if (controller is SyncedClockScreenController) {
+        await controller.refreshGeofenceStatus();
+      }
+    } finally {
+      if (!sheetOpened) AppSheet.release();
     }
   }
 
@@ -568,14 +584,26 @@ class ClockScreenState extends State<ClockScreen>
     }
   }
 
-  Widget _staggered(int index, int total, Widget child) {
+  CurvedAnimation _curveFor(int index, int total) {
     final safeTotal = total <= 1 ? 1 : total;
     final start = (index / safeTotal) * 0.6;
     final end = (start + 0.4).clamp(0.0, 1.0);
-    final animation = CurvedAnimation(
+    return CurvedAnimation(
       parent: _entranceController,
       curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
     );
+  }
+
+  Widget _staggered(int index, int total, Widget child) {
+    if (_entranceAnimations.length != total) {
+      for (final animation in _entranceAnimations) {
+        animation.dispose();
+      }
+      _entranceAnimations
+        ..clear()
+        ..addAll(List.generate(total, (i) => _curveFor(i, total)));
+    }
+    final animation = _entranceAnimations[index];
     return AnimatedBuilder(
       animation: animation,
       child: child,
@@ -634,14 +662,8 @@ class ClockScreenState extends State<ClockScreen>
 
     return Scaffold(
       backgroundColor: kbackground1,
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'location_flag_demo_fab',
-        backgroundColor: kBlack200,
-        foregroundColor: kWhite,
-        icon: const Icon(Icons.location_on_outlined, size: 18),
-        label: const Text('LOCATION'),
-        onPressed: () => context.push(LocationFlagDemoScreen.routePath),
-      ),
+      floatingActionButton: const LocationFlagDemoButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Padding(
         padding: AppSizes.page(context),
         child: ListenableBuilder(

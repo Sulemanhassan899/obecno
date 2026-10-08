@@ -15,6 +15,13 @@ class ApiResponse<T> {
   final int? statusCode;
   final Map<String, dynamic>? fieldErrors;
 
+  bool get isHttpOk {
+    if (!success) return false;
+    final code = statusCode;
+    if (code == null) return true;
+    return code >= 200 && code < 300;
+  }
+
   factory ApiResponse.success(T data, {String? message, int? statusCode}) {
     return ApiResponse<T>(
       success: true,

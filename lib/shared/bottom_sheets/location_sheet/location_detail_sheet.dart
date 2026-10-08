@@ -7,18 +7,22 @@ import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 
 class LocationModel {
+  final String? id;
   final String name;
   final String address;
   final String image;
   final double? latitude;
   final double? longitude;
+  final bool isNear;
 
   LocationModel({
+    this.id,
     required this.name,
     required this.address,
     required this.image,
     this.latitude,
     this.longitude,
+    this.isNear = false,
   });
 }
 
@@ -107,7 +111,6 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                     },
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 14),
-                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         border: Border.all(
                           color: isSelected ? kPrimaryColor : kBorderColor,
@@ -115,87 +118,127 @@ class _LocationBottomSheetState extends State<LocationBottomSheet> {
                         ),
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          CommonImageView(
-                            url: item.image,
-                            height: 60,
-                            width: 60,
-                            radius: 8,
-                            fit: BoxFit.cover,
-
-                            /// fallback if null
-                            placeHolder: Assets.imagesDummyMaps,
-
-                            /// fallback if error (network fail etc)
-                            errorImage: Assets.imagesDummyMaps,
-                          ),
-                          const SizedBox(width: 12),
-
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                AppText.p1(
-                                  item.name,
-                                  weight: FontWeight.w600,
-                                  align: TextAlign.left,
+                                CommonImageView(
+                                  url: item.image,
+                                  height: 60,
+                                  width: 60,
+                                  radius: 8,
+                                  fit: BoxFit.cover,
+
+                                  /// fallback if null
+                                  placeHolder: Assets.imagesDummyMaps,
+
+                                  /// fallback if error (network fail etc)
+                                  errorImage: Assets.imagesDummyMaps,
                                 ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: CommonImageView(
-                                        imagePath: Assets.imagesLocationDot,
-                                        height: 12,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Expanded(
-                                      child: AppText.caption(
-                                        displayAddress,
-                                        color: kGreyColor,
+                                const SizedBox(width: 12),
+
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      AppText.p1(
+                                        item.name,
+                                        weight: FontWeight.w600,
                                         align: TextAlign.left,
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 2,
                                       ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 2,
+                                            ),
+                                            child: CommonImageView(
+                                              imagePath:
+                                                  Assets.imagesLocationDot,
+                                              height: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 5),
+                                          Expanded(
+                                            child: AppText.caption(
+                                              displayAddress,
+                                              color: kGreyColor,
+                                              align: TextAlign.left,
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 2,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+                                Container(
+                                  height: 16,
+                                  width: 16,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isSelected
+                                        ? kPrimaryColor
+                                        : kTransperentColor,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? kPrimaryColor
+                                          : kGreyColor,
+                                      width: isSelected ? 4 : 1,
                                     ),
-                                  ],
+                                  ),
+                                  child: isSelected
+                                      ? Center(
+                                          child: Container(
+                                            height: 10,
+                                            width: 10,
+                                            decoration: const BoxDecoration(
+                                              color: kWhite,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
                                 ),
                               ],
                             ),
                           ),
-
-                          const SizedBox(width: 8),
-                          Container(
-                            height: 16,
-                            width: 16,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isSelected
-                                  ? kPrimaryColor
-                                  : kTransperentColor,
-                              border: Border.all(
-                                color: isSelected ? kPrimaryColor : kGreyColor,
-                                width: isSelected ? 4 : 1,
+                          if (item.isNear)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              color: const Color(0xFFEAF4FF),
+                              child: Row(
+                                children: [
+                                  CommonImageView(
+                                    imagePath: Assets.GpsPin,
+                                    height: 14,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  AppText.caption(
+                                    'Near this location',
+                                    color: kGreyColor,
+                                    weight: FontWeight.w500,
+                                    align: TextAlign.left,
+                                  ),
+                                ],
                               ),
                             ),
-                            child: isSelected
-                                ? Center(
-                                    child: Container(
-                                      height: 10,
-                                      width: 10,
-                                      decoration: const BoxDecoration(
-                                        color: kWhite,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  )
-                                : null,
-                          ),
                         ],
                       ),
                     ),

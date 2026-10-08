@@ -50,12 +50,23 @@ class ManagerAttendanceService {
     final members = await membersFuture;
     final live = await liveFuture;
 
-    if (!attendanceResponse.success || attendanceResponse.data == null) {
-      return attendanceResponse;
+    // Team-attendance often omits people who never punched (common for
+    // employees with no office). Always overlay the full directory first.
+    final punchRows = attendanceResponse.success && attendanceResponse.data != null
+        ? attendanceResponse.data!.attendance
+        : const <ManagerTeamAttendanceItem>[];
+
+    if (punchRows.isEmpty && members.isEmpty) {
+      return attendanceResponse.success && attendanceResponse.data != null
+          ? attendanceResponse
+          : ApiResponse.failure(
+              attendanceResponse.message ?? 'Failed to load attendance.',
+              statusCode: attendanceResponse.statusCode,
+            );
     }
 
     final merged = TeamAttendanceMapper.mergeWithMembers(
-      attendance: attendanceResponse.data!.attendance,
+      attendance: punchRows,
       members: members,
     );
     final withLive = TeamAttendanceMapper.overlayLive(
@@ -68,12 +79,13 @@ class ManagerAttendanceService {
       date: date,
     );
 
+    final payload = attendanceResponse.data;
     return ApiResponse.success(
       ManagerTeamAttendanceData(
-        date: attendanceResponse.data!.date,
-        departmentId: attendanceResponse.data!.departmentId,
-        filter: attendanceResponse.data!.filter,
-        search: attendanceResponse.data!.search,
+        date: payload?.date,
+        departmentId: payload?.departmentId,
+        filter: payload?.filter,
+        search: payload?.search ?? search,
         total: attendance.length,
         attendance: attendance,
         members: members,
@@ -138,6 +150,7 @@ class ManagerAttendanceService {
     String? checkOutDetailId,
     String? breakStartDetailId,
     String? breakEndDetailId,
+    List<Map<String, dynamic>> additionalEvents = const [],
     required List<AttendanceChangeRequestPayload> changes,
     ApiCancelToken? cancelToken,
   }) {
@@ -156,6 +169,7 @@ class ManagerAttendanceService {
       checkOutDetailId: checkOutDetailId,
       breakStartDetailId: breakStartDetailId,
       breakEndDetailId: breakEndDetailId,
+      additionalEvents: additionalEvents,
       changes: changes,
       cancelToken: cancelToken,
     );
@@ -220,12 +234,31 @@ class ManagerAttendanceService {
     final repo = _employeesRepository;
     if (repo == null) return const [];
     try {
-      var response = await repo.getEmployees(cancelToken: cancelToken);
-      if (!response.success || response.data == null) {
-        response = await repo.getTeamMembers(cancelToken: cancelToken);
+      final employees = await repo.getEmployees(
+        pageSize: 200,
+        cancelToken: cancelToken,
+      );
+      final team = await repo.getTeamMembers(
+        pageSize: 200,
+        cancelToken: cancelToken,
+      );
+
+      final byId = <String, ManagerEmployeeModel>{};
+      void addAll(List<ManagerEmployeeModel> list) {
+        for (final member in list) {
+          final id = member.id.trim();
+          if (id.isEmpty) continue;
+          byId.putIfAbsent(id, () => member);
+        }
       }
-      if (!response.success || response.data == null) return const [];
-      return response.data!.members;
+
+      if (employees.success && employees.data != null) {
+        addAll(employees.data!.members);
+      }
+      if (team.success && team.data != null) {
+        addAll(team.data!.members);
+      }
+      return byId.values.toList(growable: false);
     } catch (_) {
       return const [];
     }

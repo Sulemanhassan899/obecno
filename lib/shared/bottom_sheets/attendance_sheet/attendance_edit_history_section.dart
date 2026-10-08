@@ -73,7 +73,8 @@ class AttendanceEditHistorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (requests.isEmpty) return const SizedBox.shrink();
+    final unique = AttendanceEditRequest.dedupe(requests);
+    if (unique.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +82,7 @@ class AttendanceEditHistorySection extends StatelessWidget {
         const SizedBox(height: 14),
         const Divider(height: 1, color: kBorderColor),
         const SizedBox(height: 14),
-        ...requests.expand(_rowsFor),
+        ...unique.expand(_rowsFor),
       ],
     );
   }

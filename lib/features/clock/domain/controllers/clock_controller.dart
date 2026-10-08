@@ -538,6 +538,56 @@ class ClockScreenController extends ChangeNotifier {
 
   bool get isButtonEnabled => !isCoolingDown && canIssueTrustedPunch;
 
+  /// Smart Attendance geofence punch — reuses [_addEvent], skips duplicates.
+  @protected
+  Future<AttendanceActionResult> applySmartAttendancePunch({
+    required bool checkIn,
+  }) async {
+    if (_disposed || isProcessing || isCoolingDown) {
+      return AttendanceActionResult.none;
+    }
+
+    _dropEventsNotOn(clockNow);
+    final status = _statusFromEvents;
+
+    if (checkIn) {
+      if (status != AttendanceDayStatus.checkedOut) {
+        return AttendanceActionResult.none;
+      }
+      isProcessing = true;
+      notifyListeners();
+      try {
+        if (!await _addEvent(AttendanceEventType.checkIn)) {
+          return AttendanceActionResult.timeUnavailable;
+        }
+        _startActionCooldown();
+        return AttendanceActionResult.checkedIn;
+      } finally {
+        isProcessing = false;
+        notifyListeners();
+      }
+    }
+
+    if (status == AttendanceDayStatus.checkedOut) {
+      return AttendanceActionResult.none;
+    }
+
+    isProcessing = true;
+    notifyListeners();
+    try {
+      // Direct check-out even if on break — one production punch, same as
+      // AttendanceEngine (check-out clears on-break state).
+      if (!await _addEvent(AttendanceEventType.checkOut)) {
+        return AttendanceActionResult.timeUnavailable;
+      }
+      _startActionCooldown();
+      return AttendanceActionResult.checkedOut;
+    } finally {
+      isProcessing = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> _addEvent(AttendanceEventType type) async {
     lastTrustedTimeError = null;
     final source = trustedTime;

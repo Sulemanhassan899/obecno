@@ -362,9 +362,9 @@ class PermissionItemModel {
     return hasLocationPermissions ? 'PATCH' : 'PUT';
   }
 
-  /// Employee setting writes are partial (timing, break, days, grace).
+  /// Employee setting writes: first override is PUT; later edits are PATCH.
   static String writeMethod({bool hasEmployeeLevel = true}) {
-    return 'PATCH';
+    return hasEmployeeLevel ? 'PATCH' : 'PUT';
   }
 
   /// "check_in_time" → "Check in time", "leave_policies" → "Leave policies".

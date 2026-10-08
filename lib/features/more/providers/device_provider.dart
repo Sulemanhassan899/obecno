@@ -67,7 +67,11 @@ class DeviceProvider extends BaseProvider {
     notifyListeners();
   }
 
-  Future<bool> fetchDevices() async {
+  String get _approvalSignature =>
+      '$_deviceApproved|$_deviceBlocked|'
+      '${_devices.map((device) => '${device.id}:${device.normalizedStatus}').join(',')}';
+
+  Future<bool> fetchDevices({bool quiet = false}) async {
     if (_isFetchingDevices) {
       AppLogger.info(
         '[DeviceProvider] fetchDevices already in flight -- awaiting its result instead of skipping.',
@@ -80,7 +84,7 @@ class DeviceProvider extends BaseProvider {
     _fetchDevicesCompleter = completer;
 
     try {
-      final result = await _fetchDevicesOnce();
+      final result = await _fetchDevicesOnce(quiet: quiet);
       completer.complete(result);
       return result;
     } catch (e) {
@@ -92,7 +96,7 @@ class DeviceProvider extends BaseProvider {
     }
   }
 
-  Future<bool> _fetchDevicesOnce() async {
+  Future<bool> _fetchDevicesOnce({bool quiet = false}) async {
     final currentDeviceInfo = await _service.currentDeviceInfo();
     final currentId = currentDeviceInfo.deviceId;
     // Keep an already-listed current device. Replacing it with an empty-status
@@ -115,6 +119,7 @@ class DeviceProvider extends BaseProvider {
 
     final ok = await safeCall<DeviceListResponse>(
       operationKey: 'devices_fetch',
+      silent: quiet,
       request: (_) => _service.fetchLinkedDevices(),
       onSuccess: (data) {
         _devices = _decorateDevices(data.devices, currentDeviceInfo);
@@ -140,9 +145,6 @@ class DeviceProvider extends BaseProvider {
       _syncCurrentDevice(currentId);
       _syncApprovalFromList(fetchSucceeded: true);
       setSuccess();
-      AppLogger.info(
-        '[DeviceProvider] devices_fetch failed, showing ${cached.length} cached device(s).',
-      );
       return true;
     }
 
@@ -549,7 +551,9 @@ class DeviceProvider extends BaseProvider {
     // [context] is retained for call-site API compatibility. After the await
     // below we must not reuse it across the async gap; DeviceApprovalGuard
     // already falls back to [rootNavigatorKey] when context is null.
-    final ok = await fetchDevices();
+    final before = _approvalSignature;
+    final quiet = source == 'BACKGROUND';
+    final ok = await fetchDevices(quiet: quiet);
 
     // Scenario 6: current device is approved ONLY when status == approved.
     // Pending / request-already-sent / not-in-list → treat as UNREGISTERED.
@@ -563,7 +567,9 @@ class DeviceProvider extends BaseProvider {
     final blocked = ok && _deviceBlocked;
     final pending = ok && listedCurrent != null && listedCurrent.isPending;
 
-    notifyListeners();
+    if (!quiet || _approvalSignature != before) {
+      notifyListeners();
+    }
 
     final statusForLog = approved
         ? 'APPROVED'

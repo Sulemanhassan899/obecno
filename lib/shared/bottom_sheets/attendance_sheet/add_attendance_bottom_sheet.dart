@@ -3,6 +3,7 @@
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/generated/assets.dart';
@@ -14,6 +15,7 @@ import 'package:obecno/features/employee_module/attendance/services/attendance_s
 import 'package:obecno/features/employee_module/attendance/services/scheduled_attendance_times.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 import 'package:obecno/widgets/bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +35,51 @@ class AddAttendanceSaveResult {
   final TimeOfDay? checkOut;
   final TimeOfDay? breakStart;
   final TimeOfDay? breakEnd;
+}
+
+class _PunchPair {
+  _PunchPair({
+    required this.id,
+    required this.start,
+    required this.end,
+    TimeOfDay? initialStart,
+    TimeOfDay? initialEnd,
+    this.startDetailId,
+    this.endDetailId,
+    this.hadInitialStart = false,
+    this.hadInitialEnd = false,
+  }) : initialStart = initialStart ?? start,
+       initialEnd = initialEnd ?? end;
+
+  final String id;
+  TimeOfDay start;
+  TimeOfDay end;
+  final TimeOfDay initialStart;
+  final TimeOfDay initialEnd;
+  String? startDetailId;
+  String? endDetailId;
+  final bool hadInitialStart;
+  final bool hadInitialEnd;
+
+  bool get isExtra => !hadInitialStart && !hadInitialEnd;
+}
+
+class _PairSeed {
+  const _PairSeed({
+    required this.start,
+    required this.end,
+    this.startDetailId,
+    this.endDetailId,
+    this.hadInitialStart = false,
+    this.hadInitialEnd = false,
+  });
+
+  final TimeOfDay start;
+  final TimeOfDay end;
+  final String? startDetailId;
+  final String? endDetailId;
+  final bool hadInitialStart;
+  final bool hadInitialEnd;
 }
 
 class AddAttendanceBottomSheet {
@@ -60,96 +107,305 @@ class AddAttendanceBottomSheet {
     bool hadInitialBreakStart = false,
     bool hadInitialBreakEnd = false,
   }) async {
-    var resolvedCheckIn = initialCheckIn;
-    var resolvedCheckOut = initialCheckOut;
-    var resolvedBreakStart = initialBreakStart;
-    var resolvedBreakEnd = initialBreakEnd;
-    var resolvedAttendanceId = attendanceId;
-    var resolvedCheckInId = checkInDetailId;
-    var resolvedCheckOutId = checkOutDetailId;
-    var resolvedBreakStartId = breakStartDetailId;
-    var resolvedBreakEndId = breakEndDetailId;
+    if (!AppSheet.acquire()) return null;
+    var sheetOpened = false;
+    try {
+      var resolvedCheckIn = initialCheckIn;
+      var resolvedCheckOut = initialCheckOut;
+      var resolvedBreakStart = initialBreakStart;
+      var resolvedBreakEnd = initialBreakEnd;
+      var resolvedAttendanceId = attendanceId;
+      var resolvedCheckInId = checkInDetailId;
+      var resolvedCheckOutId = checkOutDetailId;
+      var resolvedBreakStartId = breakStartDetailId;
+      var resolvedBreakEndId = breakEndDetailId;
 
-    final needsDetails =
-        isCreating ||
-        resolvedAttendanceId == null ||
-        AttendanceDetailItem.serverDetailId(resolvedCheckInId) == null ||
-        AttendanceDetailItem.serverDetailId(resolvedCheckOutId) == null ||
-        AttendanceDetailItem.serverDetailId(resolvedBreakStartId) == null ||
-        AttendanceDetailItem.serverDetailId(resolvedBreakEndId) == null;
+      final needsDetails =
+          isCreating ||
+          resolvedAttendanceId == null ||
+          AttendanceDetailItem.serverDetailId(resolvedCheckInId) == null ||
+          AttendanceDetailItem.serverDetailId(resolvedCheckOutId) == null ||
+          AttendanceDetailItem.serverDetailId(resolvedBreakStartId) == null ||
+          AttendanceDetailItem.serverDetailId(resolvedBreakEndId) == null;
 
-    if (needsDetails) {
-      final scheduled = await ScheduledAttendanceTimes.load(
+      if (needsDetails) {
+        final scheduled = await ScheduledAttendanceTimes.load(
+          apiClient: apiClient,
+          day: day,
+          employeeUserId: employeeUserId,
+        );
+        if (isCreating) {
+          resolvedCheckIn ??= scheduled.checkIn;
+          resolvedCheckOut ??= scheduled.checkOut;
+          resolvedBreakStart ??= scheduled.breakStart;
+          resolvedBreakEnd ??= scheduled.breakEnd;
+        }
+        resolvedAttendanceId ??= scheduled.attendanceId;
+        resolvedCheckInId ??= scheduled.checkInDetailId;
+        resolvedCheckOutId ??= scheduled.checkOutDetailId;
+        resolvedBreakStartId ??= scheduled.breakStartDetailId;
+        resolvedBreakEndId ??= scheduled.breakEndDetailId;
+      }
+
+      final applyNow =
+          applyImmediately ||
+          bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+
+      final seeds = await _loadPairSeeds(
         apiClient: apiClient,
         day: day,
         employeeUserId: employeeUserId,
-      );
-      if (isCreating) {
-        resolvedCheckIn ??= scheduled.checkIn;
-        resolvedCheckOut ??= scheduled.checkOut;
-        resolvedBreakStart ??= scheduled.breakStart;
-        resolvedBreakEnd ??= scheduled.breakEnd;
-      }
-      resolvedAttendanceId ??= scheduled.attendanceId;
-      resolvedCheckInId ??= scheduled.checkInDetailId;
-      resolvedCheckOutId ??= scheduled.checkOutDetailId;
-      resolvedBreakStartId ??= scheduled.breakStartDetailId;
-      resolvedBreakEndId ??= scheduled.breakEndDetailId;
-    }
-
-    final applyNow =
-        applyImmediately ||
-        bindings.authProvider.homeTarget == AuthHomeTarget.manager;
-
-    final contentKey = GlobalKey<_AttendanceContentState>();
-
-    return CommonBottomSheet.show<AddAttendanceSaveResult>(
-      context: context,
-      buttonText: "Save",
-      buttonColor: kBlack,
-      buttonFontColor: kWhite,
-
-      onButtonTap: () async {
-        await contentKey.currentState?.handleSave();
-      },
-      children: [
-        _AttendanceContent(
-          key: contentKey,
-          day: day,
-          apiClient: apiClient,
-          userEmail: userEmail,
-          initialCheckIn:
-              resolvedCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
-          initialCheckOut:
-              resolvedCheckOut ?? const TimeOfDay(hour: 17, minute: 0),
-          initialBreakStart:
-              resolvedBreakStart ?? const TimeOfDay(hour: 10, minute: 0),
-          initialBreakEnd:
-              resolvedBreakEnd ?? const TimeOfDay(hour: 10, minute: 30),
-          checkInDetailId: AttendanceDetailItem.serverDetailId(
-            resolvedCheckInId,
-          ),
-          checkOutDetailId: AttendanceDetailItem.serverDetailId(
-            resolvedCheckOutId,
-          ),
-          breakStartDetailId: AttendanceDetailItem.serverDetailId(
+        fallbackWork: _PairSeed(
+          start: resolvedCheckIn ?? const TimeOfDay(hour: 8, minute: 0),
+          end: resolvedCheckOut ?? const TimeOfDay(hour: 17, minute: 0),
+          startDetailId: AttendanceDetailItem.serverDetailId(resolvedCheckInId),
+          endDetailId: AttendanceDetailItem.serverDetailId(resolvedCheckOutId),
+          hadInitialStart: hadInitialCheckIn || initialCheckIn != null,
+          hadInitialEnd: hadInitialCheckOut || initialCheckOut != null,
+        ),
+        fallbackBreak: _PairSeed(
+          start: resolvedBreakStart ?? const TimeOfDay(hour: 10, minute: 0),
+          end: resolvedBreakEnd ?? const TimeOfDay(hour: 10, minute: 30),
+          startDetailId: AttendanceDetailItem.serverDetailId(
             resolvedBreakStartId,
           ),
-          breakEndDetailId: AttendanceDetailItem.serverDetailId(
-            resolvedBreakEndId,
-          ),
-          attendanceId: resolvedAttendanceId,
-          employeeUserId: employeeUserId,
-          employeeName: employeeName,
-          applyImmediately: applyNow,
-          isCreating: isCreating,
-          hadInitialCheckIn: hadInitialCheckIn || initialCheckIn != null,
-          hadInitialCheckOut: hadInitialCheckOut || initialCheckOut != null,
-          hadInitialBreakStart:
-              hadInitialBreakStart || initialBreakStart != null,
-          hadInitialBreakEnd: hadInitialBreakEnd || initialBreakEnd != null,
+          endDetailId: AttendanceDetailItem.serverDetailId(resolvedBreakEndId),
+          hadInitialStart: hadInitialBreakStart || initialBreakStart != null,
+          hadInitialEnd: hadInitialBreakEnd || initialBreakEnd != null,
         ),
-      ],
+      );
+
+      final contentKey = GlobalKey<_AttendanceContentState>();
+
+      sheetOpened = true;
+      return await CommonBottomSheet.show<AddAttendanceSaveResult>(
+        context: context,
+        acquired: true,
+        buttonText: "Save",
+        buttonColor: kBlack,
+        buttonFontColor: kWhite,
+
+        onButtonTap: () async {
+          await contentKey.currentState?.handleSave();
+        },
+        children: [
+          _AttendanceContent(
+            key: contentKey,
+            day: day,
+            apiClient: apiClient,
+            userEmail: userEmail,
+            initialWorkPairs: seeds.work,
+            initialBreakPairs: seeds.breaks,
+            attendanceId: resolvedAttendanceId,
+            employeeUserId: employeeUserId,
+            employeeName: employeeName,
+            applyImmediately: applyNow,
+            isCreating: isCreating,
+          ),
+        ],
+      );
+    } finally {
+      if (!sheetOpened) AppSheet.release();
+    }
+  }
+
+  static TimeOfDay _tod(DateTime t) =>
+      TimeOfDay(hour: t.hour, minute: t.minute);
+
+  static bool _sameClock(TimeOfDay a, TimeOfDay b) =>
+      a.hour == b.hour && a.minute == b.minute;
+
+  static List<_PairSeed> _zipPairs({
+    required List<(TimeOfDay time, String? id, bool had)> starts,
+    required List<(TimeOfDay time, String? id, bool had)> ends,
+    required _PairSeed fallback,
+  }) {
+    final count = starts.length > ends.length ? starts.length : ends.length;
+    if (count == 0) return const [];
+    return [
+      for (var i = 0; i < count; i++)
+        _PairSeed(
+          start: i < starts.length
+              ? starts[i].$1
+              : (starts.isNotEmpty ? starts.last.$1 : fallback.start),
+          end: i < ends.length
+              ? ends[i].$1
+              : (ends.isNotEmpty ? ends.last.$1 : fallback.end),
+          startDetailId: i < starts.length ? starts[i].$2 : null,
+          endDetailId: i < ends.length ? ends[i].$2 : null,
+          hadInitialStart: i < starts.length ? starts[i].$3 : false,
+          hadInitialEnd: i < ends.length ? ends[i].$3 : false,
+        ),
+    ];
+  }
+
+  static Future<({List<_PairSeed> work, List<_PairSeed> breaks})>
+  _loadPairSeeds({
+    required ApiClient apiClient,
+    required DateTime day,
+    int? employeeUserId,
+    required _PairSeed fallbackWork,
+    required _PairSeed fallbackBreak,
+  }) async {
+    final checkIns = <(TimeOfDay, String?, bool)>[];
+    final checkOuts = <(TimeOfDay, String?, bool)>[];
+    final breakStarts = <(TimeOfDay, String?, bool)>[];
+    final breakEnds = <(TimeOfDay, String?, bool)>[];
+
+    void addUnique(
+      List<(TimeOfDay, String?, bool)> into,
+      TimeOfDay time,
+      String? id, {
+      required bool had,
+    }) {
+      for (final existing in into) {
+        if (_sameClock(existing.$1, time)) return;
+      }
+      into.add((time, AttendanceDetailItem.serverDetailId(id), had));
+    }
+
+    if (employeeUserId == null) {
+      try {
+        final response = await AttendanceService(apiClient)
+            .getAttendanceDetails(
+              date:
+                  '${day.year.toString().padLeft(4, '0')}-'
+                  '${day.month.toString().padLeft(2, '0')}-'
+                  '${day.day.toString().padLeft(2, '0')}',
+            );
+        final details = response.data?.details ?? const [];
+        for (final item in details) {
+          if (AttendanceEditRequest.isPlaceholderMint(item.time)) continue;
+          final time = _tod(item.time);
+          switch (item.type) {
+            case AttendanceHisotryEventType.checkIn:
+              addUnique(checkIns, time, item.id, had: true);
+              break;
+            case AttendanceHisotryEventType.checkOut:
+              addUnique(checkOuts, time, item.id, had: true);
+              break;
+            case AttendanceHisotryEventType.breakStart:
+              addUnique(breakStarts, time, item.id, had: true);
+              break;
+            case AttendanceHisotryEventType.breakEnd:
+              addUnique(breakEnds, time, item.id, had: true);
+              break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final store = AttendanceEditRequestStore.instance;
+      await store.ensureLoaded();
+      for (final request in store.forDay(day)) {
+        if (!request.isPending) continue;
+        final type = AttendanceEditRequest.normalizedEventType(
+          request.eventType,
+        );
+        final parsed = AttendanceEditRequest.parseClockTime(
+          request.newTime,
+          date: day,
+        );
+        if (type == null || parsed == null) continue;
+        if (AttendanceEditRequest.isPlaceholderMint(parsed)) continue;
+        final time = _tod(parsed);
+        switch (type) {
+          case 'checkIn':
+            addUnique(checkIns, time, null, had: false);
+            break;
+          case 'checkOut':
+            addUnique(checkOuts, time, null, had: false);
+            break;
+          case 'breakStart':
+            addUnique(breakStarts, time, null, had: false);
+            break;
+          case 'breakEnd':
+            addUnique(breakEnds, time, null, had: false);
+            break;
+        }
+      }
+    } catch (_) {}
+
+    if (checkIns.isEmpty && fallbackWork.hadInitialStart) {
+      addUnique(
+        checkIns,
+        fallbackWork.start,
+        fallbackWork.startDetailId,
+        had: true,
+      );
+    }
+    if (checkOuts.isEmpty && fallbackWork.hadInitialEnd) {
+      addUnique(
+        checkOuts,
+        fallbackWork.end,
+        fallbackWork.endDetailId,
+        had: true,
+      );
+    }
+    if (breakStarts.isEmpty && fallbackBreak.hadInitialStart) {
+      addUnique(
+        breakStarts,
+        fallbackBreak.start,
+        fallbackBreak.startDetailId,
+        had: true,
+      );
+    }
+    if (breakEnds.isEmpty && fallbackBreak.hadInitialEnd) {
+      addUnique(
+        breakEnds,
+        fallbackBreak.end,
+        fallbackBreak.endDetailId,
+        had: true,
+      );
+    }
+
+    // Seed work/break only when real attendance exists for that section.
+    // Empty sections show the "Add … Time" board instead of a placeholder card.
+    if (checkIns.isEmpty &&
+        checkOuts.isEmpty &&
+        (fallbackWork.hadInitialStart || fallbackWork.hadInitialEnd)) {
+      addUnique(
+        checkIns,
+        fallbackWork.start,
+        fallbackWork.startDetailId,
+        had: fallbackWork.hadInitialStart,
+      );
+      addUnique(
+        checkOuts,
+        fallbackWork.end,
+        fallbackWork.endDetailId,
+        had: fallbackWork.hadInitialEnd,
+      );
+    }
+    if (breakStarts.isEmpty &&
+        breakEnds.isEmpty &&
+        (fallbackBreak.hadInitialStart || fallbackBreak.hadInitialEnd)) {
+      addUnique(
+        breakStarts,
+        fallbackBreak.start,
+        fallbackBreak.startDetailId,
+        had: fallbackBreak.hadInitialStart,
+      );
+      addUnique(
+        breakEnds,
+        fallbackBreak.end,
+        fallbackBreak.endDetailId,
+        had: fallbackBreak.hadInitialEnd,
+      );
+    }
+
+    return (
+      work: _zipPairs(
+        starts: checkIns,
+        ends: checkOuts,
+        fallback: fallbackWork,
+      ),
+      breaks: _zipPairs(
+        starts: breakStarts,
+        ends: breakEnds,
+        fallback: fallbackBreak,
+      ),
     );
   }
 }
@@ -158,46 +414,26 @@ class _AttendanceContent extends StatefulWidget {
   final DateTime day;
   final ApiClient apiClient;
   final String userEmail;
-  final TimeOfDay initialCheckIn;
-  final TimeOfDay initialCheckOut;
-  final TimeOfDay initialBreakStart;
-  final TimeOfDay initialBreakEnd;
-  final String? checkInDetailId;
-  final String? checkOutDetailId;
-  final String? breakStartDetailId;
-  final String? breakEndDetailId;
+  final List<_PairSeed> initialWorkPairs;
+  final List<_PairSeed> initialBreakPairs;
   final int? attendanceId;
   final int? employeeUserId;
   final String? employeeName;
   final bool applyImmediately;
   final bool isCreating;
-  final bool hadInitialCheckIn;
-  final bool hadInitialCheckOut;
-  final bool hadInitialBreakStart;
-  final bool hadInitialBreakEnd;
 
   const _AttendanceContent({
     super.key,
     required this.day,
     required this.apiClient,
     required this.userEmail,
-    required this.initialCheckIn,
-    required this.initialCheckOut,
-    required this.initialBreakStart,
-    required this.initialBreakEnd,
-    this.checkInDetailId,
-    this.checkOutDetailId,
-    this.breakStartDetailId,
-    this.breakEndDetailId,
+    required this.initialWorkPairs,
+    required this.initialBreakPairs,
     this.attendanceId,
     this.employeeUserId,
     this.employeeName,
     this.applyImmediately = false,
     this.isCreating = false,
-    this.hadInitialCheckIn = false,
-    this.hadInitialCheckOut = false,
-    this.hadInitialBreakStart = false,
-    this.hadInitialBreakEnd = false,
   });
 
   @override
@@ -206,19 +442,12 @@ class _AttendanceContent extends StatefulWidget {
 
 class _AttendanceContentState extends State<_AttendanceContent>
     with TickerProviderStateMixin {
-  final Map<String, GlobalKey> _itemKeys = {
-    "checkin": GlobalKey(),
-    "checkout": GlobalKey(),
-    "breakstart": GlobalKey(),
-    "breakend": GlobalKey(),
-  };
-
+  final Map<String, GlobalKey> _itemKeys = {};
   final Map<String, double> _pickerHeights = {};
 
-  late TimeOfDay checkIn;
-  late TimeOfDay checkOut;
-  late TimeOfDay breakStart;
-  late TimeOfDay breakEnd;
+  late final List<_PunchPair> workPairs;
+  late final List<_PunchPair> breakPairs;
+  int _pairSeq = 0;
 
   String? editingField;
   bool _isSaving = false;
@@ -226,11 +455,34 @@ class _AttendanceContentState extends State<_AttendanceContent>
   @override
   void initState() {
     super.initState();
-    checkIn = widget.initialCheckIn;
-    checkOut = widget.initialCheckOut;
-    breakStart = widget.initialBreakStart;
-    breakEnd = widget.initialBreakEnd;
+    workPairs = [
+      for (final seed in widget.initialWorkPairs)
+        _PunchPair(
+          id: 'work_${_pairSeq++}',
+          start: seed.start,
+          end: seed.end,
+          startDetailId: seed.startDetailId,
+          endDetailId: seed.endDetailId,
+          hadInitialStart: seed.hadInitialStart,
+          hadInitialEnd: seed.hadInitialEnd,
+        ),
+    ];
+    breakPairs = [
+      for (final seed in widget.initialBreakPairs)
+        _PunchPair(
+          id: 'break_${_pairSeq++}',
+          start: seed.start,
+          end: seed.end,
+          startDetailId: seed.startDetailId,
+          endDetailId: seed.endDetailId,
+          hadInitialStart: seed.hadInitialStart,
+          hadInitialEnd: seed.hadInitialEnd,
+        ),
+    ];
   }
+
+  GlobalKey _keyFor(String fieldKey) =>
+      _itemKeys.putIfAbsent(fieldKey, GlobalKey.new);
 
   String formatTime(TimeOfDay t) {
     final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
@@ -259,16 +511,23 @@ class _AttendanceContentState extends State<_AttendanceContent>
     );
   }
 
-  String _calculateWorkingHours() {
-    var breakDur = _toDateTime(breakEnd).difference(_toDateTime(breakStart));
-    if (breakDur.isNegative) breakDur = Duration.zero;
-    return AttendanceFormat.duration(
-      AttendanceFormat.workedDuration(
-        start: _toDateTime(checkIn),
-        end: _toDateTime(checkOut),
-        breaks: breakDur,
-      ),
-    );
+  String _calculateTotalHours() {
+    var worked = Duration.zero;
+    for (final pair in workPairs) {
+      worked += AttendanceFormat.workedDuration(
+        start: _toDateTime(pair.start),
+        end: _toDateTime(pair.end),
+      );
+    }
+    var breaks = Duration.zero;
+    for (final pair in breakPairs) {
+      var breakDur = _toDateTime(pair.end).difference(_toDateTime(pair.start));
+      if (breakDur.isNegative) breakDur = Duration.zero;
+      breaks += breakDur;
+    }
+    worked -= breaks;
+    if (worked.isNegative) worked = Duration.zero;
+    return AttendanceFormat.duration(worked);
   }
 
   void openPicker(String fieldKey) async {
@@ -280,7 +539,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
     if (!mounted) return;
 
-    final contextKey = _itemKeys[fieldKey]?.currentContext;
+    final contextKey = _keyFor(fieldKey).currentContext;
     if (contextKey == null || !contextKey.mounted) return;
 
     await Scrollable.ensureVisible(
@@ -291,38 +550,130 @@ class _AttendanceContentState extends State<_AttendanceContent>
     );
   }
 
-  // 🔥 NO CHANGE BELOW (UI untouched)
+  ({String kind, String side, String id})? _parseFieldKey(String fieldKey) {
+    // work_start_work_0 / break_end_break_1
+    final match = RegExp(
+      r'^(work|break)_(start|end)_(.+)$',
+    ).firstMatch(fieldKey);
+    if (match == null) return null;
+    return (kind: match.group(1)!, side: match.group(2)!, id: match.group(3)!);
+  }
+
+  _PunchPair? _pairFor(String kind, String id) {
+    final list = kind == 'break' ? breakPairs : workPairs;
+    for (final pair in list) {
+      if (pair.id == id) return pair;
+    }
+    return null;
+  }
 
   TimeOfDay _getValue(String fieldKey) {
-    switch (fieldKey) {
-      case "checkin":
-        return checkIn;
-      case "checkout":
-        return checkOut;
-      case "breakstart":
-        return breakStart;
-      case "breakend":
-        return breakEnd;
-      default:
-        return checkIn;
-    }
+    final parsed = _parseFieldKey(fieldKey);
+    final fallback = workPairs.isNotEmpty
+        ? workPairs.first.start
+        : const TimeOfDay(hour: 8, minute: 0);
+    if (parsed == null) return fallback;
+    final pair = _pairFor(parsed.kind, parsed.id);
+    if (pair == null) return fallback;
+    return parsed.side == 'end' ? pair.end : pair.start;
   }
 
   void _setValue(String fieldKey, TimeOfDay v) {
+    final parsed = _parseFieldKey(fieldKey);
+    if (parsed == null) return;
     setState(() {
-      switch (fieldKey) {
-        case "checkin":
-          checkIn = v;
-          break;
-        case "checkout":
-          checkOut = v;
-          break;
-        case "breakstart":
-          breakStart = v;
-          break;
-        case "breakend":
-          breakEnd = v;
-          break;
+      final pair = _pairFor(parsed.kind, parsed.id);
+      if (pair == null) return;
+      if (parsed.side == 'end') {
+        pair.end = v;
+      } else {
+        pair.start = v;
+      }
+    });
+  }
+
+  String _fieldKey(String kind, String side, String id) =>
+      '${kind}_${side}_$id';
+
+  void _addWorkPair() {
+    if (workPairs.isEmpty) {
+      setState(() {
+        workPairs.add(
+          _PunchPair(
+            id: 'work_${_pairSeq++}',
+            start: const TimeOfDay(hour: 8, minute: 0),
+            end: const TimeOfDay(hour: 17, minute: 0),
+          ),
+        );
+      });
+      return;
+    }
+    final last = workPairs.last;
+    // Chain from the previous check-out so a new segment does not reuse the
+    // prior check-in (avoids accidental duplicate 12:00 PM check-in requests).
+    final start = last.end;
+    final endMinutes = start.hour * 60 + start.minute + 60;
+    final wrapped = ((endMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    setState(() {
+      workPairs.add(
+        _PunchPair(
+          id: 'work_${_pairSeq++}',
+          start: start,
+          end: TimeOfDay(hour: wrapped ~/ 60, minute: wrapped % 60),
+        ),
+      );
+    });
+  }
+
+  void _addBreakPair() {
+    if (breakPairs.isEmpty) {
+      setState(() {
+        breakPairs.add(
+          _PunchPair(
+            id: 'break_${_pairSeq++}',
+            start: const TimeOfDay(hour: 0, minute: 0), // 12:00 AM
+            end: const TimeOfDay(hour: 12, minute: 0), // 12:00 PM
+          ),
+        );
+      });
+      return;
+    }
+    final last = breakPairs.last;
+    final startMinutes = last.end.hour * 60 + last.end.minute + 30;
+    final startWrapped = ((startMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    final start = TimeOfDay(
+      hour: startWrapped ~/ 60,
+      minute: startWrapped % 60,
+    );
+    final endMinutes = start.hour * 60 + start.minute + 25;
+    final endWrapped = ((endMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    setState(() {
+      breakPairs.add(
+        _PunchPair(
+          id: 'break_${_pairSeq++}',
+          start: start,
+          end: TimeOfDay(hour: endWrapped ~/ 60, minute: endWrapped % 60),
+        ),
+      );
+    });
+  }
+
+  void _removeWorkPair(String id) {
+    // Keep at least one check-in/out card; only extras are removable.
+    if (workPairs.length <= 1) return;
+    setState(() {
+      workPairs.removeWhere((pair) => pair.id == id);
+      if (editingField != null && editingField!.contains(id)) {
+        editingField = null;
+      }
+    });
+  }
+
+  void _removeBreakPair(String id) {
+    setState(() {
+      breakPairs.removeWhere((pair) => pair.id == id);
+      if (editingField != null && editingField!.contains(id)) {
+        editingField = null;
       }
     });
   }
@@ -405,6 +756,92 @@ class _AttendanceContentState extends State<_AttendanceContent>
   bool _timeChanged(TimeOfDay a, TimeOfDay b) =>
       a.hour != b.hour || a.minute != b.minute;
 
+  /// Red console dump of sheet times vs payloads actually sent to `/edit`.
+  void _logAttendanceRequestRed({
+    required DateTime day,
+    required int? attendanceId,
+    required List<_PunchPair> workPairs,
+    required List<_PunchPair> breakPairs,
+    required List<AttendanceChangeRequestPayload> payloads,
+    required List<AttendanceChangeRequestPayload> validPayloads,
+    required List<AttendanceEditRequest> localRequests,
+  }) {
+    const red = '\x1B[31m';
+    const reset = '\x1B[0m';
+    void log(String message) => debugPrint('$red$message$reset');
+
+    log('========== ATTENDANCE REQUEST DUMP ==========');
+    log('day=${_yyyyMMdd(day)} attendanceId=$attendanceId');
+    log('workPairs=${workPairs.length} breakPairs=${breakPairs.length}');
+
+    final expectedHms = <String, String>{};
+    void expectEvent(String type, TimeOfDay time) {
+      final hms = clockHms(time);
+      expectedHms[hms] = '$type ${formatTime(time)}';
+    }
+
+    for (var i = 0; i < workPairs.length; i++) {
+      final pair = workPairs[i];
+      expectEvent('checkIn', pair.start);
+      expectEvent('checkOut', pair.end);
+      log(
+        '  work[$i] ${formatTime(pair.start)} → ${formatTime(pair.end)} '
+        'ids=${pair.startDetailId}/${pair.endDetailId}',
+      );
+    }
+    for (var i = 0; i < breakPairs.length; i++) {
+      final pair = breakPairs[i];
+      expectEvent('breakStart', pair.start);
+      expectEvent('breakEnd', pair.end);
+      log(
+        '  break[$i] ${formatTime(pair.start)} → ${formatTime(pair.end)} '
+        'ids=${pair.startDetailId}/${pair.endDetailId}',
+      );
+    }
+
+    log(
+      'payloads built=${payloads.length} '
+      'submitted=${validPayloads.length} '
+      '(with detail id=${validPayloads.where((p) => p.hasDetailId).length})',
+    );
+    final sentHms = <String>{};
+    for (final payload in validPayloads) {
+      sentHms.add(payload.newValue);
+      log(
+        '  SEND ${payload.type} '
+        'detail=${payload.attendanceDetailId ?? 'null'} '
+        '${payload.oldValue} → ${payload.newValue}'
+        '${payload.hasDetailId ? '' : ' (change_requests only)'}',
+      );
+    }
+
+    for (final entry in expectedHms.entries) {
+      if (!sentHms.contains(entry.key)) {
+        log('  MISSING from request: ${entry.value} (new_value=${entry.key})');
+      }
+    }
+
+    final dropped = [
+      for (final payload in payloads)
+        if (!validPayloads.contains(payload) && !payload.hasDetailId) payload,
+    ];
+    for (final payload in dropped) {
+      log(
+        '  DROPPED (no detail id) ${payload.type} '
+        '${payload.oldValue} → ${payload.newValue}',
+      );
+    }
+
+    log('localRequests=${localRequests.length}');
+    for (final request in localRequests) {
+      log(
+        '  LOCAL ${request.eventType} '
+        '${request.originalTime} → ${request.newTime}',
+      );
+    }
+    log('========== END ATTENDANCE REQUEST DUMP ==========');
+  }
+
   Future<({double lat, double lon})> _currentLatLon() async {
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
@@ -429,29 +866,65 @@ class _AttendanceContentState extends State<_AttendanceContent>
     }
   }
 
+  Map<String, dynamic> _managerEvent(String type, String time, String? id) {
+    final payload = <String, dynamic>{'type': type, 'time': time};
+    final parsedId = int.tryParse((id ?? '').trim());
+    if (parsedId != null) {
+      payload['id'] = parsedId;
+    } else if (id != null && id.trim().isNotEmpty) {
+      payload['id'] = id.trim();
+    }
+    return payload;
+  }
+
   Future<void> handleSave() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
 
+    if (workPairs.isEmpty) {
+      if (mounted) {
+        ToastHelper.error(
+          context,
+          message: 'Add check-in and check-out time first.',
+        );
+      }
+      if (mounted) setState(() => _isSaving = false);
+      return;
+    }
+
     final now = DateTime.now();
     final payloads = <AttendanceChangeRequestPayload>[];
     final localRequests = <AttendanceEditRequest>[];
+    final additionalManagerEvents = <Map<String, dynamic>>[];
+    final usedDetailIds = <String>{};
 
-    var checkInId = AttendanceDetailItem.serverDetailId(widget.checkInDetailId);
-    var checkOutId = AttendanceDetailItem.serverDetailId(
-      widget.checkOutDetailId,
-    );
+    final primary = workPairs.first;
+    final hasBreakSection = breakPairs.isNotEmpty;
+    // Placeholder only so existing break references compile when section empty;
+    // break mint/submit paths are gated by [hasBreakSection].
+    final primaryBreak = hasBreakSection
+        ? breakPairs.first
+        : _PunchPair(
+            id: '__no_break__',
+            start: const TimeOfDay(hour: 10, minute: 0),
+            end: const TimeOfDay(hour: 10, minute: 30),
+            hadInitialStart: true,
+            hadInitialEnd: true,
+          );
+
+    var checkInId = AttendanceDetailItem.serverDetailId(primary.startDetailId);
+    var checkOutId = AttendanceDetailItem.serverDetailId(primary.endDetailId);
     var breakStartId = AttendanceDetailItem.serverDetailId(
-      widget.breakStartDetailId,
+      primaryBreak.startDetailId,
     );
     var breakEndId = AttendanceDetailItem.serverDetailId(
-      widget.breakEndDetailId,
+      primaryBreak.endDetailId,
     );
     var attendanceId = widget.attendanceId;
-    var checkInHms = clockHms(widget.initialCheckIn);
-    var checkOutHms = clockHms(widget.initialCheckOut);
-    var breakStartHms = clockHms(widget.initialBreakStart);
-    var breakEndHms = clockHms(widget.initialBreakEnd);
+    var checkInHms = clockHms(primary.initialStart);
+    var checkOutHms = clockHms(primary.initialEnd);
+    var breakStartHms = clockHms(primaryBreak.initialStart);
+    var breakEndHms = clockHms(primaryBreak.initialEnd);
 
     final attendanceService = AttendanceService(widget.apiClient);
     try {
@@ -472,11 +945,13 @@ class _AttendanceContentState extends State<_AttendanceContent>
     if (attendanceId == null ||
         checkInId == null ||
         checkOutId == null ||
-        ((widget.hadInitialBreakStart ||
-                _timeChanged(widget.initialBreakStart, breakStart)) &&
+        (hasBreakSection &&
+            (primaryBreak.hadInitialStart ||
+                _timeChanged(primaryBreak.initialStart, primaryBreak.start)) &&
             breakStartId == null) ||
-        ((widget.hadInitialBreakEnd ||
-                _timeChanged(widget.initialBreakEnd, breakEnd)) &&
+        (hasBreakSection &&
+            (primaryBreak.hadInitialEnd ||
+                _timeChanged(primaryBreak.initialEnd, primaryBreak.end)) &&
             breakEndId == null)) {
       final resolved = await _resolveDayDetails();
       attendanceId ??= resolved.attendanceId;
@@ -486,35 +961,55 @@ class _AttendanceContentState extends State<_AttendanceContent>
       breakEndId ??= resolved.breakEndDetailId;
     }
 
+    primary.startDetailId = checkInId ?? primary.startDetailId;
+    primary.endDetailId = checkOutId ?? primary.endDetailId;
+    if (hasBreakSection) {
+      primaryBreak.startDetailId = breakStartId ?? primaryBreak.startDetailId;
+      primaryBreak.endDetailId = breakEndId ?? primaryBreak.endDetailId;
+    }
+
+    for (final id in [checkInId, checkOutId, breakStartId, breakEndId]) {
+      if (id != null) usedDetailIds.add(id);
+    }
+
     // Employee edit/add requests need a root attendance `id` and a detail id
-    // on every `changes` row. Previous-day edits often have punches but no
-    // numeric detail ids from the month list — mint those rows too.
+    // on every `changes` row. When the sheet has multiple work/break pairs,
+    // do NOT mint the primary four punches here — a premature checkout blocks
+    // a later breakout on the backend. Chronological mint below handles all
+    // missing punches in state-machine order instead.
+    final hasExtraPairs = workPairs.length > 1 || breakPairs.length > 1;
     if (!widget.applyImmediately) {
       try {
         final deviceDetails =
             (await bindings.deviceInfoService.collect()).deviceDetails;
         final gps = await _currentLatLon();
         final mint = <String>[];
-        final mintCheckIn =
-            widget.isCreating ||
-            widget.hadInitialCheckIn ||
-            _timeChanged(widget.initialCheckIn, checkIn);
-        final mintCheckOut =
-            widget.isCreating ||
-            widget.hadInitialCheckOut ||
-            _timeChanged(widget.initialCheckOut, checkOut);
-        final mintBreakStart =
-            widget.isCreating ||
-            widget.hadInitialBreakStart ||
-            _timeChanged(widget.initialBreakStart, breakStart);
-        final mintBreakEnd =
-            widget.isCreating ||
-            widget.hadInitialBreakEnd ||
-            _timeChanged(widget.initialBreakEnd, breakEnd);
-        if (checkInId == null && mintCheckIn) mint.add('checkin');
-        if (checkOutId == null && mintCheckOut) mint.add('checkout');
-        if (breakStartId == null && mintBreakStart) mint.add('breakout');
-        if (breakEndId == null && mintBreakEnd) mint.add('breakin');
+        if (!hasExtraPairs) {
+          final mintCheckIn =
+              widget.isCreating ||
+              primary.hadInitialStart ||
+              _timeChanged(primary.initialStart, primary.start);
+          final mintCheckOut =
+              widget.isCreating ||
+              primary.hadInitialEnd ||
+              _timeChanged(primary.initialEnd, primary.end);
+          final mintBreakStart =
+              hasBreakSection &&
+              (widget.isCreating ||
+                  primaryBreak.hadInitialStart ||
+                  _timeChanged(primaryBreak.initialStart, primaryBreak.start) ||
+                  !primaryBreak.hadInitialStart);
+          final mintBreakEnd =
+              hasBreakSection &&
+              (widget.isCreating ||
+                  primaryBreak.hadInitialEnd ||
+                  _timeChanged(primaryBreak.initialEnd, primaryBreak.end) ||
+                  !primaryBreak.hadInitialEnd);
+          if (checkInId == null && mintCheckIn) mint.add('checkin');
+          if (checkOutId == null && mintCheckOut) mint.add('checkout');
+          if (breakStartId == null && mintBreakStart) mint.add('breakout');
+          if (breakEndId == null && mintBreakEnd) mint.add('breakin');
+        }
         if (attendanceId == null || mint.isNotEmpty) {
           final ensured = await attendanceService.ensureAttendanceRecord(
             date: _yyyyMMdd(widget.day),
@@ -525,14 +1020,32 @@ class _AttendanceContentState extends State<_AttendanceContent>
             mintActions: mint,
           );
           attendanceId = ensured.attendanceId ?? attendanceId;
-          checkInId = ensured.checkInId ?? checkInId;
-          checkOutId = ensured.checkOutId ?? checkOutId;
-          breakStartId = ensured.breakStartId ?? breakStartId;
-          breakEndId = ensured.breakEndId ?? breakEndId;
-          checkInHms = ensured.checkInHms ?? checkInHms;
-          checkOutHms = ensured.checkOutHms ?? checkOutHms;
-          breakStartHms = ensured.breakStartHms ?? breakStartHms;
-          breakEndHms = ensured.breakEndHms ?? breakEndHms;
+          if (!hasExtraPairs) {
+            checkInId = ensured.checkInId ?? checkInId;
+            checkOutId = ensured.checkOutId ?? checkOutId;
+            breakStartId = ensured.breakStartId ?? breakStartId;
+            breakEndId = ensured.breakEndId ?? breakEndId;
+            checkInHms = ensured.checkInHms ?? checkInHms;
+            checkOutHms = ensured.checkOutHms ?? checkOutHms;
+            breakStartHms = ensured.breakStartHms ?? breakStartHms;
+            breakEndHms = ensured.breakEndHms ?? breakEndHms;
+            primary.startDetailId = checkInId;
+            primary.endDetailId = checkOutId;
+            if (hasBreakSection) {
+              primaryBreak.startDetailId = breakStartId;
+              primaryBreak.endDetailId = breakEndId;
+            }
+            for (final id in [
+              checkInId,
+              checkOutId,
+              breakStartId,
+              breakEndId,
+            ]) {
+              if (id != null) usedDetailIds.add(id);
+            }
+          } else if (ensured.attendanceId != null) {
+            attendanceId = ensured.attendanceId;
+          }
         }
       } catch (_) {}
     }
@@ -545,13 +1058,15 @@ class _AttendanceContentState extends State<_AttendanceContent>
       required String fallbackHms,
       required bool hadInitial,
       bool force = false,
+      bool allowWithoutDetailId = false,
     }) {
       if (!force && !_timeChanged(initial, updated)) return;
 
       final serverId = AttendanceDetailItem.serverDetailId(detailId);
       // `/edit` rejects the whole `changes` array if any row is missing
-      // `attendancedetail_id` (e.g. default break times on a day with none).
-      if (serverId == null) return;
+      // `attendancedetail_id`. Orphan rows still go into `change_requests`
+      // so a second break can reach the portal without a minted detail id.
+      if (serverId == null && !allowWithoutDetailId) return;
 
       final isAdd = widget.isCreating || !hadInitial;
       localRequests.add(
@@ -572,39 +1087,243 @@ class _AttendanceContentState extends State<_AttendanceContent>
           type: _apiEventType(eventType),
         ),
       );
+      if (serverId != null) usedDetailIds.add(serverId);
     }
 
+    Future<String?> ensureExtraDetail({
+      required _PunchPair pair,
+      required bool isStart,
+      required String action,
+      required String deviceDetails,
+      required double lat,
+      required double lon,
+    }) async {
+      final existing = AttendanceDetailItem.serverDetailId(
+        isStart ? pair.startDetailId : pair.endDetailId,
+      );
+      if (existing != null) {
+        usedDetailIds.add(existing);
+        return isStart
+            ? '00:00:00'
+            : (action == 'checkout'
+                  ? '00:03:00'
+                  : (action == 'breakout' ? '00:01:00' : '00:02:00'));
+      }
+      if (widget.applyImmediately) return null;
+
+      final preferred = clockHms(isStart ? pair.start : pair.end);
+      final minted = await attendanceService.mintAdditionalPunch(
+        date: _yyyyMMdd(widget.day),
+        action: action,
+        deviceDetails: deviceDetails,
+        lat: lat,
+        lon: lon,
+        excludeDetailIds: usedDetailIds,
+        preferredTimeHms: preferred,
+      );
+      attendanceId = minted.attendanceId ?? attendanceId;
+      final id = minted.detailId;
+      debugPrint(
+        '\x1B[31m[AttendanceRequest] mint action=$action '
+        'placeholder=${minted.hms} detailId=$id '
+        'pair=${isStart ? formatTime(pair.start) : formatTime(pair.end)}'
+        '\x1B[0m',
+      );
+      if (id == null) {
+        debugPrint(
+          '\x1B[31m[AttendanceRequest][MISSING] failed to mint $action '
+          'for ${isStart ? formatTime(pair.start) : formatTime(pair.end)} — '
+          'will still send via change_requests without detail id'
+          '\x1B[0m',
+        );
+        return null;
+      }
+      usedDetailIds.add(id);
+      if (isStart) {
+        pair.startDetailId = id;
+      } else {
+        pair.endDetailId = id;
+      }
+      return minted.hms;
+    }
+
+    // Multi-pair request: mint every missing punch in chronological order so
+    // the backend state machine still allows a second breakout (check-in →
+    // … → break → … → check-out). Minting checkout before breaks fails.
+    final Map<String, String> mintedFallbackHms = {};
+    if (!widget.applyImmediately && hasExtraPairs) {
+      try {
+        final deviceDetails =
+            (await bindings.deviceInfoService.collect()).deviceDetails;
+        final gps = await _currentLatLon();
+
+        final targets =
+            <
+              ({
+                _PunchPair pair,
+                bool isStart,
+                String action,
+                String eventType,
+                TimeOfDay time,
+              })
+            >[];
+
+        void addTarget({
+          required _PunchPair pair,
+          required bool isStart,
+          required String action,
+          required String eventType,
+          required TimeOfDay time,
+        }) {
+          final existing = AttendanceDetailItem.serverDetailId(
+            isStart ? pair.startDetailId : pair.endDetailId,
+          );
+          if (existing != null) {
+            usedDetailIds.add(existing);
+            return;
+          }
+          targets.add((
+            pair: pair,
+            isStart: isStart,
+            action: action,
+            eventType: eventType,
+            time: time,
+          ));
+        }
+
+        for (final pair in workPairs) {
+          addTarget(
+            pair: pair,
+            isStart: true,
+            action: 'checkin',
+            eventType: 'checkIn',
+            time: pair.start,
+          );
+          addTarget(
+            pair: pair,
+            isStart: false,
+            action: 'checkout',
+            eventType: 'checkOut',
+            time: pair.end,
+          );
+        }
+        for (final pair in breakPairs) {
+          addTarget(
+            pair: pair,
+            isStart: true,
+            action: 'breakout',
+            eventType: 'breakStart',
+            time: pair.start,
+          );
+          addTarget(
+            pair: pair,
+            isStart: false,
+            action: 'breakin',
+            eventType: 'breakEnd',
+            time: pair.end,
+          );
+        }
+
+        int typeOrder(String action) {
+          switch (action) {
+            case 'checkout':
+              return 0;
+            case 'checkin':
+              return 1;
+            case 'breakout':
+              return 2;
+            case 'breakin':
+              return 3;
+            default:
+              return 4;
+          }
+        }
+
+        targets.sort((a, b) {
+          final aMin = a.time.hour * 60 + a.time.minute;
+          final bMin = b.time.hour * 60 + b.time.minute;
+          final byTime = aMin.compareTo(bMin);
+          if (byTime != 0) return byTime;
+          return typeOrder(a.action).compareTo(typeOrder(b.action));
+        });
+
+        debugPrint(
+          '\x1B[31m[AttendanceRequest] chronological mint '
+          '${targets.length} punch(es): '
+          '${targets.map((t) => '${t.action}@${formatTime(t.time)}').join(' → ')}'
+          '\x1B[0m',
+        );
+
+        for (final target in targets) {
+          final hms = await ensureExtraDetail(
+            pair: target.pair,
+            isStart: target.isStart,
+            action: target.action,
+            deviceDetails: deviceDetails,
+            lat: gps.lat,
+            lon: gps.lon,
+          );
+          if (hms != null) {
+            mintedFallbackHms['${target.eventType}:${clockHms(target.time)}'] =
+                hms;
+          }
+        }
+
+        checkInId = primary.startDetailId ?? checkInId;
+        checkOutId = primary.endDetailId ?? checkOutId;
+        if (hasBreakSection) {
+          breakStartId = primaryBreak.startDetailId ?? breakStartId;
+          breakEndId = primaryBreak.endDetailId ?? breakEndId;
+          breakStartHms =
+              mintedFallbackHms['breakStart:${clockHms(primaryBreak.start)}'] ??
+              breakStartHms;
+          breakEndHms =
+              mintedFallbackHms['breakEnd:${clockHms(primaryBreak.end)}'] ??
+              breakEndHms;
+        }
+        checkInHms =
+            mintedFallbackHms['checkIn:${clockHms(primary.start)}'] ??
+            checkInHms;
+        checkOutHms =
+            mintedFallbackHms['checkOut:${clockHms(primary.end)}'] ??
+            checkOutHms;
+      } catch (_) {}
+    }
+
+    // Primary pair — same change-request path as before.
     maybeAdd(
       eventType: 'checkIn',
       detailId: checkInId,
-      initial: widget.initialCheckIn,
-      updated: checkIn,
+      initial: primary.initialStart,
+      updated: primary.start,
       fallbackHms: checkInHms,
-      hadInitial: widget.hadInitialCheckIn,
+      hadInitial: primary.hadInitialStart,
     );
-    maybeAdd(
-      eventType: 'breakStart',
-      detailId: breakStartId,
-      initial: widget.initialBreakStart,
-      updated: breakStart,
-      fallbackHms: breakStartHms,
-      hadInitial: widget.hadInitialBreakStart,
-    );
-    maybeAdd(
-      eventType: 'breakEnd',
-      detailId: breakEndId,
-      initial: widget.initialBreakEnd,
-      updated: breakEnd,
-      fallbackHms: breakEndHms,
-      hadInitial: widget.hadInitialBreakEnd,
-    );
+    if (hasBreakSection) {
+      maybeAdd(
+        eventType: 'breakStart',
+        detailId: breakStartId,
+        initial: primaryBreak.initialStart,
+        updated: primaryBreak.start,
+        fallbackHms: breakStartHms,
+        hadInitial: primaryBreak.hadInitialStart,
+      );
+      maybeAdd(
+        eventType: 'breakEnd',
+        detailId: breakEndId,
+        initial: primaryBreak.initialEnd,
+        updated: primaryBreak.end,
+        fallbackHms: breakEndHms,
+        hadInitial: primaryBreak.hadInitialEnd,
+      );
+    }
     maybeAdd(
       eventType: 'checkOut',
       detailId: checkOutId,
-      initial: widget.initialCheckOut,
-      updated: checkOut,
+      initial: primary.initialEnd,
+      updated: primary.end,
       fallbackHms: checkOutHms,
-      hadInitial: widget.hadInitialCheckOut,
+      hadInitial: primary.hadInitialEnd,
     );
 
     if (widget.isCreating) {
@@ -613,10 +1332,10 @@ class _AttendanceContentState extends State<_AttendanceContent>
         maybeAdd(
           eventType: 'checkIn',
           detailId: checkInId,
-          initial: widget.initialCheckIn,
-          updated: checkIn,
+          initial: primary.initialStart,
+          updated: primary.start,
           fallbackHms: checkInHms,
-          hadInitial: widget.hadInitialCheckIn,
+          hadInitial: primary.hadInitialStart,
           force: true,
         );
       }
@@ -624,62 +1343,144 @@ class _AttendanceContentState extends State<_AttendanceContent>
         maybeAdd(
           eventType: 'checkOut',
           detailId: checkOutId,
-          initial: widget.initialCheckOut,
-          updated: checkOut,
+          initial: primary.initialEnd,
+          updated: primary.end,
           fallbackHms: checkOutHms,
-          hadInitial: widget.hadInitialCheckOut,
+          hadInitial: primary.hadInitialEnd,
+          force: true,
+        );
+      }
+      // Only request break when the user added a break card on the sheet.
+      if (hasBreakSection) {
+        if (!added.contains('breakStart')) {
+          maybeAdd(
+            eventType: 'breakStart',
+            detailId: breakStartId ?? primaryBreak.startDetailId,
+            initial: primaryBreak.initialStart,
+            updated: primaryBreak.start,
+            fallbackHms: breakStartHms,
+            hadInitial: primaryBreak.hadInitialStart,
+            force: true,
+          );
+        }
+        if (!added.contains('breakEnd')) {
+          maybeAdd(
+            eventType: 'breakEnd',
+            detailId: breakEndId ?? primaryBreak.endDetailId,
+            initial: primaryBreak.initialEnd,
+            updated: primaryBreak.end,
+            fallbackHms: breakEndHms,
+            hadInitial: primaryBreak.hadInitialEnd,
+            force: true,
+          );
+        }
+      }
+    }
+
+    // When the user added extra break rows, also ensure the primary break
+    // pair is included in the request (even if left at the scheduled default).
+    if (!widget.applyImmediately && hasBreakSection && breakPairs.length > 1) {
+      final added = localRequests.map((e) => e.eventType).toSet();
+      if (!added.contains('breakStart')) {
+        maybeAdd(
+          eventType: 'breakStart',
+          detailId: breakStartId ?? primaryBreak.startDetailId,
+          initial: primaryBreak.initialStart,
+          updated: primaryBreak.start,
+          fallbackHms: breakStartHms,
+          hadInitial: primaryBreak.hadInitialStart,
+          force: true,
+        );
+      }
+      if (!added.contains('breakEnd')) {
+        maybeAdd(
+          eventType: 'breakEnd',
+          detailId: breakEndId ?? primaryBreak.endDetailId,
+          initial: primaryBreak.initialEnd,
+          updated: primaryBreak.end,
+          fallbackHms: breakEndHms,
+          hadInitial: primaryBreak.hadInitialEnd,
+          force: true,
+        );
+      }
+    }
+
+    // Include new break times when a break card is on the sheet and other
+    // changes are already being submitted.
+    if (!widget.applyImmediately &&
+        hasBreakSection &&
+        (!primaryBreak.hadInitialStart || !primaryBreak.hadInitialEnd) &&
+        payloads.isNotEmpty) {
+      final added = localRequests.map((e) => e.eventType).toSet();
+      if (!primaryBreak.hadInitialStart && !added.contains('breakStart')) {
+        maybeAdd(
+          eventType: 'breakStart',
+          detailId: breakStartId ?? primaryBreak.startDetailId,
+          initial: primaryBreak.initialStart,
+          updated: primaryBreak.start,
+          fallbackHms: breakStartHms,
+          hadInitial: false,
+          force: true,
+        );
+      }
+      if (!primaryBreak.hadInitialEnd && !added.contains('breakEnd')) {
+        maybeAdd(
+          eventType: 'breakEnd',
+          detailId: breakEndId ?? primaryBreak.endDetailId,
+          initial: primaryBreak.initialEnd,
+          updated: primaryBreak.end,
+          fallbackHms: breakEndHms,
+          hadInitial: false,
           force: true,
         );
       }
     }
 
     // Save with no time change: still submit the field the user was editing.
-    // Creating a new day always sends check-in and check-out below.
     if (payloads.isEmpty && localRequests.isEmpty && !widget.isCreating) {
-      switch (editingField ?? 'checkin') {
-        case 'checkout':
-          maybeAdd(
-            eventType: 'checkOut',
-            detailId: checkOutId,
-            initial: widget.initialCheckOut,
-            updated: checkOut,
-            fallbackHms: checkOutHms,
-            hadInitial: widget.hadInitialCheckOut,
-            force: true,
-          );
-          break;
-        case 'breakstart':
-          maybeAdd(
-            eventType: 'breakStart',
-            detailId: breakStartId,
-            initial: widget.initialBreakStart,
-            updated: breakStart,
-            fallbackHms: breakStartHms,
-            hadInitial: widget.hadInitialBreakStart,
-            force: true,
-          );
-          break;
-        case 'breakend':
-          maybeAdd(
-            eventType: 'breakEnd',
-            detailId: breakEndId,
-            initial: widget.initialBreakEnd,
-            updated: breakEnd,
-            fallbackHms: breakEndHms,
-            hadInitial: widget.hadInitialBreakEnd,
-            force: true,
-          );
-          break;
-        default:
-          maybeAdd(
-            eventType: 'checkIn',
-            detailId: checkInId,
-            initial: widget.initialCheckIn,
-            updated: checkIn,
-            fallbackHms: checkInHms,
-            hadInitial: widget.hadInitialCheckIn,
-            force: true,
-          );
+      final editing = editingField ?? '';
+      if (hasBreakSection &&
+          editing.contains('break') &&
+          editing.contains('end')) {
+        maybeAdd(
+          eventType: 'breakEnd',
+          detailId: breakEndId,
+          initial: primaryBreak.initialEnd,
+          updated: primaryBreak.end,
+          fallbackHms: breakEndHms,
+          hadInitial: primaryBreak.hadInitialEnd,
+          force: true,
+        );
+      } else if (hasBreakSection && editing.contains('break')) {
+        maybeAdd(
+          eventType: 'breakStart',
+          detailId: breakStartId,
+          initial: primaryBreak.initialStart,
+          updated: primaryBreak.start,
+          fallbackHms: breakStartHms,
+          hadInitial: primaryBreak.hadInitialStart,
+          force: true,
+        );
+      } else if (editing.contains('end')) {
+        maybeAdd(
+          eventType: 'checkOut',
+          detailId: checkOutId,
+          initial: primary.initialEnd,
+          updated: primary.end,
+          fallbackHms: checkOutHms,
+          hadInitial: primary.hadInitialEnd,
+          force: true,
+        );
+      } else {
+        maybeAdd(
+          eventType: 'checkIn',
+          detailId: checkInId,
+          initial: primary.initialStart,
+          updated: primary.start,
+          fallbackHms: checkInHms,
+          hadInitial: primary.hadInitialStart,
+          force: true,
+        );
       }
     }
 
@@ -688,45 +1489,274 @@ class _AttendanceContentState extends State<_AttendanceContent>
           (await bindings.deviceInfoService.collect()).deviceDetails;
       final gps = await _currentLatLon();
 
+      // Extra work / break pairs beyond the primary.
+      for (var i = 1; i < workPairs.length; i++) {
+        final pair = workPairs[i];
+        if (widget.applyImmediately) {
+          additionalManagerEvents.add(
+            _managerEvent('checkin', clockHms(pair.start), pair.startDetailId),
+          );
+          additionalManagerEvents.add(
+            _managerEvent('checkout', clockHms(pair.end), pair.endDetailId),
+          );
+          localRequests.add(
+            AttendanceEditRequest(
+              status: AttendanceEditRequestStatus.pending,
+              requestedAt: now,
+              originalTime: '--',
+              newTime: formatTime(pair.start),
+              eventType: 'checkIn',
+            ),
+          );
+          localRequests.add(
+            AttendanceEditRequest(
+              status: AttendanceEditRequestStatus.pending,
+              requestedAt: now,
+              originalTime: '--',
+              newTime: formatTime(pair.end),
+              eventType: 'checkOut',
+            ),
+          );
+        } else {
+          // Multi-pair days already minted chronologically above.
+          if (!hasExtraPairs) {
+            await ensureExtraDetail(
+              pair: pair,
+              isStart: true,
+              action: 'checkin',
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+            );
+            await ensureExtraDetail(
+              pair: pair,
+              isStart: false,
+              action: 'checkout',
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+            );
+          }
+          maybeAdd(
+            eventType: 'checkIn',
+            detailId: pair.startDetailId,
+            initial: pair.initialStart,
+            updated: pair.start,
+            fallbackHms:
+                mintedFallbackHms['checkIn:${clockHms(pair.start)}'] ??
+                '00:00:00',
+            hadInitial: false,
+            force: true,
+          );
+          maybeAdd(
+            eventType: 'checkOut',
+            detailId: pair.endDetailId,
+            initial: pair.initialEnd,
+            updated: pair.end,
+            fallbackHms:
+                mintedFallbackHms['checkOut:${clockHms(pair.end)}'] ??
+                '00:03:00',
+            hadInitial: false,
+            force: true,
+          );
+        }
+      }
+
+      for (var i = 1; i < breakPairs.length; i++) {
+        final pair = breakPairs[i];
+        if (widget.applyImmediately) {
+          additionalManagerEvents.add(
+            _managerEvent('breakout', clockHms(pair.start), pair.startDetailId),
+          );
+          additionalManagerEvents.add(
+            _managerEvent('breakin', clockHms(pair.end), pair.endDetailId),
+          );
+          localRequests.add(
+            AttendanceEditRequest(
+              status: AttendanceEditRequestStatus.pending,
+              requestedAt: now,
+              originalTime: '--',
+              newTime: formatTime(pair.start),
+              eventType: 'breakStart',
+            ),
+          );
+          localRequests.add(
+            AttendanceEditRequest(
+              status: AttendanceEditRequestStatus.pending,
+              requestedAt: now,
+              originalTime: '--',
+              newTime: formatTime(pair.end),
+              eventType: 'breakEnd',
+            ),
+          );
+        } else {
+          if (!hasExtraPairs) {
+            await ensureExtraDetail(
+              pair: pair,
+              isStart: true,
+              action: 'breakout',
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+            );
+            await ensureExtraDetail(
+              pair: pair,
+              isStart: false,
+              action: 'breakin',
+              deviceDetails: deviceDetails,
+              lat: gps.lat,
+              lon: gps.lon,
+            );
+          }
+          maybeAdd(
+            eventType: 'breakStart',
+            detailId: pair.startDetailId,
+            initial: pair.initialStart,
+            updated: pair.start,
+            fallbackHms:
+                mintedFallbackHms['breakStart:${clockHms(pair.start)}'] ??
+                '00:01:00',
+            hadInitial: false,
+            force: true,
+            allowWithoutDetailId: true,
+          );
+          maybeAdd(
+            eventType: 'breakEnd',
+            detailId: pair.endDetailId,
+            initial: pair.initialEnd,
+            updated: pair.end,
+            fallbackHms:
+                mintedFallbackHms['breakEnd:${clockHms(pair.end)}'] ??
+                '00:02:00',
+            hadInitial: false,
+            force: true,
+            allowWithoutDetailId: true,
+          );
+        }
+      }
+
       String clock(TimeOfDay t) =>
           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
 
       String? clockIf(TimeOfDay time, {required bool include}) =>
           include ? clock(time) : null;
 
-      final checkInDirty = _timeChanged(widget.initialCheckIn, checkIn);
-      final checkOutDirty = _timeChanged(widget.initialCheckOut, checkOut);
-      final breakStartDirty = _timeChanged(
-        widget.initialBreakStart,
-        breakStart,
-      );
-      final breakEndDirty = _timeChanged(widget.initialBreakEnd, breakEnd);
+      final checkInDirty = _timeChanged(primary.initialStart, primary.start);
+      final checkOutDirty = _timeChanged(primary.initialEnd, primary.end);
+      final breakStartDirty =
+          hasBreakSection &&
+          _timeChanged(primaryBreak.initialStart, primaryBreak.start);
+      final breakEndDirty =
+          hasBreakSection &&
+          _timeChanged(primaryBreak.initialEnd, primaryBreak.end);
 
-      // New attendance always sends in/out. Edits preserve existing punches
-      // and only include times the user actually changed.
       final sendCheckIn =
-          widget.isCreating || widget.hadInitialCheckIn || checkInDirty;
+          widget.isCreating || primary.hadInitialStart || checkInDirty;
       final sendCheckOut =
-          widget.isCreating || widget.hadInitialCheckOut || checkOutDirty;
-      final sendBreakStart = widget.hadInitialBreakStart || breakStartDirty;
-      final sendBreakEnd = widget.hadInitialBreakEnd || breakEndDirty;
+          widget.isCreating || primary.hadInitialEnd || checkOutDirty;
+      final sendBreakStart =
+          hasBreakSection && (primaryBreak.hadInitialStart || breakStartDirty);
+      final sendBreakEnd =
+          hasBreakSection && (primaryBreak.hadInitialEnd || breakEndDirty);
 
       debugPrint(
         '[ManagerAttendance] handleSave userId=${widget.employeeUserId} '
         'attendanceId=$attendanceId day=${widget.day} '
         'dirty in=$checkInDirty out=$checkOutDirty '
         'break=$breakStartDirty/$breakEndDirty '
-        'send in=$sendCheckIn(${checkIn.hour}:${checkIn.minute}) '
-        'out=$sendCheckOut(${checkOut.hour}:${checkOut.minute})',
+        'extras work=${workPairs.length} break=${breakPairs.length} '
+        'send in=$sendCheckIn(${primary.start.hour}:${primary.start.minute}) '
+        'out=$sendCheckOut(${primary.end.hour}:${primary.end.minute})',
       );
 
-      final validPayloads = [
+      // Submit in chronological sequence so portal pending rows match the
+      // employee's event order (9:00 → … → 6:00).
+      int payloadMinutes(AttendanceChangeRequestPayload p) {
+        final parts = p.newValue.split(':');
+        if (parts.length < 2) return 0;
+        final h = int.tryParse(parts[0]) ?? 0;
+        final m = int.tryParse(parts[1]) ?? 0;
+        return h * 60 + m;
+      }
+
+      int payloadTypeOrder(AttendanceChangeRequestPayload p) {
+        switch (p.type?.toLowerCase()) {
+          case 'check out':
+          case 'checkout':
+            return 0;
+          case 'check in':
+          case 'checkin':
+            return 1;
+          case 'break out':
+          case 'breakout':
+            return 2;
+          case 'break in':
+          case 'breakin':
+            return 3;
+          default:
+            return 4;
+        }
+      }
+
+      final validPayloads =
+          [
+            for (final payload in payloads)
+              if (payload.hasDetailId) payload,
+          ]..sort((a, b) {
+            final byTime = payloadMinutes(a).compareTo(payloadMinutes(b));
+            if (byTime != 0) return byTime;
+            return payloadTypeOrder(a).compareTo(payloadTypeOrder(b));
+          });
+
+      // Orphan break rows (no detail id) still go in change_requests.
+      final submitPayloads = [
+        ...validPayloads,
         for (final payload in payloads)
-          if (payload.hasDetailId) payload,
+          if (!payload.hasDetailId) payload,
       ];
 
+      localRequests.sort((a, b) {
+        final aTime =
+            AttendanceEditRequest.parseClockTime(a.newTime, date: widget.day) ??
+            a.requestedAt;
+        final bTime =
+            AttendanceEditRequest.parseClockTime(b.newTime, date: widget.day) ??
+            b.requestedAt;
+        final byTime = aTime.compareTo(bTime);
+        if (byTime != 0) return byTime;
+        return (a.eventType ?? '').compareTo(b.eventType ?? '');
+      });
+
+      _logAttendanceRequestRed(
+        day: widget.day,
+        attendanceId: attendanceId,
+        workPairs: workPairs,
+        breakPairs: breakPairs,
+        payloads: payloads,
+        validPayloads: submitPayloads,
+        localRequests: localRequests,
+      );
+
       if (!widget.applyImmediately &&
-          (attendanceId == null || validPayloads.isEmpty)) {
+          (attendanceId == null ||
+              (validPayloads.isEmpty &&
+                  submitPayloads.isEmpty &&
+                  !hasExtraPairs))) {
+        if (!mounted) return;
+        ToastHelper.attendanceRequestSent(
+          context,
+          ok: false,
+          message:
+              'Could not submit this attendance request. Please try again.',
+        );
+        setState(() => _isSaving = false);
+        return;
+      }
+
+      if (!widget.applyImmediately &&
+          attendanceId == null &&
+          validPayloads.isEmpty &&
+          submitPayloads.isEmpty) {
         if (!mounted) return;
         ToastHelper.attendanceRequestSent(
           context,
@@ -746,14 +1776,15 @@ class _AttendanceContentState extends State<_AttendanceContent>
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
-              checkIn: clockIf(checkIn, include: sendCheckIn),
-              checkOut: clockIf(checkOut, include: sendCheckOut),
-              breakStart: clockIf(breakStart, include: sendBreakStart),
-              breakEnd: clockIf(breakEnd, include: sendBreakEnd),
+              checkIn: clockIf(primary.start, include: sendCheckIn),
+              checkOut: clockIf(primary.end, include: sendCheckOut),
+              breakStart: clockIf(primaryBreak.start, include: sendBreakStart),
+              breakEnd: clockIf(primaryBreak.end, include: sendBreakEnd),
               checkInDetailId: checkInId,
               checkOutDetailId: checkOutId,
               breakStartDetailId: breakStartId,
               breakEndDetailId: breakEndId,
+              additionalEvents: additionalManagerEvents,
               changes: payloads,
             )
           : await attendanceService.submitAttendanceChangeRequests(
@@ -761,7 +1792,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
-              changes: validPayloads,
+              changes: submitPayloads,
               date: _yyyyMMdd(widget.day),
               // Request only — punch fields would write the times onto the
               // day before a manager approves.
@@ -785,14 +1816,14 @@ class _AttendanceContentState extends State<_AttendanceContent>
                   status: AttendanceEditRequestStatus.pending,
                   requestedAt: now,
                   originalTime: '--',
-                  newTime: formatTime(checkIn),
+                  newTime: formatTime(primary.start),
                   eventType: 'checkIn',
                 ),
                 AttendanceEditRequest(
                   status: AttendanceEditRequestStatus.pending,
                   requestedAt: now,
                   originalTime: '--',
-                  newTime: formatTime(checkOut),
+                  newTime: formatTime(primary.end),
                   eventType: 'checkOut',
                 ),
               ];
@@ -806,10 +1837,10 @@ class _AttendanceContentState extends State<_AttendanceContent>
 
       if (success) {
         final saved = AddAttendanceSaveResult(
-          checkIn: (checkInDirty || widget.isCreating) ? checkIn : null,
-          checkOut: (checkOutDirty || widget.isCreating) ? checkOut : null,
-          breakStart: breakStartDirty ? breakStart : null,
-          breakEnd: breakEndDirty ? breakEnd : null,
+          checkIn: (checkInDirty || widget.isCreating) ? primary.start : null,
+          checkOut: (checkOutDirty || widget.isCreating) ? primary.end : null,
+          breakStart: breakStartDirty ? primaryBreak.start : null,
+          breakEnd: breakEndDirty ? primaryBreak.end : null,
         );
         if (widget.applyImmediately) {
           ToastHelper.changesSaved(context);
@@ -867,7 +1898,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
       safeHeight = (h == null || !h.isFinite) ? 200 : h + 60;
     }
     return Container(
-      key: _itemKeys[fieldKey],
+      key: _keyFor(fieldKey),
       child: Column(
         children: [
           GestureDetector(
@@ -1069,6 +2100,123 @@ class _AttendanceContentState extends State<_AttendanceContent>
     );
   }
 
+  Widget _pairCard({
+    required _PunchPair pair,
+    required String kind,
+    required String startTitle,
+    required String endTitle,
+    required Color startColor,
+    required Color endColor,
+  }) {
+    final startKey = _fieldKey(kind, 'start', pair.id);
+    final endKey = _fieldKey(kind, 'end', pair.id);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: Column(
+        children: [
+          timelineItem(
+            title: startTitle,
+            value: formatTime(pair.start),
+            fieldKey: startKey,
+            valueColor: startColor,
+            onTap: () => openPicker(startKey),
+          ),
+          timelineItem(
+            title: endTitle,
+            value: formatTime(pair.end),
+            fieldKey: endKey,
+            isLast: true,
+            valueColor: endColor,
+            onTap: () => openPicker(endKey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pillButton({
+    required String label,
+    required String iconPath,
+    required VoidCallback onTap,
+    bool showIcon = true,
+  }) {
+    return ButtonAnimations.press(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: kBorderColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showIcon) ...[
+              CommonImageView(imagePath: iconPath, height: 16),
+              const SizedBox(width: 6),
+            ],
+            AppText.p2(label, weight: FontWeight.w500, color: kSubText),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyBoard({
+    required String label,
+    required VoidCallback onTap,
+    String? iconPath,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: Center(
+        child: _pillButton(
+          label: label,
+          iconPath: iconPath ?? Assets.imagesClockGrey,
+          showIcon: iconPath != null,
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
+
+  Widget _removeIconButton(VoidCallback onTap) {
+    return ButtonAnimations.press(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: CommonImageView(imagePath: Assets.TrashBin, height: 28),
+      ),
+    );
+  }
+
+  Widget _pairActionsRow({
+    Widget? leading,
+    bool showRemove = false,
+    VoidCallback? onRemove,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (leading != null) leading,
+        const Spacer(),
+        if (showRemove && onRemove != null) _removeIconButton(onRemove),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1083,7 +2231,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1099,54 +2247,52 @@ class _AttendanceContentState extends State<_AttendanceContent>
             ],
           ),
         ),
+        const SizedBox(height: 20),
+
+        Row(
+          spacing: 5,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, right: 6),
+              child: CommonImageView(
+                imagePath: Assets.navigationActiveClockIcon,
+                height: 20,
+              ),
+            ),
+            AppText.h5('Check In'),
+          ],
+        ),
         const SizedBox(height: 10),
 
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kBorderColor),
+        if (workPairs.isEmpty)
+          _emptyBoard(label: 'Add Check and out Time', onTap: _addWorkPair)
+        else ...[
+          for (var i = 0; i < workPairs.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _pairCard(
+              pair: workPairs[i],
+              kind: 'work',
+              startTitle: 'Check-in',
+              endTitle: 'Check-out',
+              startColor: Colors.green,
+              endColor: Colors.red,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _pairActionsRow(
+            leading: _pillButton(
+              label: 'Add more',
+              iconPath: Assets.imagesClockGrey,
+              onTap: _addWorkPair,
+            ),
+            // Only the latest newly added check-in card shows remove.
+            showRemove: workPairs.last.isExtra,
+            onRemove: () => _removeWorkPair(workPairs.last.id),
           ),
-          child: Column(
-            children: [
-              timelineItem(
-                title: "Check-in",
-                value: formatTime(checkIn),
-                fieldKey: "checkin",
-                valueColor: Colors.green,
-                onTap: () => openPicker("checkin"),
-              ),
-              timelineItem(
-                title: "Check-out",
-                value: formatTime(checkOut),
-                fieldKey: "checkout",
-                isLast: true,
-                valueColor: Colors.red,
-                onTap: () => openPicker("checkout"),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: kbackground,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              AppText.p2("Working hours", weight: FontWeight.w400),
-              AppText.p2(
-                _calculateWorkingHours(), // ✅ FIX
-                weight: FontWeight.w400,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
+        ],
+
+        const SizedBox(height: 30),
         Row(
           spacing: 5,
           children: [
@@ -1161,34 +2307,51 @@ class _AttendanceContentState extends State<_AttendanceContent>
           ],
         ),
         const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kBorderColor),
-          ),
-          child: Column(
+
+        if (breakPairs.isEmpty)
+          _emptyBoard(
+            label: 'Add break Time',
+            iconPath: Assets.imagesMugHot,
+            onTap: _addBreakPair,
+          )
+        else ...[
+          for (var i = 0; i < breakPairs.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _pairCard(
+              pair: breakPairs[i],
+              kind: 'break',
+              startTitle: 'Break start',
+              endTitle: 'Break end',
+              startColor: kYellowColor,
+              endColor: kYellowColor,
+            ),
+            const SizedBox(height: 8),
+            _pairActionsRow(
+              leading: i == breakPairs.length - 1
+                  ? _pillButton(
+                      label: 'Add break',
+                      iconPath: Assets.imagesMugHot,
+                      onTap: _addBreakPair,
+                    )
+                  : null,
+              // Existing breaks stay removable; extras too.
+              showRemove: true,
+              onRemove: () => _removeBreakPair(breakPairs[i].id),
+            ),
+          ],
+        ],
+
+        if (workPairs.isNotEmpty) ...[
+          const SizedBox(height: 30),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              timelineItem(
-                title: "Break start",
-                value: formatTime(breakStart),
-                fieldKey: "breakstart",
-                valueColor: kYellowColor,
-                onTap: () => openPicker("breakstart"),
-              ),
-              timelineItem(
-                title: "Break end",
-                value: formatTime(breakEnd),
-                fieldKey: "breakend",
-                isLast: true,
-                valueColor: kBlack,
-                onTap: () => openPicker("breakend"),
-              ),
+              AppText.p2('Total hours', weight: FontWeight.w400),
+              AppText.p2(_calculateTotalHours(), weight: FontWeight.w600),
             ],
           ),
-        ),
-        const SizedBox(height: 30),
+        ],
+        const SizedBox(height: 16),
       ],
     );
   }

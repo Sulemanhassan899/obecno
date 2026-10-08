@@ -17,7 +17,8 @@ void main() {
     for (final type in ReminderType.values)
       type:
           type != ReminderType.enterLocation &&
-          type != ReminderType.leaveLocation,
+          type != ReminderType.leaveLocation &&
+          type != ReminderType.smartAttendance,
   };
 
   List<ScheduledReminderNotification> plan({

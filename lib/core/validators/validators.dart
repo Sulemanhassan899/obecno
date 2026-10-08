@@ -27,6 +27,27 @@ class Validators {
     return null;
   }
 
+  /// Phone digits only (country code is selected separately).
+  static String? phoneNumber(
+    String? value, {
+    int minLength = 9,
+    int maxLength = 15,
+  }) {
+    if (value == null || value.trim().isEmpty) return 'Phone is required.';
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < minLength || digits.length > maxLength) {
+      return 'Enter a valid phone number.';
+    }
+    return null;
+  }
+
+  static String? selection(String? value, {String label = 'This field'}) {
+    if (value == null || value.trim().isEmpty) {
+      return '$label is required.';
+    }
+    return null;
+  }
+
   /// Requires min length, upper, lower, digit, and a symbol.
   static String? password(String? value, {int minLength = 8}) {
     if (value == null || value.isEmpty) return 'Password is required.';

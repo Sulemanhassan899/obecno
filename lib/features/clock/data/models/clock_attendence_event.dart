@@ -89,27 +89,9 @@ class AttendanceEvent {
     List<AttendanceEditRequest> a,
     List<AttendanceEditRequest> b,
   ) {
-    if (a.isEmpty) return List.of(b);
-    if (b.isEmpty) return List.of(a);
-    final out = <AttendanceEditRequest>[];
-    final keys = <String>{};
-    void addAll(List<AttendanceEditRequest> list) {
-      for (final request in list) {
-        final key =
-            '${request.status.name}|${request.originalTime}|${request.newTime}';
-        if (!keys.add(key)) continue;
-        out.add(request);
-      }
-    }
-
-    addAll(a);
-    addAll(b);
-    out.sort((left, right) {
-      final leftAt = left.actionedAt ?? left.requestedAt;
-      final rightAt = right.actionedAt ?? right.requestedAt;
-      return rightAt.compareTo(leftAt);
-    });
-    return out;
+    if (a.isEmpty) return AttendanceEditRequest.dedupe(b);
+    if (b.isEmpty) return AttendanceEditRequest.dedupe(a);
+    return AttendanceEditRequest.dedupe([...a, ...b]);
   }
 
   /// Prefer the server / approved version of a matched punch.

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
@@ -23,9 +25,13 @@ class ManagerEmployeesRepository extends BaseRepository {
     String? search,
     String? locationId,
     String? departmentId,
+    int page = 1,
+    int pageSize = 200,
     ApiCancelToken? cancelToken,
   }) {
     final query = <String, dynamic>{
+      'page': page,
+      'page_size': pageSize,
       if (search != null && search.isNotEmpty) 'search': search,
       if (locationId != null && locationId.isNotEmpty && locationId != 'all')
         'location_id': locationId,
@@ -35,7 +41,7 @@ class ManagerEmployeesRepository extends BaseRepository {
 
     return getRequest<ManagerTeamMembersData>(
       ManagerEmployeeApiEndpoints.teamMembers,
-      queryParameters: query.isEmpty ? null : query,
+      queryParameters: query,
       cancelToken: cancelToken,
       parser: (json) {
         final data = _extractData(
@@ -59,9 +65,13 @@ class ManagerEmployeesRepository extends BaseRepository {
   Future<ApiResponse<ManagerTeamMembersData>> getEmployees({
     String? search,
     String? locationId,
+    int page = 1,
+    int pageSize = 200,
     ApiCancelToken? cancelToken,
   }) {
     final query = <String, dynamic>{
+      'page': page,
+      'page_size': pageSize,
       if (search != null && search.isNotEmpty) 'q': search,
       if (search != null && search.isNotEmpty) 'search': search,
       if (locationId != null && locationId.isNotEmpty && locationId != 'all')
@@ -70,7 +80,7 @@ class ManagerEmployeesRepository extends BaseRepository {
 
     return getRequest<ManagerTeamMembersData>(
       ManagerEmployeeApiEndpoints.employees,
-      queryParameters: query.isEmpty ? null : query,
+      queryParameters: query,
       cancelToken: cancelToken,
       parser: (json) {
         final data = _extractData(
@@ -620,15 +630,24 @@ class ManagerEmployeesRepository extends BaseRepository {
     required List<String> locationIds,
     ApiCancelToken? cancelToken,
   }) async {
-    final ids = locationIds.isEmpty ? [defaultLocationId] : locationIds;
+    final cleaned = <String>[
+      for (final id in locationIds)
+        if (id.trim().isNotEmpty) id.trim(),
+    ];
+    final defaultId = defaultLocationId.trim();
+    // Preserve "default-only" writes; allow a true empty list when clearing
+    // the last assigned office after a location is deactivated.
+    final ids = cleaned.isNotEmpty
+        ? cleaned
+        : (defaultId.isNotEmpty ? [defaultId] : const <String>[]);
     final body = <String, dynamic>{
       'user_id': userId,
-      'default_location_id': defaultLocationId,
-      'location_id': defaultLocationId,
+      'default_location_id': defaultId,
+      'location_id': defaultId,
       'location_ids': ids,
       'locations': [
         for (final id in ids)
-          {'id': id, 'is_default': id.trim() == defaultLocationId.trim()},
+          {'id': id, 'is_default': id.trim() == defaultId},
       ],
     };
     var write = await _mutate(
@@ -681,29 +700,152 @@ class ManagerEmployeesRepository extends BaseRepository {
     );
   }
 
+  /// GET `/manager/employees/{id}/schedule` (manager API §5.4).
+  Future<ApiResponse<LocationSchedule>> getEmployeeScheduleEndpoint({
+    required int userId,
+    ApiCancelToken? cancelToken,
+  }) {
+    return getRequest<LocationSchedule>(
+      ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+      cancelToken: cancelToken,
+      parser: (json) {
+        final parsed =
+            LocationSchedule.tryParse(json) ??
+            LocationSchedule.tryParse(
+              _extractData(
+                json,
+                fallbackKeys: const [
+                  'schedule',
+                  'attendance',
+                  'working_days',
+                  'check_in',
+                ],
+              ),
+            );
+        if (parsed == null) {
+          throw const FormatException('Employee schedule was empty.');
+        }
+        return parsed;
+      },
+    );
+  }
+
   Future<ApiResponse<String>> updateEmployeeSchedule({
     required int userId,
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
   }) async {
-    final body = {'user_id': userId, ...payload};
-    var write = await _mutate(
-      path: ManagerEmployeeApiEndpoints.employee(userId),
-      payload: body,
-      cancelToken: cancelToken,
-      methods: const ['PUT', 'PATCH', 'POST'],
-      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeeUpdate,
-      fallbackQuery: {'user_id': userId},
-    );
-    if (_isHttpOk(write)) return write;
+    final nested = _asStringKeyedMap(payload['schedule']);
+    final flat = <String, dynamic>{
+      ...payload,
+      if (nested.isNotEmpty) ...nested,
+    };
+    flat.remove('schedule');
+    // Prefer the documented §5.4 shape (lowercase day names list).
+    final clean = <String, dynamic>{
+      'user_id': userId,
+      if (flat['working_days'] != null) 'working_days': flat['working_days'],
+      if (flat['week_start_day'] != null)
+        'week_start_day': flat['week_start_day'],
+      if (flat['hours_per_day'] != null) 'hours_per_day': flat['hours_per_day'],
+      if (flat['hours_per_week'] != null)
+        'hours_per_week': flat['hours_per_week'],
+      if (flat['working_week_enabled'] != null)
+        'working_week_enabled': flat['working_week_enabled'],
+      if (flat['check_in'] != null) 'check_in': flat['check_in'],
+      if (flat['check_out'] != null) 'check_out': flat['check_out'],
+      if (flat['grace_minutes'] != null) 'grace_minutes': flat['grace_minutes'],
+      if (flat['max_break_minutes'] != null)
+        'max_break_minutes': flat['max_break_minutes'],
+      if (flat['break_location_tracking'] != null)
+        'break_location_tracking': flat['break_location_tracking'],
+    };
+    final wrapped = {
+      ...clean,
+      'schedule': Map<String, dynamic>.from(clean)..remove('user_id'),
+    };
+    final attempts = <({String label, String path, Map<String, dynamic> body})>[
+      (
+        label: '/schedule/working-days clean',
+        path: ManagerEmployeeApiEndpoints.employeeWorkingDays(userId),
+        body: clean,
+      ),
+      (
+        label: '/schedule/working-days wrapped',
+        path: ManagerEmployeeApiEndpoints.employeeWorkingDays(userId),
+        body: wrapped,
+      ),
+      (
+        label: '/schedule clean',
+        path: ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+        body: clean,
+      ),
+      (
+        label: '/schedule wrapped',
+        path: ManagerEmployeeApiEndpoints.employeeSchedule(userId),
+        body: wrapped,
+      ),
+      (
+        label: 'employee profile schedule',
+        path: ManagerEmployeeApiEndpoints.employee(userId),
+        body: wrapped,
+      ),
+    ];
 
-    return _mutate(
-      path: ManagerEmployeeApiEndpoints.employeePermissions(userId),
-      payload: body,
-      cancelToken: cancelToken,
-      methods: const ['PATCH', 'PUT', 'POST'],
-      fallbackPath: ManagerEmployeeApiEndpoints.legacyEmployeePermissions,
-      fallbackQuery: {'user_id': userId},
+    ApiResponse<String>? last;
+    for (final attempt in attempts) {
+      last = await _mutate(
+        path: attempt.path,
+        payload: attempt.body,
+        cancelToken: cancelToken,
+        methods: const ['PUT', 'PATCH', 'POST'],
+        fallbackPath: attempt.label == 'employee profile schedule'
+            ? ManagerEmployeeApiEndpoints.legacyEmployeeUpdate
+            : null,
+        fallbackQuery: attempt.label == 'employee profile schedule'
+            ? {'user_id': userId}
+            : null,
+      );
+      debugPrint(
+        '[EmployeeSchedule] ${attempt.label} '
+        'code=${last.statusCode} ok=${_isHttpOk(last)} '
+        'days=${attempt.body['working_days']}',
+      );
+      if (!_isHttpOk(last)) {
+        // Keep scanning alternate paths on 404/405; stop on hard client errors.
+        if (_isClientError(last) &&
+            last.statusCode != 404 &&
+            last.statusCode != 405) {
+          return last;
+        }
+        continue;
+      }
+
+      // Profile PUT often returns "Employee updated successfully" while
+      // ignoring schedule.working_days — confirm via re-GET before claiming ok.
+      final wantedDays = attempt.body['working_days'];
+      if (wantedDays != null) {
+        final matched = await _employeeWorkingDaysMatch(
+          userId: userId,
+          wanted: wantedDays,
+          cancelToken: cancelToken,
+        );
+        debugPrint(
+          '[EmployeeSchedule] ${attempt.label} verify matched=$matched',
+        );
+        if (matched) return last;
+        continue;
+      }
+      return last;
+    }
+
+    debugPrint(
+      '[EmployeeSchedule] all schedule paths failed; last='
+      '${last?.statusCode} ${last?.message}',
+    );
+    return ApiResponse.failure(
+      'Working days did not persist on the server.',
+      statusCode: last?.statusCode,
     );
   }
 
@@ -817,26 +959,433 @@ class ManagerEmployeesRepository extends BaseRepository {
     required Map<String, dynamic> payload,
     ApiCancelToken? cancelToken,
   }) async {
-    final body = {'user_id': userId, ...payload};
-    final path = ManagerEmployeeApiEndpoints.employeePermissions(userId);
+    final existing = await getEmployeePermissions(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final items = existing.data ?? const <PermissionItemModel>[];
+    final setting = _asStringKeyedMap(payload['employee_setting']);
+    final section = (payload['section'] ??
+            payload['permission_section'] ??
+            'attendance')
+        .toString();
 
+    // Portal web field endpoint is only for the location-style working_days
+    // section. Employee manager API uses attendance.working_days via PUT/PATCH.
+    final portalField = payload['field']?.toString();
+    final portalValue = payload['value'];
+    final isWorkingDaysField = portalField == 'working_days' &&
+        portalValue != null &&
+        (section == 'working_days' || section == 'attendance');
+    if (isWorkingDaysField && section == 'working_days') {
+      final fieldWrite = await _postEmployeeWorkingDaysField(
+        userId: userId,
+        value: portalValue,
+        cancelToken: cancelToken,
+      );
+      if (_isHttpOk(fieldWrite)) {
+        final verifiedOk = await _employeeWorkingDaysMatch(
+          userId: userId,
+          wanted: portalValue,
+          cancelToken: cancelToken,
+        );
+        debugPrint(
+          '[EmployeePermissions] field-endpoint verify matched=$verifiedOk',
+        );
+        if (verifiedOk) return fieldWrite;
+      }
+    }
+
+    final writeFieldRaw = payload['write_fields'];
+    final writeFields = <String>{
+      if (writeFieldRaw is List)
+        for (final item in writeFieldRaw)
+          if (item != null && item.toString().trim().isNotEmpty)
+            item.toString().trim(),
+    };
+
+    final entries = setting.isNotEmpty
+        ? [
+            for (final entry in setting.entries)
+              if (writeFields.isEmpty ||
+                  writeFields.contains(entry.key.toString()))
+                MapEntry(entry.key.toString(), entry.value),
+          ]
+        : [
+            MapEntry(
+              (payload['field'] ?? 'check_in_time').toString(),
+              payload['value'],
+            ),
+          ];
+    if (entries.isEmpty) {
+      return ApiResponse.failure('Failed to save permissions.');
+    }
+
+    ApiResponse<String>? last;
+    for (final entry in entries) {
+      final fieldKey = entry.key;
+      final fieldHasEmployee = items.any(
+        (item) =>
+            item.hasEmployeeLevel &&
+            item.key.trim().toLowerCase() == fieldKey.trim().toLowerCase(),
+      );
+      final forcedMethod = payload['force_method']?.toString().trim().toUpperCase();
+      // PUT creates a new employee override for this field; PATCH updates an
+      // existing one. Do not use sectionHasEmployee — that blocked first-time
+      // working_days overrides when check_in already had an employee value.
+      final method = (forcedMethod == 'PUT' || forcedMethod == 'PATCH')
+          ? forcedMethod!
+          : PermissionItemModel.writeMethod(
+              hasEmployeeLevel: fieldHasEmployee,
+            );
+      // Section-style writes (write_fields) always send the full setting bag.
+      // First override (PUT) also needs the full bag for single-field creates.
+      final employeeSetting =
+          setting.isNotEmpty && (method == 'PUT' || writeFields.isNotEmpty)
+          ? setting
+          : <String, dynamic>{fieldKey: entry.value};
+      final fieldValue =
+          payload['field']?.toString() == fieldKey && payload['value'] != null
+          ? payload['value']
+          : entry.value;
+      debugPrint(
+        '[EmployeePermissions] $method '
+        'section=$section field=$fieldKey value=$fieldValue '
+        'fieldHasEmployee=$fieldHasEmployee',
+      );
+      last = await _sendEmployeePermissionWrite(
+        userId: userId,
+        method: method,
+        body: {
+          'user_id': userId,
+          'field': fieldKey,
+          'value': fieldValue,
+          'section': section,
+          'permission_section': section,
+          'import_company_settings':
+              payload['import_company_settings'] ?? false,
+          'is_override': payload['is_override'] ?? true,
+          'source_level': payload['source_level'] ?? 'employee',
+          'employee_setting': employeeSetting,
+          if (payload[section] != null) section: payload[section],
+          'settings':
+              payload['settings'] ??
+              {
+                section: employeeSetting,
+              },
+          'permissions':
+              payload['permissions'] ??
+              {
+                section: employeeSetting,
+              },
+        },
+        alsoLegacyPost: payload['also_legacy_post'] == true,
+        cancelToken: cancelToken,
+      );
+      debugPrint(
+        '[EmployeePermissions] <- ${last.statusCode} '
+        'ok=${_isHttpOk(last)} message=${last.message}',
+      );
+      if (!_isHttpOk(last)) return last;
+
+      // Working days PUT/PATCH often returns 200 without creating an employee
+      // override — only treat as success when a re-GET matches.
+      if (isWorkingDaysField && fieldKey == 'working_days') {
+        final matched = await _employeeWorkingDaysMatch(
+          userId: userId,
+          wanted: fieldValue,
+          cancelToken: cancelToken,
+        );
+        debugPrint(
+          '[EmployeePermissions] working_days PUT/PATCH verify matched=$matched',
+        );
+        if (matched) return last;
+        // Keep scanning alternate entries; don't claim success yet.
+        continue;
+      }
+    }
+    if (isWorkingDaysField) {
+      return ApiResponse.failure(
+        'Working days did not persist on the server.',
+        statusCode: last?.statusCode,
+      );
+    }
+    return last ?? ApiResponse.failure('Failed to save permissions.');
+  }
+
+  Future<bool> _employeeWorkingDaysMatch({
+    required int userId,
+    required Object? wanted,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final verify = await getEmployeePermissions(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final items = verify.data ?? const <PermissionItemModel>[];
+    final expected = LocationSchedule.fromJson({'working_days': wanted});
+
+    // Prefer an employee-level working_days override from the permissions GET.
+    for (final item in items) {
+      if (item.key.trim().toLowerCase() != 'working_days') continue;
+      if (!item.hasEmployeeLevel) continue;
+      final raw = item.employeeValue ?? item.value;
+      final actual = LocationSchedule.fromJson({'working_days': raw});
+      final same = actual.workingDays.length == expected.workingDays.length &&
+          actual.workingDays.every(expected.workingDays.contains);
+      debugPrint(
+        '[EmployeePermissions] days verify employee_value=$raw '
+        'wanted=${expected.workingDays} same=$same source=${item.sourceLevel}',
+      );
+      return same;
+    }
+
+    final schedule = await getEmployeeScheduleEndpoint(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final profile = await getEmployeeProfile(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
+    final merged = LocationSchedule.fromEmployeeSources(
+      schedule: (schedule.success &&
+              schedule.data != null &&
+              schedule.statusCode != 404)
+          ? schedule.data!.toJson()
+          : profile.data?.schedule,
+      permissionItems: items,
+    );
+    final same = merged.workingDays.length == expected.workingDays.length &&
+        merged.workingDays.every(expected.workingDays.contains);
+    debugPrint(
+      '[EmployeePermissions] days verify merged=${merged.workingDays} '
+      'wanted=${expected.workingDays} same=$same '
+      'employeeOwnsWorkingDays=false',
+    );
+    return same;
+  }
+
+  /// Portal Working days save — try every known field-endpoint URL/shape.
+  Future<ApiResponse<String>> _postEmployeeWorkingDaysField({
+    required int userId,
+    required Object value,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final codes = <String>[];
+    if (value is List) {
+      for (final item in value) {
+        final text = item?.toString().trim() ?? '';
+        if (text.isNotEmpty) codes.add(text);
+      }
+    } else {
+      final raw = value.toString().trim();
+      if (raw.startsWith('[')) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            for (final item in decoded) {
+              final text = item?.toString().trim() ?? '';
+              if (text.isNotEmpty) codes.add(text);
+            }
+          }
+        } catch (_) {
+          // fall through to CSV split
+        }
+      }
+      if (codes.isEmpty) {
+        for (final part in raw.split(RegExp(r'[,|]'))) {
+          final text = part.trim();
+          if (text.isNotEmpty) codes.add(text);
+        }
+      }
+    }
+    if (codes.isEmpty) {
+      return ApiResponse.failure('No working days selected.');
+    }
+
+    final jsonString = jsonEncode(codes);
+    final csv = codes.join(',');
+    final valueVariants = <Object>[jsonString, codes, csv];
+    final attempts = <({String path, Map<String, dynamic>? query})>[
+      (
+        path: ManagerEmployeeApiEndpoints.postEmployeePermissionFieldCollection.path,
+        query: {'id': userId, 'user_id': userId},
+      ),
+      (
+        path: ManagerEmployeeApiEndpoints.postEmployeePermissionField(userId).path,
+        query: {'id': userId, 'user_id': userId},
+      ),
+      (
+        path: ManagerEmployeeApiEndpoints.postLegacyEmployeePermissionField.path,
+        query: {'id': userId, 'user_id': userId},
+      ),
+    ];
+
+    String parseFieldAck(dynamic json) {
+      if (json == null) return 'ok';
+      if (json is String && json.trim().isNotEmpty) {
+        final text = json.trim();
+        if (text.startsWith('<')) {
+          throw const ApiError(
+            type: ApiErrorType.server,
+            message: 'Failed to save working days.',
+          );
+        }
+        return text;
+      }
+      if (json is Map) {
+        if (json['success'] == false) {
+          throw ApiError(
+            type: ApiErrorType.validation,
+            message: (json['message'] as String?) ??
+                'Failed to save working days.',
+            statusCode: 422,
+          );
+        }
+        final message = json['message'] ?? json['data'] ?? json['status'];
+        if (message != null && message.toString().trim().isNotEmpty) {
+          return message.toString();
+        }
+      }
+      return 'ok';
+    }
+
+    ApiResponse<String>? last;
+    for (final attempt in attempts) {
+      final pathWithId = attempt.query == null || attempt.query!.isEmpty
+          ? attempt.path
+          : '${attempt.path}?${attempt.query!.entries.map((e) => '${e.key}=${e.value}').join('&')}';
+      // Portal web form posts multipart/form-data (not JSON).
+      for (final formValue in <String>[jsonString, csv]) {
+        final formFields = <String, String>{
+          'id': '$userId',
+          'user_id': '$userId',
+          'field': 'working_days',
+          'value': formValue,
+          'section': 'working_days',
+          'permission_section': 'working_days',
+          'is_override': '1',
+          'source_level': 'employee',
+        };
+        last = await multipartPostRequest<String>(
+          pathWithId,
+          fields: formFields,
+          cancelToken: cancelToken,
+          parser: parseFieldAck,
+        );
+        debugPrint(
+          '[EmployeePermissions] field-endpoint multipart '
+          '$pathWithId value=$formValue '
+          'code=${last.statusCode} ok=${_isHttpOk(last)} msg=${last.message}',
+        );
+        if (_isHttpOk(last)) return last;
+
+        // Some builds want `working_days[]=mon` style arrays.
+        final arrayFields = <String, String>{
+          'id': '$userId',
+          'user_id': '$userId',
+          'field': 'working_days',
+          'section': 'working_days',
+          'is_override': '1',
+          'source_level': 'employee',
+          'value': formValue,
+          for (var i = 0; i < codes.length; i++) 'working_days[$i]': codes[i],
+        };
+        last = await multipartPostRequest<String>(
+          pathWithId,
+          fields: arrayFields,
+          cancelToken: cancelToken,
+          parser: parseFieldAck,
+        );
+        debugPrint(
+          '[EmployeePermissions] field-endpoint multipart-array '
+          '$pathWithId codes=$codes '
+          'code=${last.statusCode} ok=${_isHttpOk(last)} msg=${last.message}',
+        );
+        if (_isHttpOk(last)) return last;
+      }
+
+      for (final variant in valueVariants) {
+        final body = <String, dynamic>{
+          'user_id': userId,
+          'id': userId,
+          'field': 'working_days',
+          'value': variant,
+          'section': 'working_days',
+          'permission_section': 'working_days',
+          'is_override': true,
+          'source_level': 'employee',
+          'employee_setting': {'working_days': codes},
+        };
+        last = await postRequest<String>(
+          attempt.path,
+          data: body,
+          queryParameters: attempt.query,
+          cancelToken: cancelToken,
+          parser: parseFieldAck,
+        );
+        debugPrint(
+          '[EmployeePermissions] field-endpoint json '
+          '${attempt.path} q=${attempt.query} value=$variant '
+          'code=${last.statusCode} ok=${_isHttpOk(last)} msg=${last.message}',
+        );
+        if (_isHttpOk(last)) return last;
+      }
+    }
+    return last ?? ApiResponse.failure('Failed to save working days.');
+  }
+
+  Future<ApiResponse<String>> _sendEmployeePermissionWrite({
+    required int userId,
+    required String method,
+    required Map<String, dynamic> body,
+    bool alsoLegacyPost = false,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final path = ManagerEmployeeApiEndpoints.employeePermissions(userId);
     var write = await _send(
-      method: 'PATCH',
+      method: method,
       path: path,
       payload: body,
       cancelToken: cancelToken,
     );
-    if (_isHttpOk(write) || _isClientError(write)) return write;
+    if (_isHttpOk(write) || _isClientError(write)) {
+      if (alsoLegacyPost && _isHttpOk(write)) {
+        final legacy = await postRequest<String>(
+          ManagerEmployeeApiEndpoints.legacyEmployeePermissionsUpdate,
+          data: body,
+          queryParameters: {'user_id': userId},
+          cancelToken: cancelToken,
+          parser: _parseWriteAck,
+        );
+        if (_isHttpOk(legacy)) return legacy;
+      }
+      return write;
+    }
 
+    final alternate = method.toUpperCase() == 'PUT' ? 'PATCH' : 'PUT';
     final status = write.statusCode;
     if (status == 404 || status == 405 || status == 501) {
       write = await _send(
-        method: 'PUT',
+        method: alternate,
         path: path,
         payload: body,
         cancelToken: cancelToken,
       );
-      if (_isHttpOk(write) || _isClientError(write)) return write;
+      if (_isHttpOk(write) || _isClientError(write)) {
+        if (alsoLegacyPost && _isHttpOk(write)) {
+          final legacy = await postRequest<String>(
+            ManagerEmployeeApiEndpoints.legacyEmployeePermissionsUpdate,
+            data: body,
+            queryParameters: {'user_id': userId},
+            cancelToken: cancelToken,
+            parser: _parseWriteAck,
+          );
+          if (_isHttpOk(legacy)) return legacy;
+        }
+        return write;
+      }
     }
 
     return postRequest<String>(
@@ -846,6 +1395,14 @@ class ManagerEmployeesRepository extends BaseRepository {
       cancelToken: cancelToken,
       parser: _parseWriteAck,
     );
+  }
+
+  Map<String, dynamic> _asStringKeyedMap(dynamic raw) {
+    if (raw is! Map) return const <String, dynamic>{};
+    return <String, dynamic>{
+      for (final entry in raw.entries)
+        if (entry.key != null) entry.key.toString(): entry.value,
+    };
   }
 
   Future<ApiResponse<ManagerEmployeeModel>> updateEmployeePhoto({

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
@@ -31,7 +32,17 @@ class ManagerLocationsRepository extends BaseRepository {
           fallbackKeys: const ['locations', 'offices'],
         );
         final raw = data['locations'] ?? data['offices'] ?? data['data'];
-        if (raw is List) return ManagerLocationModel.listFrom(raw);
+        if (raw is List) {
+          final parsed = ManagerLocationModel.listFrom(raw);
+          for (final location in parsed) {
+            debugPrint(
+              '[LocationStatus] list.item '
+              'id=${location.id} name=${location.name} '
+              'isActive=${location.isActive}',
+            );
+          }
+          return parsed;
+        }
         if (data.keys.any((k) => k == 'id' || k == 'name')) {
           return [ManagerLocationModel.fromJson(data)];
         }
@@ -482,32 +493,70 @@ class ManagerLocationsRepository extends BaseRepository {
     required Map<String, dynamic> payload,
     required LocationSchedule fallback,
     ApiCancelToken? cancelToken,
-  }) {
-    LocationSchedule parse(dynamic json) =>
-        _parseSchedule(json, fallback: fallback);
-
-    switch (route.method) {
-      case 'PUT':
-        return putRequest<LocationSchedule>(
-          route.path,
-          data: payload,
-          cancelToken: cancelToken,
-          parser: parse,
-        );
-      case 'PATCH':
-        return patchRequest<LocationSchedule>(
-          route.path,
-          data: payload,
-          cancelToken: cancelToken,
-          parser: parse,
-        );
-      default:
-        return Future.value(
-          ApiResponse.failure(
-            'Location permissions must be written with PUT or PATCH, not ${route.method}.',
-          ),
-        );
+  }) async {
+    // Do not fall back to the outbound payload — a bare 200 ack would look
+    // like the server stored working_days when it did not.
+    LocationSchedule parse(dynamic json) {
+      final parsed = _parseSchedule(json, fallback: LocationSchedule.defaults);
+      // If the response has no usable schedule keys, return defaults so the
+      // caller is forced to re-GET rather than trust the write body.
+      if (parsed == LocationSchedule.defaults ||
+          (parsed.workingDays.isEmpty &&
+              parsed.checkIn == LocationSchedule.defaults.checkIn)) {
+        final fromPerms = PermissionItemModel.listFromEnvelope(json);
+        if (fromPerms.isNotEmpty) {
+          return LocationSchedule.fromPermissionItems(
+            fromPerms,
+            locationOnly: true,
+            fallback: LocationSchedule.defaults,
+          );
+        }
+      }
+      return parsed;
     }
+
+    final ApiResponse<LocationSchedule> written;
+    if (route.method == 'PUT') {
+      written = await putRequest<LocationSchedule>(
+        route.path,
+        data: payload,
+        cancelToken: cancelToken,
+        parser: parse,
+      );
+    } else if (route.method == 'PATCH') {
+      written = await patchRequest<LocationSchedule>(
+        route.path,
+        data: payload,
+        cancelToken: cancelToken,
+        parser: parse,
+      );
+    } else if (route.method == 'POST') {
+      written = await postRequest<LocationSchedule>(
+        route.path,
+        data: payload,
+        cancelToken: cancelToken,
+        parser: parse,
+      );
+    } else {
+      return ApiResponse.failure(
+        'Location permissions must be written with PUT, PATCH, or POST, not ${route.method}.',
+      );
+    }
+    if (_isHttpOk(written) || !_canRetryWrite(written)) return written;
+
+    // Legacy fallback: POST /manager/location/permissions/update
+    final legacy = await postRequest<LocationSchedule>(
+      ManagerEmployeeApiEndpoints.postLegacyLocationPermissionsUpdate.path,
+      data: payload,
+      cancelToken: cancelToken,
+      parser: parse,
+    );
+    debugPrint(
+      '[LocationPermissions] legacy POST '
+      'code=${legacy.statusCode} ok=${_isHttpOk(legacy)} '
+      'field=${payload['field']} section=${payload['section']}',
+    );
+    return _isHttpOk(legacy) ? legacy : written;
   }
 
   LocationSchedule _parseSchedule(
@@ -637,12 +686,96 @@ class ManagerLocationsRepository extends BaseRepository {
     required String locationId,
     required bool isActive,
     ApiCancelToken? cancelToken,
-  }) {
-    return patchRequest<bool>(
-      ManagerEmployeeApiEndpoints.locationStatus(locationId),
-      data: {'is_active': isActive},
-      cancelToken: cancelToken,
-      parser: (_) => true,
+  }) async {
+    final locationIdValue = int.tryParse(locationId.trim()) ?? locationId.trim();
+    final payload = <String, dynamic>{
+      'is_active': isActive,
+      'location_id': locationIdValue,
+    };
+
+    // Spec: PATCH /manager/locations/{id}/status
+    // Deactivate (is_active:false) works while the row is still active.
+    // Activate (is_active:true) currently 404s on this server for inactive
+    // rows — likely scoped out of model binding. Keep one documented call
+    // plus inactive/active aliases; do not spam speculative routes.
+    final attempts = <({String label, Future<ApiResponse<bool>> Function() run})>[
+      (
+        label: 'PATCH ${ManagerEmployeeApiEndpoints.locationStatus(locationId)}',
+        run: () => patchRequest<bool>(
+          ManagerEmployeeApiEndpoints.locationStatus(locationId),
+          data: {'is_active': isActive},
+          cancelToken: cancelToken,
+          parser: (_) => true,
+        ),
+      ),
+      if (isActive)
+        (
+          label: 'POST ${ManagerEmployeeApiEndpoints.postLocationActive(locationId).path}',
+          run: () => postRequest<bool>(
+            ManagerEmployeeApiEndpoints.postLocationActive(locationId).path,
+            data: payload,
+            cancelToken: cancelToken,
+            parser: (_) => true,
+          ),
+        )
+      else
+        (
+          label: 'POST ${ManagerEmployeeApiEndpoints.postLocationInactive(locationId).path}',
+          run: () => postRequest<bool>(
+            ManagerEmployeeApiEndpoints.postLocationInactive(locationId).path,
+            data: payload,
+            cancelToken: cancelToken,
+            parser: (_) => true,
+          ),
+        ),
+    ];
+
+    ApiResponse<bool>? last;
+    for (final attempt in attempts) {
+      AddLocationLog.dump(
+        sheet: isActive ? 'Activate Location' : 'Deactivate Location',
+        phase: 'hitting',
+        api: attempt.label,
+        apiNeeds: 'is_active',
+        userSending: payload,
+      );
+      last = await attempt.run();
+      debugPrint(
+        '[LocationStatus] statusWrite '
+        'id=$locationId isActive=$isActive api=${attempt.label} '
+        'ok=${_isHttpOk(last)} status=${last.statusCode} '
+        'message=${last.message}',
+      );
+      AddLocationLog.dump(
+        sheet: isActive ? 'Activate Location' : 'Deactivate Location',
+        phase: 'response',
+        api: attempt.label,
+        success: _isHttpOk(last),
+        statusCode: last.statusCode,
+        message: last.message,
+        fieldErrors: last.fieldErrors,
+      );
+      if (_isHttpOk(last)) {
+        return ApiResponse.success(
+          last.data ?? true,
+          message: last.message,
+          statusCode: last.statusCode,
+        );
+      }
+      final code = last.statusCode;
+      if (code == 401 || code == 403) break;
+    }
+
+    final message = isActive
+        ? 'Could not activate location. The server returned 404 — '
+            'reactivate is not available until the backend accepts '
+            'is_active:true for inactive offices.'
+        : (last?.message ?? 'Failed to deactivate location.');
+
+    return ApiResponse.failure(
+      message,
+      statusCode: last?.statusCode,
+      fieldErrors: last?.fieldErrors,
     );
   }
 
@@ -712,32 +845,48 @@ class ManagerLocationsRepository extends BaseRepository {
   Future<ApiResponse<List<ManagerEmployeeModel>>> getLocationMembers({
     required String locationId,
     ApiCancelToken? cancelToken,
-  }) {
-    return getRequest<List<ManagerEmployeeModel>>(
+  }) async {
+    final query = {'location_id': locationId};
+
+    final primary = await getRequest<List<ManagerEmployeeModel>>(
       ManagerEmployeeApiEndpoints.locationMembers(locationId),
-      queryParameters: {'location_id': locationId},
+      queryParameters: query,
       cancelToken: cancelToken,
-      parser: (json) {
-        final data = _extractData(
-          json,
-          fallbackKeys: const [
-            'members',
-            'employees',
-            'users',
-            'location_id',
-            'success',
-          ],
-        );
-        final raw =
-            data['members'] ??
-            data['employees'] ??
-            data['users'] ??
-            data['data'] ??
-            data['locations'];
-        if (raw is List) return ManagerEmployeeModel.listFrom(raw);
-        return const <ManagerEmployeeModel>[];
-      },
+      parser: _parseLocationMembers,
     );
+    if (_isHttpOk(primary)) return primary;
+
+    final detail = await getRequest<List<ManagerEmployeeModel>>(
+      ManagerEmployeeApiEndpoints.location(locationId),
+      queryParameters: query,
+      cancelToken: cancelToken,
+      parser: _parseLocationMembers,
+    );
+    if (_isHttpOk(detail)) return detail;
+
+    if (!primary.success) return primary;
+    return detail;
+  }
+
+  List<ManagerEmployeeModel> _parseLocationMembers(dynamic json) {
+    final data = _extractData(
+      json,
+      fallbackKeys: const [
+        'members',
+        'employees',
+        'users',
+        'location_id',
+        'success',
+      ],
+    );
+    final raw =
+        data['members'] ??
+        data['employees'] ??
+        data['users'] ??
+        data['data'] ??
+        data['locations'];
+    if (raw is List) return ManagerEmployeeModel.listFrom(raw);
+    return const <ManagerEmployeeModel>[];
   }
 
   ManagerLocationModel _parseLocation(dynamic json) {

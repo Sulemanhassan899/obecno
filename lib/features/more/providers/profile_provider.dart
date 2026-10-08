@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:obecno/core/api/base_provider.dart';
 import 'package:obecno/features/more/data/models/employee_profile_model.dart';
 import 'package:obecno/features/more/services/profile_cache_service.dart';
@@ -73,12 +74,12 @@ class ProfileProvider extends BaseProvider {
     );
   }
 
-  /// constructor instead.
+  /// POST /api/employee/profile/photo
   Future<bool> updatePhoto({
     List<int>? photoBytes,
     String? fileName,
     bool removePhoto = false,
-  }) {
+  }) async {
     debugPrint(
       '[ProfileProvider] updatePhoto() called -> hitting '
       'POST /api/employee/profile/photo '
@@ -87,12 +88,17 @@ class ProfileProvider extends BaseProvider {
 
     final userId = _userId;
     if (userId != null && photoBytes != null && photoBytes.isNotEmpty) {
-      unawaited(
-        _cache.cachePhotoBytes(userId, photoBytes).then((file) {
-          _localPhoto = file;
-          notifyListeners();
-        }),
-      );
+      final file = await _cache.cachePhotoBytes(userId, photoBytes);
+      if (file != null) {
+        await _evictFileImage(file);
+        _localPhoto = file;
+        _photoCacheBuster++;
+        notifyListeners();
+      }
+    } else if (removePhoto) {
+      _localPhoto = null;
+      _photoCacheBuster++;
+      notifyListeners();
     }
 
     return safeCall<EmployeeProfileModel>(
@@ -129,12 +135,14 @@ class ProfileProvider extends BaseProvider {
                 profileFields: current.profileFields,
               );
 
+        // Keep the optimistic local bytes visible; only refresh disk JSON +
+        // re-download when we don't already have a local preview.
         _photoCacheBuster++;
         debugPrint(
           '[ProfileProvider] updatePhoto() succeeded -> new photoUrl: '
           '${_profile?.photoUrl} (cacheBuster: $_photoCacheBuster)',
         );
-        unawaited(_persist(_profile!));
+        unawaited(_persist(_profile!, refreshLocalPhoto: _localPhoto == null));
       },
     );
   }
@@ -162,12 +170,31 @@ class ProfileProvider extends BaseProvider {
     if (_profile != null || _localPhoto != null) notifyListeners();
   }
 
-  Future<void> _persist(EmployeeProfileModel profile) async {
+  Future<void> _persist(
+    EmployeeProfileModel profile, {
+    bool refreshLocalPhoto = true,
+  }) async {
     final userId = _userId;
     if (userId == null || userId.isEmpty) return;
     await _cache.cacheProfile(userId, profile);
+    if (!refreshLocalPhoto) {
+      notifyListeners();
+      return;
+    }
     final photo = await _cache.cachePhotoFromUrl(userId, profile.photoUrl);
-    if (photo != null) _localPhoto = photo;
+    if (photo != null) {
+      await _evictFileImage(photo);
+      _localPhoto = photo;
+      _photoCacheBuster++;
+    }
     notifyListeners();
+  }
+
+  Future<void> _evictFileImage(File file) async {
+    try {
+      await FileImage(file).evict();
+    } catch (_) {
+      // Best-effort; UI also keys off [photoCacheBuster].
+    }
   }
 }

@@ -376,6 +376,7 @@ class Assets {
 
 
   static const String DeleteLocation = "assets/images/delete_location.png";
+  static const String TrashBin = "assets/images/trash_bin.png";
   static const String DeactiviateLocation =
       "assets/images/deactiviate_location.png";
   static const String DeactiviateUserIcon =

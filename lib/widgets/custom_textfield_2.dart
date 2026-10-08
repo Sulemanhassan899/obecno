@@ -246,6 +246,9 @@ class CustomTextField2 extends StatelessWidget {
                   fontFamily: AppFonts.Poppins,
                 ),
 
+                // Hide Material default error; PhoneField/CustomTextField own it.
+                errorStyle: const TextStyle(height: 0, fontSize: 0),
+
                 contentPadding: EdgeInsets.only(
                   left: contentPaddingLeft,
                   right: contentPaddingRight,

@@ -153,6 +153,8 @@ class ReminderLog {
         return 'Longer break';
       case ReminderType.veryLongAttendance:
         return ReminderCopy.longAttendanceTimelineFromMessage(message);
+      case ReminderType.smartAttendance:
+        return 'Smart Attendance';
     }
   }
 
@@ -160,6 +162,7 @@ class ReminderLog {
     switch (type) {
       case ReminderType.enterLocation:
       case ReminderType.leaveLocation:
+      case ReminderType.smartAttendance:
       case ReminderType.veryLongAttendance:
         return true;
       default:
@@ -170,6 +173,7 @@ class ReminderLog {
   ReminderPunchKind get anchor {
     switch (type) {
       case ReminderType.enterLocation:
+      case ReminderType.smartAttendance:
       case ReminderType.checkIn:
       case ReminderType.checkInMissed:
         return ReminderPunchKind.checkIn;
@@ -200,9 +204,9 @@ class ReminderCopy {
   static String title(ReminderType type, {String locationName = 'work'}) {
     switch (type) {
       case ReminderType.enterLocation:
-        return "You're at $locationName";
       case ReminderType.leaveLocation:
-        return 'Leaving work?';
+      case ReminderType.smartAttendance:
+        return smartAttendanceTitle;
       case ReminderType.checkIn:
         return 'Time to check in';
       case ReminderType.checkInMissed:
@@ -285,9 +289,11 @@ class ReminderCopy {
   }) {
     switch (type) {
       case ReminderType.enterLocation:
-        return "Don't forget to check in.";
+        return 'Please check in you are inside work';
       case ReminderType.leaveLocation:
-        return "You're still checked in.";
+        return 'Please check out you are outside of work';
+      case ReminderType.smartAttendance:
+        return 'Smart Attendance is on.';
       case ReminderType.checkIn:
         return 'Ready to start your day?';
       case ReminderType.checkInMissed:
@@ -305,5 +311,38 @@ class ReminderCopy {
       case ReminderType.veryLongAttendance:
         return "You've been checked in for ${durationPhrase(longAttendanceHours)}.";
     }
+  }
+
+  static const smartAttendanceTitle = 'Smart Attendance';
+  static const smartAlertTitle = smartAttendanceTitle;
+
+  static String enterPleaseCheckIn(String locationName) {
+    return 'Please check in you are inside ${_smartPlace(locationName)}';
+  }
+
+  static String enterCheckedIn(String locationName) {
+    return 'You are checked in ${_smartPlace(locationName)}';
+  }
+
+  static String leavePleaseCheckOut(String locationName) {
+    return 'Please check out you are outside of ${_smartPlace(locationName)}';
+  }
+
+  static String leaveCheckedOut(String locationName) {
+    return 'You are check out of ${_smartPlace(locationName)}';
+  }
+
+  static String smartEnterCheckedIn(String locationName) =>
+      enterCheckedIn(locationName);
+
+  static String smartLeaveCheckedOut(String locationName) =>
+      leaveCheckedOut(locationName);
+
+  static String smartAlreadyCheckedIn(String locationName) =>
+      enterCheckedIn(locationName);
+
+  static String _smartPlace(String locationName) {
+    final trimmed = locationName.trim();
+    return trimmed.isEmpty ? 'work' : trimmed;
   }
 }

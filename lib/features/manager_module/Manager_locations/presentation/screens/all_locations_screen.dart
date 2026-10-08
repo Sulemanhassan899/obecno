@@ -132,116 +132,147 @@ class _LocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDeactivated = !location.isActive;
+
     return Material(
       color: kWhite,
       borderRadius: BorderRadius.circular(18),
       child: ButtonAnimations.press(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: kBorderColor),
+            border: Border.all(
+              color: isDeactivated ? kredColor.withOpacity(0.55) : kBorderColor,
+              width: isDeactivated ? 1.4 : 1,
+            ),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
+              if (isDeactivated)
+                Container(
+                  width: double.infinity,
+                  color: kredColor,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: AppText.caption(
+                    'Deactivated',
+                    color: kWhite,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        AppText.h4(
-                          location.name,
-                          weight: FontWeight.w700,
-                          align: TextAlign.left,
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: CommonImageView(
-                                imagePath: Assets.imagesLocationDot,
-                                height: 12,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: AppText.p2(
-                                location.address.isEmpty
-                                    ? 'No Location'
-                                    : location.address,
-                                color: kGreyColor,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              AppText.h4(
+                                location.name,
+                                weight: FontWeight.w700,
                                 align: TextAlign.left,
+                                color: isDeactivated ? kGreyColor : null,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: CommonImageView(
+                                      imagePath: Assets.imagesLocationDot,
+                                      height: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: AppText.p2(
+                                      location.address.isEmpty
+                                          ? 'No Location'
+                                          : location.address,
+                                      color: kGreyColor,
+                                      align: TextAlign.left,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Opacity(
+                          opacity: isDeactivated ? 0.45 : 1,
+                          child: CommonImageView(
+                            url: location.hasNetworkImage
+                                ? location.image
+                                : null,
+                            imagePath: location.hasNetworkImage
+                                ? null
+                                : location.imagePath,
+                            height: 52,
+                            width: 52,
+                            fit: BoxFit.cover,
+                            radius: 12,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  CommonImageView(
-                    url: location.hasNetworkImage ? location.image : null,
-                    imagePath: location.hasNetworkImage
-                        ? null
-                        : location.imagePath,
-                    height: 52,
-                    width: 52,
-                    fit: BoxFit.cover,
-                    radius: 12,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: _Metric(
-                      label: 'Present',
-                      child: RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '${location.present}',
-                              style: const TextStyle(
-                                color: kPrimaryColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _Metric(
+                            label: 'Present',
+                            child: RichText(
+                              text: TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${location.present}',
+                                    style: TextStyle(
+                                      color: isDeactivated
+                                          ? kGreyColor
+                                          : kPrimaryColor,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: ' / ${location.total}',
+                                    style: const TextStyle(
+                                      color: kGreyColor,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            TextSpan(
-                              text: ' / ${location.total}',
-                              style: const TextStyle(
-                                color: kGreyColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Container(width: 1, height: 36, color: kDividerColor),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 26),
+                            child: _Metric(
+                              label: 'Late',
+                              child: AppText.h5(
+                                '${location.lateCheckIns}',
+                                color: isDeactivated ? kGreyColor : kredColor,
+                                weight: FontWeight.w700,
+                                align: TextAlign.left,
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ),
-                  Container(width: 1, height: 36, color: kDividerColor),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 26),
-                      child: _Metric(
-                        label: 'Late',
-                        child: AppText.h5(
-                          '${location.lateCheckIns}',
-                          color: kredColor,
-                          weight: FontWeight.w700,
-                          align: TextAlign.left,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

@@ -27,32 +27,40 @@ class _ChangePasswordState extends State<ChangePassword> {
   bool _newObscure = true;
   bool _confirmObscure = true;
 
-  String? _error;
+  String? _currentError;
+  String? _newError;
+  String? _confirmError;
 
   bool _validate() {
     final current = _currentController.text.trim();
     final newPass = _newController.text.trim();
     final confirm = _confirmController.text.trim();
 
+    String? currentError;
+    String? newError;
+    String? confirmError;
+
     if (current.isEmpty) {
-      setState(() => _error = 'Current password is required');
-      return false;
+      currentError = 'Current password is required';
     }
 
     final passwordError = Validators.password(newPass);
     if (passwordError != null) {
-      setState(() => _error = passwordError);
-      return false;
+      newError = passwordError;
     }
 
-    final confirmError = Validators.confirmPassword(confirm, newPass);
-    if (confirmError != null) {
-      setState(() => _error = confirmError);
-      return false;
+    final confirmPasswordError = Validators.confirmPassword(confirm, newPass);
+    if (confirmPasswordError != null) {
+      confirmError = confirmPasswordError;
     }
 
-    setState(() => _error = null);
-    return true;
+    setState(() {
+      _currentError = currentError;
+      _newError = newError;
+      _confirmError = confirmError;
+    });
+
+    return currentError == null && newError == null && confirmError == null;
   }
 
   bool get hasMinLength => _newController.text.length >= 8;
@@ -88,8 +96,10 @@ class _ChangePasswordState extends State<ChangePassword> {
     }
 
     setState(() {
-      _error =
+      _currentError =
           authProvider.changePasswordMessage ?? 'Failed to change password.';
+      _newError = null;
+      _confirmError = null;
     });
     authProvider.clearChangePasswordMessage();
   }
@@ -122,7 +132,7 @@ class _ChangePasswordState extends State<ChangePassword> {
           SafeArea(
             top: false,
             child: Padding(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.defaultOf(context),
               child: MyButton(
                 buttonText: isLoading ? "Saving..." : "Save New Password",
                 backgroundColor: kBlack,
@@ -141,7 +151,7 @@ class _ChangePasswordState extends State<ChangePassword> {
       backgroundColor: kbackground1,
 
       body: Padding(
-        padding: AppSizes.HORIZONTAL,
+        padding: AppSizes.horizontalOnly(context),
         child: ListView(
           children: [
             const SizedBox(height: 20),
@@ -159,6 +169,11 @@ class _ChangePasswordState extends State<ChangePassword> {
               radius: 14,
               backgroundColor: kWhite,
               txtColor: kBlack,
+              errorText: _currentError,
+              errorBorderColor:
+                  _currentError == null ? kBorderColor : Colors.red,
+              focusedBorderColor:
+                  _currentError == null ? kPrimaryColor : Colors.red,
 
               obscureText: _currentObscure,
               haveSuffixIcon: true,
@@ -174,6 +189,11 @@ class _ChangePasswordState extends State<ChangePassword> {
                   setState(() => _currentObscure = !_currentObscure);
                 },
               ),
+              onChanged: (_) {
+                if (_currentError != null) {
+                  setState(() => _currentError = null);
+                }
+              },
             ),
 
             /// NEW PASSWORD
@@ -185,6 +205,10 @@ class _ChangePasswordState extends State<ChangePassword> {
               radius: 14,
               backgroundColor: kWhite,
               txtColor: kBlack,
+              errorText: _newError,
+              errorBorderColor: _newError == null ? kBorderColor : Colors.red,
+              focusedBorderColor:
+                  _newError == null ? kPrimaryColor : Colors.red,
 
               obscureText: _newObscure,
               haveSuffixIcon: true,
@@ -202,7 +226,9 @@ class _ChangePasswordState extends State<ChangePassword> {
               ),
 
               onChanged: (_) {
-                setState(() {});
+                setState(() {
+                  if (_newError != null) _newError = null;
+                });
               },
             ),
 
@@ -215,6 +241,11 @@ class _ChangePasswordState extends State<ChangePassword> {
               hintText: "Confirm New Password",
               backgroundColor: kWhite,
               txtColor: kBlack,
+              errorText: _confirmError,
+              errorBorderColor:
+                  _confirmError == null ? kBorderColor : Colors.red,
+              focusedBorderColor:
+                  _confirmError == null ? kPrimaryColor : Colors.red,
 
               obscureText: _confirmObscure,
               haveSuffixIcon: true,
@@ -230,6 +261,11 @@ class _ChangePasswordState extends State<ChangePassword> {
                   setState(() => _confirmObscure = !_confirmObscure);
                 },
               ),
+              onChanged: (_) {
+                if (_confirmError != null) {
+                  setState(() => _confirmError = null);
+                }
+              },
             ),
 
             const SizedBox(height: 10),
@@ -251,14 +287,6 @@ class _ChangePasswordState extends State<ChangePassword> {
             _buildRule("1 lowercase", hasLower),
             _buildRule("1 number", hasNumber),
             _buildRule("1 symbol", hasSymbol),
-
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: AppText.p2(_error!, color: kredColor),
-              ),
-
-            /// BUTTON
           ],
         ),
       ),

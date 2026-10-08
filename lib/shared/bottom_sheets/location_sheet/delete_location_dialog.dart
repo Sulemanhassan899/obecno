@@ -41,7 +41,7 @@ class DeleteLocationDialog {
                 AppText.h4('Deactivate Location'),
                 const SizedBox(height: 10),
                 AppText.p1(
-                  'Location will be deactivate and user will be moved to the another location.',
+                  'Location will be deactivated and users will be moved to another location.',
                   color: kGreyColor,
                 ),
                 const SizedBox(height: 20),
@@ -54,8 +54,8 @@ class DeleteLocationDialog {
                 Row(
                   children: [
                     MyButton(
-                      size: MyButtonSize.normal,
-                      width: 100,
+                      height: 48,
+                      width: 130,
                       buttonText: 'Cancel',
                       backgroundColor: kWhite,
                       fontColor: kGreyColor,
@@ -63,14 +63,15 @@ class DeleteLocationDialog {
                       onTap: () async => Navigator.pop(dialogContext, false),
                     ),
                     const SizedBox(width: 10),
-                    MyButton(
-                      size: MyButtonSize.normal,
-                      width: 200,
-
-                      buttonText: 'Deactivate',
-                      backgroundColor: kredColor,
-
-                      onTap: () async => Navigator.pop(dialogContext, true),
+                    Expanded(
+                      child: MyButton(
+                        size: MyButtonSize.big,
+                        height: 48,
+                        width: double.infinity,
+                        buttonText: 'Deactivate',
+                        backgroundColor: kredColor,
+                        onTap: () async => Navigator.pop(dialogContext, true),
+                      ),
                     ),
                   ],
                 ),

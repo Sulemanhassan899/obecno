@@ -5,12 +5,14 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/more/presentation/widgets/reminder_duration_picker_sheet.dart';
 import 'package:obecno/features/more/presentation/widgets/reminder_time_picker_sheet.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/customswitch2.dart';
 
 class AttendanceRemindersScreen extends StatefulWidget {
@@ -39,7 +41,7 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
       backgroundColor: kbackground1,
       body: SafeArea(
         child: Padding(
-          padding: AppSizes.HORIZONTAL,
+          padding: AppSizes.horizontalOnly(context),
           child: Column(
             children: [
               const SizedBox(height: 10),
@@ -53,6 +55,26 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.only(bottom: 40),
                     children: [
+                      _section(
+                        title: 'Smart Reminders',
+                        caption:
+                            "You'll get a reminder when you are near or in office/location range.",
+                        child: _card(
+                          children: [
+                            _smartToggleRow(
+                              label: 'When I Enter a Office/location',
+                              type: ReminderType.enterLocation,
+                              reminders: reminders,
+                            ),
+                            _divider(),
+                            _smartToggleRow(
+                              label: 'When I Leave a Office/location',
+                              type: ReminderType.leaveLocation,
+                              reminders: reminders,
+                            ),
+                          ],
+                        ),
+                      ),
                       _section(
                         title: 'Check In',
                         child: Column(
@@ -265,6 +287,51 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     );
     if (!mounted || picked == null) return;
     await reminders.setDuration(type, picked);
+  }
+
+  Widget _smartToggleRow({
+    required String label,
+    required ReminderType type,
+    required ReminderSettingsProvider reminders,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.Poppins,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: kBlack,
+                      height: 1.35,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                CommonImageView(
+                  imagePath: Assets.imagesSparkle,
+                  height: 14,
+                  width: 14,
+                  fit: BoxFit.contain,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          CustomSwitch(
+            value: reminders.isEnabled(type),
+            onChanged: (value) => reminders.setEnabled(type, value),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _toggleRow({

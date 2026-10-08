@@ -12,6 +12,7 @@ class AuthLocationModel {
     this.timezoneId,
     this.image,
     this.isDefault = false,
+    this.isActive = true,
     this.radiusMeters,
   });
 
@@ -27,6 +28,7 @@ class AuthLocationModel {
   final Object? timezoneId;
   final String? image;
   final bool isDefault;
+  final bool isActive;
   final int? radiusMeters;
 
   String get displayAddress {
@@ -51,6 +53,7 @@ class AuthLocationModel {
     Object? timezoneId,
     String? image,
     bool? isDefault,
+    bool? isActive,
     int? radiusMeters,
   }) {
     return AuthLocationModel(
@@ -66,6 +69,7 @@ class AuthLocationModel {
       timezoneId: timezoneId ?? this.timezoneId,
       image: image ?? this.image,
       isDefault: isDefault ?? this.isDefault,
+      isActive: isActive ?? this.isActive,
       radiusMeters: radiusMeters ?? this.radiusMeters,
     );
   }
@@ -86,6 +90,13 @@ class AuthLocationModel {
         rawIsDefault == true ||
         rawIsDefault?.toString().toLowerCase() == 'true' ||
         rawIsDefault?.toString() == '1';
+
+    final rawIsActive = json['is_active'] ?? json['isActive'] ?? json['active'];
+    final isActive = rawIsActive == null
+        ? true
+        : rawIsActive == true ||
+            rawIsActive.toString().toLowerCase() == 'true' ||
+            rawIsActive.toString() == '1';
 
     final rawRadius =
         json['radius_meters'] ??
@@ -120,6 +131,7 @@ class AuthLocationModel {
       ),
       image: image,
       isDefault: isDefault,
+      isActive: isActive,
       radiusMeters: radiusMeters,
     );
   }
@@ -137,6 +149,7 @@ class AuthLocationModel {
     'timezone_id': timezoneId,
     'photo_url': image,
     'is_default': isDefault,
+    'is_active': isActive,
     'radius_meters': radiusMeters,
   };
 
@@ -148,27 +161,45 @@ class AuthLocationModel {
     final list = raw
         .whereType<Map>()
         .map((e) => AuthLocationModel.fromJson(Map<String, dynamic>.from(e)))
+        .where((location) => location.isActive)
         .toList(growable: false);
     return applyDefaultFlag(list, defaultLocationId);
   }
 
   /// Marks the manager-assigned default office. Never uses the employee's
   /// working/selected location — that lives separately as selectedLocation.
+  /// If the flagged default was deactivated/removed, promotes the next office.
   static List<AuthLocationModel> applyDefaultFlag(
     List<AuthLocationModel> locations, [
     String? defaultLocationId,
   ]) {
     if (locations.isEmpty) return locations;
-    if (locations.any((location) => location.isDefault)) return locations;
+
+    final active = [
+      for (final location in locations)
+        if (location.isActive) location,
+    ];
+    if (active.isEmpty) return const [];
+
+    if (active.any((location) => location.isDefault)) return active;
 
     final defaultId = defaultLocationId?.trim();
-    if (defaultId == null || defaultId.isEmpty) return locations;
+    if (defaultId == null || defaultId.isEmpty) return active;
 
+    final match = active.any((location) => location.id == defaultId);
+    if (match) {
+      return [
+        for (final location in active)
+          location.id == defaultId
+              ? location.copyWith(isDefault: true)
+              : location.copyWith(isDefault: false),
+      ];
+    }
+
+    // Cached/API default points at a deactivated office — use the next one.
     return [
-      for (final location in locations)
-        location.id == defaultId
-            ? location.copyWith(isDefault: true)
-            : location,
+      for (var i = 0; i < active.length; i++)
+        active[i].copyWith(isDefault: i == 0),
     ];
   }
 
@@ -198,6 +229,7 @@ class AuthLocationModel {
         other.timezoneId == timezoneId &&
         other.image == image &&
         other.isDefault == isDefault &&
+        other.isActive == isActive &&
         other.radiusMeters == radiusMeters;
   }
 
@@ -216,6 +248,7 @@ class AuthLocationModel {
       timezoneId,
       image,
       isDefault,
+      isActive,
       radiusMeters,
     );
   }

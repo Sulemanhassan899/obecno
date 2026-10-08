@@ -1,4 +1,5 @@
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_filters.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
@@ -157,7 +158,14 @@ class ManagerAttendanceFilters {
   }) {
     var list = List<ManagerTeamAttendanceItem>.from(source);
 
-    if (!isAllLocations(selectedLocation)) {
+    // All Locations = full directory, including employees with no office.
+    // Re-merge so a punched/overview seed never hides unassigned people.
+    if (isAllLocations(selectedLocation) && members.isNotEmpty) {
+      list = TeamAttendanceMapper.mergeWithMembers(
+        attendance: list,
+        members: members,
+      );
+    } else if (!isAllLocations(selectedLocation)) {
       list = byAssignedLocation(
         source: list,
         members: members,

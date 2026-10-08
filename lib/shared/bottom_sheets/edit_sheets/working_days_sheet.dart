@@ -1,5 +1,6 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
@@ -10,7 +11,9 @@ import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/customswitch2.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class WorkingDaysSheet {
   WorkingDaysSheet._();
@@ -26,14 +29,16 @@ class WorkingDaysSheet {
       sheet: 'Working Days',
       phase: 'open',
       locationId: locationId,
-      api: locationId == null || locationId.trim().isEmpty
-          ? null
-          : 'PUT /manager/locations/$locationId/schedule',
+      api: userId != null
+          ? 'PUT|PATCH /manager/employees/$userId/permissions'
+          : (locationId == null || locationId.trim().isEmpty
+                ? null
+                : 'PUT /manager/locations/$locationId/schedule'),
       apiNeeds:
           'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
       extra: {'userId': userId, 'employeeName': employeeName},
     );
-    return showModalBottomSheet<LocationSchedule>(
+    return AppSheet.show<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -89,6 +94,8 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
   bool _loading = false;
   LocationSchedule _baseSchedule = LocationSchedule.defaults;
 
+  bool get _isEmployeeContext => widget.userId != null;
+
   @override
   void initState() {
     super.initState();
@@ -111,11 +118,11 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
   }
 
   Future<void> _load() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
+    if (_isEmployeeContext) {
+      final userId = widget.userId!;
       setState(() => _loading = true);
-      final result = await bindings.managerLocationsService
-          .loadLocationSchedule(locationId: locationId);
+      final result = await bindings.managerEmployeesService
+          .loadEmployeeSchedule(userId: userId);
       if (!mounted) return;
       setState(() {
         if (result.success && result.data != null) {
@@ -126,21 +133,22 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
       LocationPolicyLog.dump(
         sheet: 'Working Days',
         phase: 'fetched',
-        locationId: locationId,
         schedule: result.data ?? _baseSchedule,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
-        api: 'GET /manager/locations/$locationId/schedule',
+        api: 'GET /manager/employees/$userId/permissions',
+        extra: {'userId': userId, 'via': 'employee_permissions'},
       );
       return;
     }
 
-    final userId = widget.userId;
-    if (userId == null) return;
+    final locationId = widget.locationId?.trim();
+    if (locationId == null || locationId.isEmpty) return;
+
     setState(() => _loading = true);
-    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
-      userId: userId,
+    final result = await bindings.managerLocationsService.loadLocationSchedule(
+      locationId: locationId,
     );
     if (!mounted) return;
     setState(() {
@@ -149,6 +157,16 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
       }
       _loading = false;
     });
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'fetched',
+      locationId: locationId,
+      schedule: result.data ?? _baseSchedule,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      api: 'GET /manager/locations/$locationId/schedule',
+    );
   }
 
   void _reset() {
@@ -180,122 +198,216 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     return true;
   }
 
-  Future<void> _save() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
-      setState(() => _saving = true);
-      final current = _baseSchedule;
-      final next = _currentSchedule;
-      LocationPolicyLog.dump(
-        sheet: 'Working Days',
-        phase: 'current',
-        locationId: locationId,
-        schedule: current,
-        apiNeeds:
-            'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
+  Future<void> _saveViaEmployee(int userId) async {
+    if (_selectedDays.isEmpty) {
+      ToastHelper.error(context, message: 'Select at least one working day.');
+      return;
+    }
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    final displayValue = ManagerEmployeePolicy.workingDaysDisplayValue(
+      _selectedDays,
+    );
+    final payloads = ManagerEmployeePolicy.workingDaysPermissionPayloads(
+      workingDays: _selectedDays,
+      weekStartDay: _startDay,
+      hoursPerDay: _hoursInDay,
+      hoursPerWeek: _hoursInWeek,
+      workingWeekEnabled: _workingWeekEnabled,
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'current',
+      schedule: current,
+      apiNeeds: 'working_days',
+      extra: {'userId': userId},
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'changed',
+      schedule: next,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      apiNeeds: 'working_days',
+      userSending: {
+        'field': 'working_days',
+        'section': 'attendance',
+        'value': displayValue,
+      },
+      extra: {'userId': userId},
+    );
+
+    // Given APIs only: PUT|PATCH /manager/employees/{id}/permissions
+    // (+ legacy POST /manager/employee/permissions/update).
+    ApiResponse<String>? result;
+    var writeOk = false;
+    for (final payload in payloads.where(
+      (p) => p['field']?.toString() == 'working_days',
+    )) {
+      result = await bindings.managerEmployeesService.updateEmployeePermissions(
+        userId: userId,
+        payload: payload,
       );
-      LocationPolicyLog.dump(
-        sheet: 'Working Days',
-        phase: 'changed',
-        locationId: locationId,
-        schedule: next,
-        api: 'PUT /manager/locations/$locationId/schedule',
-        apiNeeds:
-            'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
+      debugPrint(
+        '[WorkingDays] perms section=${payload['section']} '
+        'method=${payload['force_method']} value=${payload['value']} '
+        'ok=${result.success} code=${result.statusCode} msg=${result.message}',
       );
-      final result = await bindings.managerLocationsService
-          .updateLocationSchedule(locationId: locationId, schedule: next);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      LocationPolicyLog.dump(
-        sheet: 'Working Days',
-        phase: 'response',
-        locationId: locationId,
-        schedule: result.data ?? next,
-        success: result.success,
-        statusCode: result.statusCode,
-        message: result.message,
-        api: 'PUT /manager/locations/$locationId/schedule',
-      );
-      if (!result.success) {
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save working days.',
-        );
-        return;
+      if (result.success) {
+        writeOk = true;
+        break;
       }
-      final saved = result.data ?? next;
-      _applySchedule(saved);
-      final rootContext = Navigator.of(context, rootNavigator: true).context;
-      Navigator.pop(context, saved);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!rootContext.mounted) return;
-        ToastHelper.changesSaved(rootContext);
-      });
+    }
+
+    if (writeOk) {
+      for (final payload in payloads.where(
+        (p) => p['field']?.toString() != 'working_days',
+      )) {
+        await bindings.managerEmployeesService.updateEmployeePermissions(
+          userId: userId,
+          payload: payload,
+        );
+      }
+    }
+    if (!mounted) return;
+
+    final verify = await bindings.managerEmployeesService.loadEmployeeSchedule(
+      userId: userId,
+    );
+    if (!mounted) return;
+    final saved = verify.data;
+    final daysPersisted =
+        writeOk &&
+        verify.success &&
+        saved != null &&
+        _sameDays(saved.workingDays, _selectedDays);
+    debugPrint(
+      '[WorkingDays] employee verify=${saved?.workingDays} '
+      'wanted=$_selectedDays persisted=$daysPersisted '
+      'writeOk=$writeOk display=$displayValue '
+      'userId=$userId msg=${result?.message}',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'response',
+      schedule: saved ?? next,
+      success: daysPersisted,
+      statusCode: verify.statusCode ?? result?.statusCode,
+      message: verify.message ?? result?.message,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      extra: {'userId': userId},
+    );
+    if (!daysPersisted) {
+      ToastHelper.error(
+        context,
+        message:
+            result?.message ??
+            'Working days did not persist. Please try again.',
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      workingDays: Set<String>.from(_selectedDays),
+      weekStartDay: _startDay,
+      hoursPerDay: _hoursInDay,
+      hoursPerWeek: _hoursInWeek,
+      workingWeekEnabled: _workingWeekEnabled,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
+  Future<void> _saveViaLocation(String locationId) async {
+    if (_selectedDays.isEmpty) {
+      ToastHelper.error(context, message: 'Select at least one working day.');
+      return;
+    }
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'current',
+      locationId: locationId,
+      schedule: current,
+      apiNeeds:
+          'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'changed',
+      locationId: locationId,
+      schedule: next,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+      apiNeeds:
+          'working_days, week_start_day, hours_per_day, hours_per_week, working_week_enabled',
+    );
+    final result = await bindings.managerLocationsService
+        .updateLocationSchedule(locationId: locationId, schedule: next);
+    if (!mounted) return;
+
+    final verify = await bindings.managerLocationsService.loadLocationSchedule(
+      locationId: locationId,
+    );
+    if (!mounted) return;
+    final saved = verify.data;
+    final daysPersisted =
+        result.success &&
+        verify.success &&
+        saved != null &&
+        _sameDays(saved.workingDays, _selectedDays);
+    debugPrint(
+      '[WorkingDays] location verify=${saved?.workingDays} '
+      'wanted=$_selectedDays persisted=$daysPersisted '
+      'writeOk=${result.success} locationId=$locationId',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Working Days',
+      phase: 'response',
+      locationId: locationId,
+      schedule: saved ?? next,
+      success: daysPersisted,
+      statusCode: verify.statusCode ?? result.statusCode,
+      message: verify.message ?? result.message,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+    );
+    if (!daysPersisted) {
+      ToastHelper.error(
+        context,
+        message: result.success
+            ? 'Working days did not persist. Please try again.'
+            : (result.message ?? 'Failed to save working days.'),
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      workingDays: Set<String>.from(_selectedDays),
+      weekStartDay: _startDay,
+      hoursPerDay: _hoursInDay,
+      hoursPerWeek: _hoursInWeek,
+      workingWeekEnabled: _workingWeekEnabled,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
+  Future<void> _save() async {
+    if (_isEmployeeContext) {
+      await _saveViaEmployee(widget.userId!);
       return;
     }
 
-    if (widget.userId != null) {
-      if (_selectedDays.isEmpty) {
-        ToastHelper.error(context, message: 'Select at least one working day.');
-        return;
-      }
-      setState(() => _saving = true);
-      final next = _currentSchedule;
-      final result = await bindings.managerEmployeesService
-          .updateEmployeeSchedule(
-            userId: widget.userId!,
-            payload: {
-              ...ManagerEmployeePolicy.workingDaysPermissionPayload(
-                workingDays: _selectedDays,
-                weekStartDay: _startDay,
-                hoursPerDay: _hoursInDay,
-                hoursPerWeek: _hoursInWeek,
-                workingWeekEnabled: _workingWeekEnabled,
-              ),
-              ...next.writePayload(),
-            },
-          );
-      if (!mounted) return;
-      if (!result.success) {
-        setState(() => _saving = false);
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save working days.',
-        );
-        return;
-      }
-
-      final verify = await bindings.managerEmployeesService
-          .loadEmployeeSchedule(userId: widget.userId!);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      if (!verify.success || verify.data == null) {
-        ToastHelper.error(
-          context,
-          message:
-              verify.message ?? 'Working days update could not be confirmed.',
-        );
-        return;
-      }
-      final saved = verify.data!;
-      if (!_sameDays(saved.workingDays, _selectedDays) ||
-          saved.weekStartDay.trim().toLowerCase() !=
-              _startDay.trim().toLowerCase() ||
-          saved.workingWeekEnabled != _workingWeekEnabled) {
-        ToastHelper.error(
-          context,
-          message: 'Working days did not persist. Please try again.',
-        );
-        return;
-      }
-      _applySchedule(saved);
-      final rootContext = Navigator.of(context, rootNavigator: true).context;
-      Navigator.pop(context, saved);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!rootContext.mounted) return;
-        ToastHelper.changesSaved(rootContext);
-      });
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      await _saveViaLocation(locationId);
       return;
     }
 
@@ -304,13 +416,9 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     _initialStartDay = _startDay;
     _initialHoursInWeek = _hoursInWeek;
     _initialHoursInDay = _hoursInDay;
-
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context, _currentSchedule);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootContext.mounted) return;
-      ToastHelper.changesSaved(rootContext);
-    });
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
   }
 
   Future<void> _pickOption({
@@ -319,7 +427,7 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
     required String current,
     required ValueChanged<String> onSelected,
   }) async {
-    final result = await showModalBottomSheet<String>(
+    final result = await AppSheet.show<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -569,8 +677,8 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
                               ),
                             ),
                             const SizedBox(height: 10),
-                            AppText.p1(
-                              "When enabled, this location's working week will overwrite the global working week.",
+                            AppText.p2(
+                              "When enabled, this location’s working week will overwrite the global working week.",
                               color: kGreyColor,
                               weight: FontWeight.w400,
                               align: TextAlign.left,

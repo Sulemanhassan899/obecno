@@ -35,8 +35,20 @@ void main() {
         eventType: 'breakEnd',
       );
 
+  AttendanceEditRequest pendingAdd({
+    required String eventType,
+    required String newTime,
+    DateTime? requestedAt,
+  }) => AttendanceEditRequest(
+    status: AttendanceEditRequestStatus.pending,
+    requestedAt: requestedAt ?? DateTime(2026, 9, 18, 21, 19),
+    originalTime: '--',
+    newTime: newTime,
+    eventType: eventType,
+  );
+
   test(
-    '18 Sep: dummy midnight cards stay hidden; 6:00/7:49 keep the request',
+    '18 Sep: dummy midnight cards stay hidden; mismatched add times get own cards',
     () {
       final events = [
         AttendanceEvent(
@@ -105,8 +117,9 @@ void main() {
       final liveEnd = assembled.punches.singleWhere(
         (e) => e.type == AttendanceEventType.breakEnd,
       );
-      expect(liveStart.editRequests.single.newTime, '1:00 PM');
-      expect(liveEnd.editRequests.single.newTime, '2:30 PM');
+      // Live punches at 6:00 / 7:49 do not absorb 1:00 / 2:30 add requests.
+      expect(liveStart.editRequests, isEmpty);
+      expect(liveEnd.editRequests, isEmpty);
       expect(liveStart.time.hour, 18);
       expect(liveEnd.time.hour, 19);
 
@@ -115,14 +128,9 @@ void main() {
       );
       expect(checkIn.editRequests.single.newTime, '12:25 PM');
 
-      expect(assembled.pendingAdds, isEmpty);
       expect(
-        assembled.timeline.map((e) => '${e.type.name} ${e.time.hour}:${e.time.minute}'),
-        [
-          'breakEnd 19:49',
-          'breakStart 18:0',
-          'checkIn 15:2',
-        ],
+        assembled.pendingAdds.map((e) => '${e.type.name} ${e.time.hour}:${e.time.minute}'),
+        containsAll(['breakStart 13:0', 'breakEnd 14:30']),
       );
 
       final reminderTimes = AttendanceTimelineAssembler.reminderPunchesFromClock(
@@ -136,7 +144,7 @@ void main() {
     },
   );
 
-  test('history sheet uses the same 18 Sep binding', () {
+  test('history sheet uses the same binding for mismatched add times', () {
     final events = [
       HistoryAttendanceEvent(
         id: 'checkin',
@@ -164,16 +172,22 @@ void main() {
     );
 
     expect(
-      assembled.punches.where((e) => e.type == AttendanceHisotryEventType.breakStart).single.editRequests.single.newTime,
-      '1:00 PM',
+      assembled.punches
+          .where((e) => e.type == AttendanceHisotryEventType.breakStart)
+          .single
+          .editRequests,
+      isEmpty,
     );
     expect(
       assembled.pendingAdds.map((e) => e.time),
-      [DateTime(2026, 9, 18, 14, 30)],
+      containsAll([
+        DateTime(2026, 9, 18, 13, 0),
+        DateTime(2026, 9, 18, 14, 30),
+      ]),
     );
   });
 
-  test('break-in request stays under Break End, break-out under Break Start', () {
+  test('break-in / break-out requests with different times get own cards', () {
     final assembled = AttendanceTimelineAssembler.clock(
       events: [
         AttendanceEvent(
@@ -214,20 +228,19 @@ void main() {
     expect(
       assembled.punches
           .singleWhere((e) => e.type == AttendanceEventType.breakStart)
-          .editRequests
-          .single
-          .newTime,
-      '1:00 PM',
+          .editRequests,
+      isEmpty,
     );
     expect(
       assembled.punches
           .singleWhere((e) => e.type == AttendanceEventType.breakEnd)
-          .editRequests
-          .single
-          .newTime,
-      '2:30 PM',
+          .editRequests,
+      isEmpty,
     );
-    expect(assembled.pendingAdds, isEmpty);
+    expect(
+      assembled.pendingAdds.map((e) => '${e.type.name} ${e.time.hour}:${e.time.minute}'),
+      containsAll(['breakStart 13:0', 'breakEnd 14:30']),
+    );
   });
 
   test('12:01 AM original is a pending add, not a real punch edit', () {
@@ -269,20 +282,87 @@ void main() {
     expect(checkIn.editRequests, hasLength(1));
     expect(checkIn.editRequests.single.newTime, '12:25 PM');
     expect(
-      assembled.punches
-          .singleWhere((e) => e.type == AttendanceEventType.breakStart)
-          .editRequests
-          .single
-          .newTime,
-      '1:00 PM',
+      assembled.pendingAdds.map((e) => e.type),
+      containsAll([
+        AttendanceEventType.breakStart,
+        AttendanceEventType.breakEnd,
+      ]),
+    );
+  });
+
+  test('different requested check-in / check-out times each get their own card', () {
+    final assembled = AttendanceTimelineAssembler.history(
+      events: [
+        HistoryAttendanceEvent(
+          id: 'checkin-live',
+          type: AttendanceHisotryEventType.checkIn,
+          time: DateTime(2026, 9, 30, 12, 0),
+          location: 'islamabad blue area',
+        ),
+        HistoryAttendanceEvent(
+          id: 'checkout-live',
+          type: AttendanceHisotryEventType.checkOut,
+          time: DateTime(2026, 9, 30, 13, 0),
+          location: 'islamabad blue area',
+        ),
+      ],
+      day: DateTime(2026, 9, 30),
+      stored: [
+        pendingAdd(eventType: 'checkIn', newTime: '12:00 PM'),
+        pendingAdd(eventType: 'checkIn', newTime: '4:00 PM'),
+        pendingAdd(eventType: 'checkOut', newTime: '1:00 PM'),
+        pendingAdd(eventType: 'checkOut', newTime: '7:00 PM'),
+        pendingAdd(eventType: 'breakStart', newTime: '1:00 PM'),
+        pendingAdd(eventType: 'breakEnd', newTime: '1:30 PM'),
+      ],
+    );
+
+    final checkInCard = assembled.punches.singleWhere(
+      (e) => e.type == AttendanceHisotryEventType.checkIn,
     );
     expect(
-      assembled.punches
-          .singleWhere((e) => e.type == AttendanceEventType.breakEnd)
-          .editRequests
-          .single
-          .newTime,
-      '2:30 PM',
+      checkInCard.editRequests.map((r) => r.newTime),
+      ['12:00 PM'],
     );
+
+    final checkOutCard = assembled.punches.singleWhere(
+      (e) => e.type == AttendanceHisotryEventType.checkOut,
+    );
+    expect(
+      checkOutCard.editRequests.map((r) => r.newTime),
+      ['1:00 PM'],
+    );
+
+    expect(
+      assembled.pendingAdds.map(
+        (e) => '${e.type.name} ${e.time.hour}:${e.time.minute}',
+      ),
+      containsAll([
+        'checkIn 16:0',
+        'checkOut 19:0',
+        'breakStart 13:0',
+        'breakEnd 13:30',
+      ]),
+    );
+  });
+
+  test('matching pending add stays on the live punch card', () {
+    final assembled = AttendanceTimelineAssembler.clock(
+      events: [
+        AttendanceEvent(
+          id: 'break',
+          type: AttendanceEventType.breakStart,
+          time: DateTime(2026, 9, 18, 13, 0),
+        ),
+      ],
+      day: day,
+      stored: [addBreakStart()],
+    );
+
+    expect(
+      assembled.punches.single.editRequests.single.newTime,
+      '1:00 PM',
+    );
+    expect(assembled.pendingAdds, isEmpty);
   });
 }

@@ -48,6 +48,34 @@ class MapsLauncher {
     return _tryLaunch(fallback, LaunchMode.platformDefault);
   }
 
+  /// Opens the Google Maps app (search / browse), not a fixed pin.
+  static Future<bool> openApp({String? query}) async {
+    final q = query?.trim();
+    final candidates = <Uri>[
+      if (q != null && q.isNotEmpty)
+        Uri.parse(
+          'comgooglemaps://?q=${Uri.encodeComponent(q)}',
+        )
+      else
+        Uri.parse('comgooglemaps://'),
+      Uri.https('www.google.com', '/maps/search/', {
+        'api': '1',
+        if (q != null && q.isNotEmpty) 'query': q,
+      }),
+      Uri.parse('https://maps.google.com'),
+      Uri.parse('maps://'),
+    ];
+
+    for (final uri in candidates) {
+      if (await _tryLaunch(uri, LaunchMode.externalNonBrowserApplication)) {
+        return true;
+      }
+      if (await _tryLaunch(uri, LaunchMode.externalApplication)) return true;
+    }
+
+    return _tryLaunch(candidates[1], LaunchMode.platformDefault);
+  }
+
   static Future<bool> _tryLaunch(Uri uri, LaunchMode mode) async {
     try {
       return await launchUrl(uri, mode: mode);

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
 
@@ -75,7 +77,7 @@ class LocationSchedule {
           ) ??
           base.checkOut,
       graceMinutes:
-          _asInt(
+          _asGraceMinutes(
             _pick(source, const [
               'grace_minutes',
               'grace_period',
@@ -149,101 +151,81 @@ class LocationSchedule {
   }
 
   /// Merges an employee profile `schedule` with permission overrides.
-  /// Employee-level permission values win; schedule fills everything else.
+  /// Employee-level permission values win. Company/location-inherited
+  /// permission values yield to an explicit profile `schedule` when present
+  /// (permissions API silently ignores some fields like working_days).
   factory LocationSchedule.fromEmployeeSources({
     Map<String, dynamic>? schedule,
     List<PermissionItemModel>? permissionItems,
   }) {
-    final fromPerms = (permissionItems == null || permissionItems.isEmpty)
-        ? null
-        : LocationSchedule.fromPermissionItems(
-            permissionItems,
-            preferEmployeeValue: true,
-          );
     final fromSchedule = (schedule != null && schedule.isNotEmpty)
-        ? LocationSchedule.fromJson(schedule, fallback: fromPerms)
-        : fromPerms;
-    final base = fromSchedule ?? defaults;
-    if (permissionItems == null || permissionItems.isEmpty) return base;
-    if (!PermissionItemModel.hasEmployeeLevelPermissions(permissionItems)) {
-      return base;
+        ? LocationSchedule.fromJson(schedule)
+        : null;
+    if (permissionItems == null || permissionItems.isEmpty) {
+      return fromSchedule ?? defaults;
     }
+    final fromPerms = LocationSchedule.fromPermissionItems(
+      permissionItems,
+      preferEmployeeValue: true,
+      fallback: fromSchedule ?? defaults,
+    );
+    if (fromSchedule == null || schedule == null) return fromPerms;
 
-    TimeOfDay? checkIn;
-    TimeOfDay? checkOut;
-    int? graceMinutes;
-    Set<String>? workingDays;
-    String? weekStartDay;
-    String? hoursPerDay;
-    String? hoursPerWeek;
-    bool? workingWeekEnabled;
-    int? maxBreakMinutes;
-    bool? breakLocationTracking;
-
-    for (final item in permissionItems) {
-      if (!item.hasEmployeeLevel) continue;
-      final raw = item.employeeValue ?? item.value;
-      switch (item.key) {
-        case 'check_in':
-        case 'check_in_time':
-          checkIn = _asTime(raw) ?? checkIn;
-          break;
-        case 'check_out':
-        case 'check_out_time':
-          checkOut = _asTime(raw) ?? checkOut;
-          break;
-        case 'grace_minutes':
-        case 'grace_period':
-          graceMinutes = _asInt(raw) ?? graceMinutes;
-          break;
-        case 'working_days':
-          workingDays = _asDays(raw) ?? workingDays;
-          break;
-        case 'week_start_day':
-          weekStartDay = raw == null
-              ? weekStartDay
-              : _asDayName(raw, fallback: weekStartDay ?? base.weekStartDay);
-          break;
-        case 'hours_per_day':
-        case 'hours_in_a_day':
-        case 'hours_in_day':
-          hoursPerDay = raw == null
-              ? hoursPerDay
-              : _asHours(raw, fallback: hoursPerDay ?? base.hoursPerDay);
-          break;
-        case 'hours_per_week':
-        case 'hours_in_a_week':
-        case 'hours_in_week':
-          hoursPerWeek = raw == null
-              ? hoursPerWeek
-              : _asHours(raw, fallback: hoursPerWeek ?? base.hoursPerWeek);
-          break;
-        case 'working_week_enabled':
-          workingWeekEnabled = _asBoolOrNull(raw) ?? workingWeekEnabled;
-          break;
-        case 'max_break_minutes':
-        case 'break_time':
-        case 'max_break':
-          maxBreakMinutes = _asInt(raw) ?? maxBreakMinutes;
-          break;
-        case 'break_location_tracking':
-        case 'track_location':
-          breakLocationTracking = _asBoolOrNull(raw) ?? breakLocationTracking;
-          break;
+    bool employeeOwns(String key) {
+      for (final item in permissionItems) {
+        if (item.key.trim().toLowerCase() != key) continue;
+        if (item.hasEmployeeLevel) return true;
       }
+      return false;
     }
 
-    return base.copyWith(
-      checkIn: checkIn,
-      checkOut: checkOut,
-      graceMinutes: graceMinutes,
-      workingDays: workingDays,
-      weekStartDay: weekStartDay,
-      hoursPerDay: hoursPerDay,
-      hoursPerWeek: hoursPerWeek,
-      workingWeekEnabled: workingWeekEnabled,
-      maxBreakMinutes: maxBreakMinutes,
-      breakLocationTracking: breakLocationTracking,
+    bool scheduleHas(List<String> keys) {
+      for (final key in keys) {
+        if (schedule.containsKey(key) && schedule[key] != null) return true;
+      }
+      return false;
+    }
+
+    return fromPerms.copyWith(
+      // Working days: employee permission override wins. Otherwise the
+      // profile/schedule payload wins over company/location permission
+      // defaults — permissions PUT often 200s without storing this field,
+      // while §5.4 schedule / profile schedule is the real override store.
+      workingDays: !employeeOwns('working_days') &&
+              scheduleHas(const ['working_days', 'working_days_flags'])
+          ? fromSchedule.workingDays
+          : null,
+      weekStartDay: !(employeeOwns('week_start_day') ||
+                  employeeOwns('workweek_start_day')) &&
+              scheduleHas(const ['week_start_day', 'workweek_start_day'])
+          ? fromSchedule.weekStartDay
+          : null,
+      hoursPerDay: !(employeeOwns('hours_per_day') ||
+                  employeeOwns('hours_in_a_day')) &&
+              scheduleHas(const [
+                'hours_per_day',
+                'hours_in_a_day',
+                'hours_in_day',
+              ])
+          ? fromSchedule.hoursPerDay
+          : null,
+      hoursPerWeek: !(employeeOwns('hours_per_week') ||
+                  employeeOwns('hours_in_a_week')) &&
+              scheduleHas(const [
+                'hours_per_week',
+                'hours_in_a_week',
+                'hours_in_week',
+              ])
+          ? fromSchedule.hoursPerWeek
+          : null,
+      workingWeekEnabled: !(employeeOwns('working_week_enabled') ||
+                  employeeOwns('working_days_enabled')) &&
+              scheduleHas(const [
+                'working_week_enabled',
+                'working_days_enabled',
+              ])
+          ? fromSchedule.workingWeekEnabled
+          : null,
     );
   }
 
@@ -285,60 +267,108 @@ class LocationSchedule {
       return null;
     }
 
+    /// Prefer any employee-level override for [keys], across sections.
+    String? employeeFirst(List<String> keys) {
+      if (!preferEmployeeValue) return null;
+      for (final key in keys) {
+        for (final item in items) {
+          if (item.key.trim().toLowerCase() != key.trim().toLowerCase()) {
+            continue;
+          }
+          if (!item.hasEmployeeLevel) continue;
+          final resolved = _permissionValue(
+            item,
+            preferEmployeeValue: true,
+            locationOnly: false,
+          );
+          if (resolved != null) return resolved;
+        }
+      }
+      return null;
+    }
+
     return LocationSchedule.fromJson({
-      'check_in_time': first('attendance', const [
-        'check_in_time',
-        'check_in',
-        'start_time',
-      ]),
-      'check_out_time': first('attendance', const [
-        'check_out_time',
-        'check_out',
-        'end_time',
-      ]),
-      'grace_period': first('attendance', const [
-        'grace_period',
-        'grace_minutes',
-        'grace',
-      ]),
-      'working_days':
-          first('attendance', const ['working_days']) ??
-          first('working_days', const ['working_days']),
-      'week_start_day':
-          first('attendance', const ['week_start_day', 'workweek_start_day']) ??
-          first('working_days', const ['week_start_day', 'workweek_start_day']),
-      'hours_per_day':
+      'check_in_time':
+          employeeFirst(const ['check_in_time', 'check_in', 'start_time']) ??
           first('attendance', const [
+            'check_in_time',
+            'check_in',
+            'start_time',
+          ]),
+      'check_out_time':
+          employeeFirst(const ['check_out_time', 'check_out', 'end_time']) ??
+          first('attendance', const [
+            'check_out_time',
+            'check_out',
+            'end_time',
+          ]),
+      'grace_period':
+          employeeFirst(const ['grace_period', 'grace_minutes', 'grace']) ??
+          first('attendance', const [
+            'grace_period',
+            'grace_minutes',
+            'grace',
+          ]),
+      'working_days':
+          employeeFirst(const ['working_days']) ??
+          first('working_days', const ['working_days']) ??
+          first('attendance', const ['working_days']),
+      'week_start_day':
+          employeeFirst(const ['week_start_day', 'workweek_start_day']) ??
+          first('working_days', const ['week_start_day', 'workweek_start_day']) ??
+          first('attendance', const ['week_start_day', 'workweek_start_day']),
+      'hours_per_day':
+          employeeFirst(const [
             'hours_per_day',
             'hours_in_a_day',
             'hours_in_day',
           ]) ??
           first('working_days', const [
+            'hours_per_day',
+            'hours_in_a_day',
+            'hours_in_day',
+          ]) ??
+          first('attendance', const [
             'hours_per_day',
             'hours_in_a_day',
             'hours_in_day',
           ]),
       'hours_per_week':
-          first('attendance', const [
+          employeeFirst(const [
             'hours_per_week',
             'hours_in_a_week',
             'hours_in_week',
           ]) ??
           first('working_days', const [
+            'hours_per_week',
+            'hours_in_a_week',
+            'hours_in_week',
+          ]) ??
+          first('attendance', const [
             'hours_per_week',
             'hours_in_a_week',
             'hours_in_week',
           ]),
       'working_week_enabled':
-          first('attendance', const [
+          employeeFirst(const [
             'working_week_enabled',
             'working_days_enabled',
           ]) ??
           first('working_days', const [
             'working_week_enabled',
             'working_days_enabled',
+          ]) ??
+          first('attendance', const [
+            'working_week_enabled',
+            'working_days_enabled',
           ]),
       'break_time':
+          employeeFirst(const [
+            'break_time',
+            'max_break_minutes',
+            'max_break',
+            'max_break_duration',
+          ]) ??
           first('attendance', const [
             'break_time',
             'max_break_minutes',
@@ -352,6 +382,10 @@ class LocationSchedule {
             'max_break_duration',
           ]),
       'break_location_tracking':
+          employeeFirst(const [
+            'break_location_tracking',
+            'track_location',
+          ]) ??
           first('attendance', const [
             'break_location_tracking',
             'track_location',
@@ -431,7 +465,7 @@ class LocationSchedule {
     final permissionItems = [
       _permissionItem('attendance', 'check_in_time', checkInAmPm),
       _permissionItem('attendance', 'check_out_time', checkOutAmPm),
-      _permissionItem('attendance', 'grace_period', '$graceMinutes'),
+      _permissionItem('attendance', 'grace_period', _graceWire(graceMinutes)),
       _permissionItem('attendance', 'working_days', days),
       _permissionItem('working_days', 'working_days', days),
       _permissionItem('attendance', 'week_start_day', weekStartDay),
@@ -476,6 +510,10 @@ class LocationSchedule {
 
   /// Body for PUT (first write) and PATCH (edit) on
   /// `/manager/locations/{id}/permissions`.
+  ///
+  /// Matches OpenAPI:
+  /// `{ location_id, id, field, value, section, permission_section,
+  ///    import_company_settings, location_setting, settings, permissions }`
   Map<String, dynamic> permissionsApiPayload({required String locationId}) {
     final written = writePayload();
     final checkInLabel = _hhmm(checkIn);
@@ -484,7 +522,7 @@ class LocationSchedule {
     final locationSetting = {
       'check_in_time': checkInLabel,
       'check_out_time': checkOutLabel,
-      'grace_period': '$graceMinutes-min',
+      'grace_period': _graceWire(graceMinutes),
       'break_time': breakLabel,
       'break_location_tracking': breakLocationTracking,
       'working_days': written['working_days'],
@@ -492,17 +530,24 @@ class LocationSchedule {
       'hours_per_day': hoursPerDay,
       'hours_per_week': hoursPerWeek,
     };
+    final sectionBag = written['permissions'] ?? {
+      'attendance': {
+        'check_in_time': checkInLabel,
+        'check_out_time': checkOutLabel,
+        'grace_period': _graceWire(graceMinutes),
+      },
+    };
     return {
       'location_id': locationIdValue,
+      'id': locationIdValue,
       'section': 'attendance',
       'permission_section': 'attendance',
       'import_company_settings': false,
       'field': 'check_in_time',
       'value': checkInLabel,
       'location_setting': locationSetting,
-      'settings': written['permissions'],
-      'permissions': written['permissions'],
-      ...written,
+      'settings': sectionBag,
+      'permissions': sectionBag,
     };
   }
 
@@ -519,15 +564,33 @@ class LocationSchedule {
     final days = (toJson()['working_days'] as List)
         .map((day) => day.toString())
         .toList();
-    final daysText = days.join(', ');
+    // Portal location form posts working_days[]=mon|tue|wed|thr|fri|sat|sun.
+    const codeByName = <String, String>{
+      'monday': 'mon',
+      'tuesday': 'tue',
+      'wednesday': 'wed',
+      'thursday': 'thr',
+      'friday': 'fri',
+      'saturday': 'sat',
+      'sunday': 'sun',
+    };
+    final dayCodes = [
+      for (final day in days)
+        codeByName[day.trim().toLowerCase()] ?? day.trim().toLowerCase(),
+    ];
+    final daysText = dayCodes.join(',');
     final daysMap = {
       for (final name in dayNames)
         name.toLowerCase(): workingDays.any(
           (day) => day.trim().toLowerCase() == name.toLowerCase(),
         ),
+      for (final entry in codeByName.entries)
+        entry.value: workingDays.any(
+          (day) => day.trim().toLowerCase() == entry.key,
+        ),
     };
     final workingSetting = {
-      'working_days': days,
+      'working_days': dayCodes,
       'working_days_flags': daysMap,
       'week_start_day': weekStartDay.trim().toLowerCase(),
       'hours_per_day': hoursPerDay,
@@ -535,10 +598,17 @@ class LocationSchedule {
       'working_week_enabled': workingWeekEnabled,
     };
     final breakSetting = {
-      'break_time': breakLabel,
+      // Portal location form posts break_time as minutes (number).
+      'break_time': maxBreakMinutes,
       'max_break_minutes': maxBreakMinutes,
       'max_break_duration': maxBreakMinutes,
       'break_location_tracking': breakLocationTracking,
+    };
+    final attendanceSetting = {
+      'check_in_time': _hhmm(checkIn),
+      'check_out_time': _hhmm(checkOut),
+      'grace_period': _graceWire(graceMinutes),
+      'grace_minutes': graceMinutes,
     };
 
     Map<String, dynamic> section({
@@ -549,6 +619,7 @@ class LocationSchedule {
     }) {
       return {
         'location_id': locationIdValue,
+        'id': locationIdValue,
         'section': name,
         'permission_section': name,
         'import_company_settings': false,
@@ -558,12 +629,36 @@ class LocationSchedule {
         'value': value,
         'location_setting': setting,
         name: setting,
+        'settings': {name: setting},
+        'permissions': {name: setting},
         'permission_items': _permissionItemsForSection(name),
       };
     }
 
     return [
       full,
+      // Dedicated check-in/out write (OpenAPI field/value shape).
+      section(
+        name: 'attendance',
+        field: 'check_in_time',
+        value: _hhmm(checkIn),
+        setting: attendanceSetting,
+      ),
+      section(
+        name: 'attendance',
+        field: 'check_out_time',
+        value: _hhmm(checkOut),
+        setting: attendanceSetting,
+      ),
+      // Dedicated grace write — attendance PATCH with field=check_in_time often
+      // ignores grace_period even when it is present in location_setting.
+      // Portal select uses `no-grace` (not `0-min`) for "No grace".
+      section(
+        name: 'attendance',
+        field: 'grace_period',
+        value: _graceWire(graceMinutes),
+        setting: attendanceSetting,
+      ),
       section(
         name: 'working_days',
         field: 'working_days',
@@ -573,7 +668,7 @@ class LocationSchedule {
       section(
         name: 'break_timing',
         field: 'break_time',
-        value: breakLabel,
+        value: maxBreakMinutes,
         setting: breakSetting,
       ),
     ];
@@ -855,6 +950,27 @@ int? _asInt(dynamic raw) {
   return int.tryParse(value);
 }
 
+/// Portal grace_period select: `no-grace` | `5-min` | `10-min` | …
+int? _asGraceMinutes(dynamic raw) {
+  if (raw == null) return null;
+  final value = raw.toString().trim().toLowerCase();
+  if (value.isEmpty) return null;
+  if (value == 'no-grace' ||
+      value == 'no grace' ||
+      value == 'none' ||
+      value == 'off' ||
+      value == 'no') {
+    return 0;
+  }
+  return _asInt(raw);
+}
+
+String _graceWire(int minutes) {
+  final value = minutes < 0 ? 0 : minutes;
+  if (value == 0) return 'no-grace';
+  return '$value-min';
+}
+
 bool? _asBoolOrNull(dynamic raw) {
   if (raw == true ||
       raw == 1 ||
@@ -893,7 +1009,21 @@ Set<String>? _asDays(dynamic raw) {
   if (raw is List) {
     items = raw;
   } else if (raw is String) {
-    items = raw.split(RegExp(r'[,|]'));
+    final text = raw.trim();
+    if (text.startsWith('[') && text.endsWith(']')) {
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is List) {
+          items = decoded;
+        } else {
+          items = text.split(RegExp(r'[,|]'));
+        }
+      } catch (_) {
+        items = text.split(RegExp(r'[,|]'));
+      }
+    } else {
+      items = text.split(RegExp(r'[,|]'));
+    }
   } else {
     return null;
   }
@@ -915,10 +1045,24 @@ String _asDayName(dynamic raw, {required String fallback}) {
   }
   final value = raw.toString().trim().toLowerCase();
   if (value.isEmpty) return fallback;
+  const aliases = <String, String>{
+    'mon': 'Monday',
+    'tue': 'Tuesday',
+    'tues': 'Tuesday',
+    'wed': 'Wednesday',
+    'thu': 'Thursday',
+    'thur': 'Thursday',
+    'thurs': 'Thursday',
+    'thr': 'Thursday', // portal location form code
+    'fri': 'Friday',
+    'sat': 'Saturday',
+    'sun': 'Sunday',
+  };
+  final aliased = aliases[value];
+  if (aliased != null) return aliased;
   for (final day in LocationSchedule.dayNames) {
-    if (day.toLowerCase() == value ||
-        day.toLowerCase().startsWith(value) ||
-        value.startsWith(day.toLowerCase())) {
+    final lower = day.toLowerCase();
+    if (lower == value || lower.startsWith(value) || value.startsWith(lower)) {
       return day;
     }
   }

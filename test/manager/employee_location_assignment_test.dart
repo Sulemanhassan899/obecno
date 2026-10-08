@@ -31,6 +31,39 @@ void main() {
     });
   });
 
+  group('EmployeeLocationSavePayload.afterRemovingLocation', () {
+    test('removes the deactivated office and keeps another default', () {
+      final payload = EmployeeLocationSavePayload.afterRemovingLocation(
+        assignedIds: {'1', '2', '3'},
+        removedLocationId: '2',
+        currentDefaultId: '1',
+      );
+      expect(payload.locationIds, containsAll(['1', '3']));
+      expect(payload.locationIds, isNot(contains('2')));
+      expect(payload.defaultLocationId, '1');
+    });
+
+    test('promotes the next location when default is deactivated', () {
+      final payload = EmployeeLocationSavePayload.afterRemovingLocation(
+        assignedIds: {'bhara', 'office-2'},
+        removedLocationId: 'bhara',
+        currentDefaultId: 'bhara',
+      );
+      expect(payload.locationIds, ['office-2']);
+      expect(payload.defaultLocationId, 'office-2');
+    });
+
+    test('clears assignment when the only office is deactivated', () {
+      final payload = EmployeeLocationSavePayload.afterRemovingLocation(
+        assignedIds: {'bhara'},
+        removedLocationId: 'bhara',
+        currentDefaultId: 'bhara',
+      );
+      expect(payload.locationIds, isEmpty);
+      expect(payload.defaultLocationId, isEmpty);
+    });
+  });
+
   group('EmployeeLocationSavePayload.fromDefault', () {
     test('adds the new default to assigned locations', () {
       final payload = EmployeeLocationSavePayload.fromDefault(

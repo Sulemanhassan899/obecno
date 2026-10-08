@@ -9,6 +9,7 @@ import 'custom_dropdown.dart';
 import 'custom_textfield.dart';
 import 'my_button.dart';
 import 'text_widget.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class CommonBottomSheet extends StatelessWidget {
   final double height;
@@ -87,9 +88,11 @@ class CommonBottomSheet extends StatelessWidget {
     Color buttonColor = kPrimaryColor,
     Color buttonFontColor = kWhite,
     List<Widget>? children,
+    bool acquired = false,
   }) {
-    return showModalBottomSheet<T>(
+    return AppSheet.show<T>(
       context: context,
+      acquired: acquired,
       elevation: 12,
       backgroundColor: Theme.of(context).cardColor,
       isScrollControlled: true,

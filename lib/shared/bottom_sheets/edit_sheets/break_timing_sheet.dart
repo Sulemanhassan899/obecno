@@ -10,7 +10,9 @@ import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/customswitch2.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class BreakTimingSheet {
   BreakTimingSheet._();
@@ -28,13 +30,15 @@ class BreakTimingSheet {
       sheet: 'Break Timing',
       phase: 'open',
       locationId: locationId,
-      api: locationId == null || locationId.trim().isEmpty
-          ? null
-          : 'PUT /manager/locations/$locationId/schedule',
+      api: userId != null
+          ? 'PUT|PATCH /manager/employees/$userId/permissions'
+          : (locationId == null || locationId.trim().isEmpty
+              ? null
+              : 'PUT /manager/locations/$locationId/schedule'),
       apiNeeds: 'max_break_minutes, break_location_tracking',
       extra: {'userId': userId, 'employeeName': employeeName},
     );
-    return showModalBottomSheet<LocationSchedule>(
+    return AppSheet.show<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -80,6 +84,8 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
   bool _loading = false;
   LocationSchedule _baseSchedule = LocationSchedule.defaults;
 
+  bool get _isEmployeeContext => widget.userId != null;
+
   static const _durationOptions = [
     '30:00 mins',
     '45:00 mins',
@@ -108,11 +114,13 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
   }
 
   Future<void> _load() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
+    if (_isEmployeeContext) {
+      final userId = widget.userId!;
       setState(() => _loading = true);
-      final result = await bindings.managerLocationsService
-          .loadLocationSchedule(locationId: locationId);
+      final result =
+          await bindings.managerEmployeesService.loadEmployeeSchedule(
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() {
         if (result.success && result.data != null) {
@@ -123,22 +131,22 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
       LocationPolicyLog.dump(
         sheet: 'Break Timing',
         phase: 'fetched',
-        locationId: locationId,
         schedule: result.data ?? _baseSchedule,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
-        api: 'GET /manager/locations/$locationId/schedule',
+        api: 'GET /manager/employees/$userId/permissions',
+        extra: {'userId': userId, 'via': 'employee_permissions'},
       );
       return;
     }
 
-    final userId = widget.userId;
-    if (userId == null) return;
+    final locationId = widget.locationId?.trim();
+    if (locationId == null || locationId.isEmpty) return;
+
     setState(() => _loading = true);
-    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
-      userId: userId,
-    );
+    final result = await bindings.managerLocationsService
+        .loadLocationSchedule(locationId: locationId);
     if (!mounted) return;
     setState(() {
       if (result.success && result.data != null) {
@@ -146,6 +154,16 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
       }
       _loading = false;
     });
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'fetched',
+      locationId: locationId,
+      schedule: result.data ?? _baseSchedule,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      api: 'GET /manager/locations/$locationId/schedule',
+    );
   }
 
   void _reset() {
@@ -162,120 +180,183 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
     );
   }
 
+  bool _sameBreak(LocationSchedule saved) {
+    final wantedMinutes = ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60;
+    if (saved.maxBreakMinutes != wantedMinutes) return false;
+    // Location overrides include tracking; employee portal only has break_time.
+    if (!_isEmployeeContext &&
+        saved.breakLocationTracking != _trackLocation) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _saveViaEmployee(int userId) async {
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    final payload = ManagerEmployeePolicy.breakPermissionPayload(
+      breakLabel: _maxBreak,
+      trackLocation: _trackLocation,
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'current',
+      schedule: current,
+      apiNeeds: 'break_time',
+      extra: {'userId': userId},
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'changed',
+      schedule: next,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      apiNeeds: 'break_time',
+      userSending: payload,
+      extra: {'userId': userId},
+    );
+    final result =
+        await bindings.managerEmployeesService.updateEmployeePermissions(
+      userId: userId,
+      payload: payload,
+    );
+    if (!mounted) return;
+
+    final verify =
+        await bindings.managerEmployeesService.loadEmployeeSchedule(
+      userId: userId,
+    );
+    if (!mounted) return;
+    final saved = verify.data;
+    final persisted = result.success &&
+        verify.success &&
+        saved != null &&
+        _sameBreak(saved);
+    debugPrint(
+      '[BreakTiming] employee verify break=${saved?.breakLabel} '
+      'wanted=$_maxBreak persisted=$persisted userId=$userId '
+      'msg=${result.message}',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'response',
+      schedule: saved ?? next,
+      success: persisted,
+      statusCode: verify.statusCode ?? result.statusCode,
+      message: verify.message ?? result.message,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      extra: {'userId': userId},
+    );
+    if (!persisted) {
+      ToastHelper.error(
+        context,
+        message: result.success
+            ? 'Break timing did not persist. Please try again.'
+            : (result.message ?? 'Failed to save break timing.'),
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      maxBreakMinutes: ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60,
+      breakLocationTracking: saved.breakLocationTracking,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
+  Future<void> _saveViaLocation(String locationId) async {
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'current',
+      locationId: locationId,
+      schedule: current,
+      apiNeeds: 'max_break_minutes, break_location_tracking',
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'changed',
+      locationId: locationId,
+      schedule: next,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+      apiNeeds: 'max_break_minutes, break_location_tracking',
+    );
+    final result = await bindings.managerLocationsService
+        .updateLocationSchedule(locationId: locationId, schedule: next);
+    if (!mounted) return;
+
+    final verify = await bindings.managerLocationsService
+        .loadLocationSchedule(locationId: locationId);
+    if (!mounted) return;
+    final saved = verify.data;
+    final persisted = result.success &&
+        verify.success &&
+        saved != null &&
+        _sameBreak(saved);
+    debugPrint(
+      '[BreakTiming] location verify break=${saved?.breakLabel} '
+      'tracking=${saved?.breakLocationTracking} '
+      'wanted=$_maxBreak/$_trackLocation persisted=$persisted '
+      'locationId=$locationId',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Break Timing',
+      phase: 'response',
+      locationId: locationId,
+      schedule: saved ?? next,
+      success: persisted,
+      statusCode: verify.statusCode ?? result.statusCode,
+      message: verify.message ?? result.message,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+    );
+    if (!persisted) {
+      ToastHelper.error(
+        context,
+        message: result.success
+            ? 'Break timing did not persist. Please try again.'
+            : (result.message ?? 'Failed to save break timing.'),
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      maxBreakMinutes: ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60,
+      breakLocationTracking: _trackLocation,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
   Future<void> _save() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
-      setState(() => _saving = true);
-      final current = _baseSchedule;
-      final next = _currentSchedule;
-      LocationPolicyLog.dump(
-        sheet: 'Break Timing',
-        phase: 'current',
-        locationId: locationId,
-        schedule: current,
-        apiNeeds: 'max_break_minutes, break_location_tracking',
-      );
-      LocationPolicyLog.dump(
-        sheet: 'Break Timing',
-        phase: 'changed',
-        locationId: locationId,
-        schedule: next,
-        api: 'PUT /manager/locations/$locationId/schedule',
-        apiNeeds: 'max_break_minutes, break_location_tracking',
-      );
-      final result = await bindings.managerLocationsService
-          .updateLocationSchedule(locationId: locationId, schedule: next);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      LocationPolicyLog.dump(
-        sheet: 'Break Timing',
-        phase: 'response',
-        locationId: locationId,
-        schedule: result.data ?? next,
-        success: result.success,
-        statusCode: result.statusCode,
-        message: result.message,
-        api: 'PUT /manager/locations/$locationId/schedule',
-      );
-      if (!result.success) {
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save break timing.',
-        );
-        return;
-      }
-      final saved = result.data ?? next;
-      _applySchedule(saved);
-      final rootContext = Navigator.of(context, rootNavigator: true).context;
-      Navigator.pop(context, saved);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!rootContext.mounted) return;
-        ToastHelper.changesSaved(rootContext);
-      });
+    if (_isEmployeeContext) {
+      await _saveViaEmployee(widget.userId!);
       return;
     }
 
-    if (widget.userId != null) {
-      setState(() => _saving = true);
-      final wantedBreak = _maxBreak;
-      final wantedTracking = _trackLocation;
-      final next = _currentSchedule;
-      final result = await bindings.managerEmployeesService
-          .updateEmployeeSchedule(
-            userId: widget.userId!,
-            payload: {
-              ...ManagerEmployeePolicy.breakPermissionPayload(
-                breakLabel: wantedBreak,
-                trackLocation: wantedTracking,
-              ),
-              ...next.writePayload(),
-            },
-          );
-      if (!mounted) return;
-      if (!result.success) {
-        setState(() => _saving = false);
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save break timing.',
-        );
-        return;
-      }
-
-      final verify = await bindings.managerEmployeesService
-          .loadEmployeeSchedule(userId: widget.userId!);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      if (!verify.success || verify.data == null) {
-        ToastHelper.error(
-          context,
-          message: verify.message ?? 'Break update could not be confirmed.',
-        );
-        return;
-      }
-      final saved = verify.data!;
-      if (saved.breakLabel != wantedBreak ||
-          saved.breakLocationTracking != wantedTracking) {
-        ToastHelper.error(
-          context,
-          message: 'Break timing did not persist. Please try again.',
-        );
-        return;
-      }
-      _applySchedule(saved);
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      await _saveViaLocation(locationId);
+      return;
     }
 
     _initialMaxBreak = _maxBreak;
     _initialTrackLocation = _trackLocation;
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootContext.mounted) return;
-      ToastHelper.changesSaved(rootContext);
-    });
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
   }
 
   Future<void> _pickDuration() async {
-    final result = await showModalBottomSheet<String>(
+    final result = await AppSheet.show<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {

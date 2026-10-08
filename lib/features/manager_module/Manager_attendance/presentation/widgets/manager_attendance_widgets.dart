@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/filter_dropdown_chip.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
@@ -14,18 +17,94 @@ import 'package:obecno/widgets/dot.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 
-/// In-memory recent attendance search results (empty until first search).
+/// Recent attendance searches, kept on device so they survive an app restart.
 class ManagerAttendanceRecentSearch {
   ManagerAttendanceRecentSearch._();
 
+  static const _prefsKey = 'manager_attendance_recent_searches_v1';
+  static const _maxItems = 10;
+
   static final List<ManagerAttendanceModel> items = [];
+  static bool _loaded = false;
+
+  static Future<void> ensureLoaded() async {
+    if (_loaded) return;
+    final stored = await _read();
+    if (_loaded) return;
+    items
+      ..clear()
+      ..addAll(stored);
+    _loaded = true;
+  }
 
   static void add(ManagerAttendanceModel person) {
-    items.removeWhere((e) => e.name == person.name);
+    items.removeWhere((e) => _samePerson(e, person));
     items.insert(0, person);
-    if (items.length > 10) items.removeLast();
+    if (items.length > _maxItems) items.removeLast();
+    _loaded = true;
+    _persist();
+  }
+
+  static bool _samePerson(ManagerAttendanceModel a, ManagerAttendanceModel b) {
+    if (a.userId != null && b.userId != null) return a.userId == b.userId;
+    return a.name == b.name;
+  }
+
+  static Future<List<ManagerAttendanceModel>> _read() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_prefsKey);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final entry in decoded)
+          if (entry is Map) _fromJson(entry),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> _persist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _prefsKey,
+      jsonEncode(items.map(_toJson).toList()),
+    );
+  }
+
+  static Map<String, dynamic> _toJson(ManagerAttendanceModel person) {
+    return {
+      'name': person.name,
+      'role': person.role,
+      'team': person.team,
+      'photo': person.photo,
+      'userId': person.userId,
+      'status': person.status,
+      'checkIn': person.checkIn,
+      'checkOut': person.checkOut,
+      'attendanceId': person.attendanceId,
+    };
+  }
+
+  static ManagerAttendanceModel _fromJson(Map<dynamic, dynamic> json) {
+    return ManagerAttendanceModel(
+      name: json['name']?.toString() ?? '',
+      role: json['role']?.toString(),
+      team: json['team']?.toString(),
+      photo: json['photo']?.toString(),
+      userId: json['userId'] is int ? json['userId'] as int : null,
+      status: json['status']?.toString() ?? '',
+      checkIn: json['checkIn']?.toString(),
+      checkOut: json['checkOut']?.toString(),
+      attendanceId: json['attendanceId'] is int
+          ? json['attendanceId'] as int
+          : null,
+    );
   }
 }
 
@@ -108,7 +187,8 @@ class _ManagerAttendanceHeaderState extends State<ManagerAttendanceHeader> {
   @override
   Widget build(BuildContext context) {
     final date = widget.selectedDate ?? DateTime.now();
-    final searchWidth = MediaQuery.sizeOf(context).width - 32;
+    final searchWidth =
+        MediaQuery.sizeOf(context).width - (AppSizes.horizontal(context) * 2);
 
     return SizedBox(
       height: 52,
@@ -389,31 +469,41 @@ class ManagerAttendanceTile extends StatelessWidget {
   String get _statusKey =>
       data.status.toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
 
+  /// API / filters may send `late`, `late_check_in`, or `Late Check-in`.
+  bool get _isLateStatus {
+    final key = _statusKey;
+    if (key.isEmpty) return false;
+    if (key.contains('checkout') || key.contains('early')) return false;
+    return key == 'late' ||
+        key == 'latecheck' ||
+        key.contains('latecheckin');
+  }
+
   bool get _isRecognizedStatus {
     switch (_statusKey) {
       case "working":
       case "active":
       case "break":
       case "onbreak":
-      case "late":
       case "leave":
       case "onleave":
         return true;
       default:
-        return false;
+        return _isLateStatus;
     }
   }
 
   bool get _showEmptyState =>
       !_hasCheckIn && !_hasCheckOut && !_isRecognizedStatus;
 
-  bool get _isLate => _statusKey == "late";
+  bool get _isLate => _isLateStatus;
 
   bool get _isLeave => _statusKey == "leave" || _statusKey == "onleave";
 
   bool get _timesInRed => data.warningred || _isLate;
 
   String _statusText() {
+    if (_isLateStatus) return "Late";
     switch (_statusKey) {
       case "working":
       case "active":
@@ -421,8 +511,6 @@ class ManagerAttendanceTile extends StatelessWidget {
       case "break":
       case "onbreak":
         return "On Break";
-      case "late":
-        return "Late";
       case "leave":
       case "onleave":
         return "On Leave";
@@ -432,12 +520,11 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Color _statusBgColor() {
+    if (_isLateStatus) return const Color(0xFFFFEBEE);
     switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFFE6F9ED);
-      case "late":
-        return const Color(0xFFFFEBEE);
       case "break":
       case "onbreak":
         return const Color(0xFFFFF4E0);
@@ -450,12 +537,11 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Color _statusTextColor() {
+    if (_isLateStatus) return kredColor;
     switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFF1FA855);
-      case "late":
-        return kredColor;
       case "break":
       case "onbreak":
         return const Color(0xFFCC8B00);
@@ -556,6 +642,7 @@ class ManagerAttendanceTile extends StatelessWidget {
       const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Dot());
 
   bool get _showLiveStatusBadge {
+    if (_isLateStatus) return true;
     switch (_statusKey) {
       case "working":
       case "active":
@@ -689,11 +776,21 @@ class ManagerSearchPersonTile extends StatelessWidget {
   final ManagerAttendanceModel data;
   final VoidCallback? onTap;
 
+  String get _statusKey =>
+      data.status.toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
+
+  bool get _isLateStatus {
+    final key = _statusKey;
+    if (key.isEmpty) return false;
+    if (key.contains('checkout') || key.contains('early')) return false;
+    return key == 'late' ||
+        key == 'latecheck' ||
+        key.contains('latecheckin');
+  }
+
   String _statusLabel() {
-    switch (data.status.toLowerCase().trim().replaceAll(
-      RegExp(r'[\s\-_\/]+'),
-      '',
-    )) {
+    if (_isLateStatus) return "Late";
+    switch (_statusKey) {
       case "working":
       case "active":
         return "Working";
@@ -703,18 +800,14 @@ class ManagerSearchPersonTile extends StatelessWidget {
       case "leave":
       case "onleave":
         return "On Leave";
-      case "late":
-        return "Late";
       default:
         return data.status.isEmpty ? "" : data.status;
     }
   }
 
   Color _badgeBg() {
-    switch (data.status.toLowerCase().trim().replaceAll(
-      RegExp(r'[\s\-_\/]+'),
-      '',
-    )) {
+    if (_isLateStatus) return const Color(0xFFFFEBEE);
+    switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFFE6F9ED);
@@ -724,18 +817,14 @@ class ManagerSearchPersonTile extends StatelessWidget {
       case "leave":
       case "onleave":
         return const Color(0xFFE8F1FF);
-      case "late":
-        return const Color(0xFFFFEBEE);
       default:
         return kGreyColor.withOpacity(0.12);
     }
   }
 
   Color _badgeFg() {
-    switch (data.status.toLowerCase().trim().replaceAll(
-      RegExp(r'[\s\-_\/]+'),
-      '',
-    )) {
+    if (_isLateStatus) return kredColor;
+    switch (_statusKey) {
       case "working":
       case "active":
         return const Color(0xFF1FA855);
@@ -745,8 +834,6 @@ class ManagerSearchPersonTile extends StatelessWidget {
       case "leave":
       case "onleave":
         return const Color(0xFF3B82F6);
-      case "late":
-        return kredColor;
       default:
         return kGreyColor;
     }

@@ -19,7 +19,8 @@ void main() {
         type:
             !except.contains(type) &&
             type != ReminderType.enterLocation &&
-            type != ReminderType.leaveLocation,
+            type != ReminderType.leaveLocation &&
+            type != ReminderType.smartAttendance,
     };
   }
 
@@ -130,7 +131,7 @@ void main() {
       final items = plan(now: wed(8), locationName: '  ');
       expect(
         ReminderCopy.title(ReminderType.enterLocation, locationName: 'work'),
-        "You're at work",
+        'Smart Attendance',
       );
       expect(items, isNotEmpty);
     });

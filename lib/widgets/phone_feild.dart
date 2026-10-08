@@ -1,6 +1,8 @@
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/validators/validators.dart';
 import 'package:obecno/widgets/custom_textfield_2.dart';
+import 'package:obecno/widgets/field_error_text.dart';
 import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -115,12 +117,18 @@ class PhoneField extends StatefulWidget {
   final TextEditingController controller;
   final String selectedCode;
   final Function(String) onCodeChanged;
+  final String? Function(String?)? validator;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
 
   const PhoneField({
     super.key,
     required this.controller,
     required this.selectedCode,
     required this.onCodeChanged,
+    this.validator,
+    this.errorText,
+    this.onChanged,
   });
 
   @override
@@ -129,8 +137,6 @@ class PhoneField extends StatefulWidget {
 
 class _PhoneFieldState extends State<PhoneField> {
   late CountryModel selectedCountry;
-
-  String? errorText;
   bool isValid = false;
 
   @override
@@ -141,126 +147,128 @@ class _PhoneFieldState extends State<PhoneField> {
       (c) => c.dialCode == widget.selectedCode,
       orElse: () => countryList.first,
     );
+    _refreshValid(widget.controller.text);
   }
 
-  /// ======================
-  /// VALIDATION
-  /// ======================
-  void validate(String value) {
-    if (value.isEmpty) {
-      errorText = "Phone is required";
-      isValid = false;
-    } else if (value.length < 9) {
-      errorText = "Invalid phone number";
-      isValid = false;
-    } else {
-      errorText = null;
-      isValid = true;
-    }
-    setState(() {});
+  String? _validate(String? value) {
+    return (widget.validator ?? Validators.phoneNumber)(value);
+  }
+
+  void _refreshValid(String value) {
+    isValid = value.trim().isNotEmpty && _validate(value) == null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = errorText != null
-        ? Colors.red
-        : isValid
-        ? Colors.green
-        : Colors.grey.shade300;
+    return FormField<String>(
+      initialValue: widget.controller.text,
+      validator: (_) => _validate(widget.controller.text),
+      builder: (field) {
+        final displayError = widget.errorText ?? field.errorText;
+        final borderColor = displayError != null
+            ? kRed
+            : isValid
+            ? Colors.green
+            : kBorderColor;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        /// LABEL
-        Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppText.p2("Phone", weight: FontWeight.w500),
-
-            const SizedBox(width: 4),
-            const Text("*", style: TextStyle(color: Colors.red)),
-          ],
-        ),
-
-        const SizedBox(height: 10),
-
-        /// FIELD
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: borderColor),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              /// COUNTRY
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
+            /// LABEL
+            Row(
+              children: [
+                AppText.p2("Phone", weight: FontWeight.w500),
+                const TextWidget(
+                  text: ' *',
+                  size: 14,
+                  weight: FontWeight.w600,
+                  color: kRed,
                 ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Colors.grey.shade300),
+              ],
+            ),
+
+            const SizedBox(height: 6),
+
+            /// FIELD
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: borderColor,
+                  width: displayError != null ? 1.5 : 1,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  /// COUNTRY
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.phone, size: 18),
+                        const SizedBox(width: 8),
+                        CountryDropdown(
+                          selected: selectedCountry,
+                          onSelected: (val) {
+                            setState(() => selectedCountry = val);
+                            widget.onCodeChanged(val.dialCode);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.phone, size: 18),
-                    const SizedBox(width: 8),
 
-                    CountryDropdown(
-                      selected: selectedCountry,
-                      onSelected: (val) {
-                        setState(() => selectedCountry = val);
-                        widget.onCodeChanged(val.dialCode);
+                  /// INPUT
+                  Expanded(
+                    child: CustomTextField2(
+                      controller: widget.controller,
+                      hintText: "300 123 45678",
+                      hintTextFontColor: kGreyColor,
+                      hintTextFontSize: 14,
+                      keyboardType: TextInputType.phone,
+                      haveLebelText: false,
+                      radius: 0,
+                      bottom: 0,
+                      isExpanded: true,
+                      enabledBorderColor: kTransperentColor,
+                      focusedBorderColor: kTransperentColor,
+                      errorBorderColor: Colors.red,
+                      focusedBorderWidth: 0,
+                      backgroundColor: Colors.transparent,
+                      contentPaddingLeft: 12,
+                      onChanged: (value) {
+                        setState(() => _refreshValid(value));
+                        field.didChange(value);
+                        if (field.hasError) {
+                          field.validate();
+                        }
+                        widget.onChanged?.call(value);
                       },
                     ),
-                  ],
-                ),
+                  ),
+
+                  /// VALID ICON
+                  if (isValid)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12),
+                      child: Icon(Icons.check_circle, color: Colors.green),
+                    ),
+                ],
               ),
-
-              /// INPUT
-              Expanded(
-                child: CustomTextField2(
-                  controller: widget.controller,
-                  hintText: "300 123 45678",
-                  hintTextFontColor: kGreyColor,
-                  hintTextFontSize: 14,
-                  keyboardType: TextInputType.phone,
-                  haveLebelText: false,
-                  radius: 0,
-                  bottom: 0,
-                  isExpanded: true,
-                  enabledBorderColor: kTransperentColor,
-                  focusedBorderColor: kTransperentColor,
-                  errorBorderColor: Colors.red,
-                  focusedBorderWidth: 0,
-                  backgroundColor: Colors.transparent,
-                  contentPaddingLeft: 12,
-                  onChanged: validate,
-                ),
-              ),
-
-              /// VALID ICON
-              if (isValid)
-                const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: Icon(Icons.check_circle, color: Colors.green),
-                ),
-            ],
-          ),
-        ),
-
-        /// ERROR TEXT
-        if (errorText != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 8),
-            child: AppText.p2(
-              errorText!,
-              color: kredColor,
-              weight: FontWeight.w500,
             ),
-          ),
-      ],
+
+            if (displayError != null) FieldErrorText(displayError),
+          ],
+        );
+      },
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_prof
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ManagerEditAttendanceSheet {
   ManagerEditAttendanceSheet._();
@@ -17,7 +18,7 @@ class ManagerEditAttendanceSheet {
     required ManagerAttendanceDetailsData data,
     bool isAdd = false,
   }) {
-    return showModalBottomSheet(
+    return AppSheet.show(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

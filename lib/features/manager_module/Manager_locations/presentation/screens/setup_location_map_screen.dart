@@ -4,25 +4,28 @@ import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:obecno/shared/location/service/place_search_service.dart';
 import 'package:obecno/shared/location/service/reverse_geocoding_service.dart';
 import 'package:obecno/widgets/back_button.dart';
+import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class SelectedMapAddress {
   const SelectedMapAddress({
     required this.address,
     required this.latitude,
     required this.longitude,
+    this.radiusMeters = ManagerLocationModel.defaultRadiusMeters,
   });
 
   final String address;
   final double latitude;
   final double longitude;
+  final int radiusMeters;
 }
 
 /// Full-screen map picker: tap map / search / use current location → confirm.
@@ -32,17 +35,20 @@ class SetupLocationMapScreen extends StatefulWidget {
     this.initialAddress,
     this.initialLatitude,
     this.initialLongitude,
+    this.initialRadiusMeters,
   });
 
   final String? initialAddress;
   final double? initialLatitude;
   final double? initialLongitude;
+  final int? initialRadiusMeters;
 
   static Future<SelectedMapAddress?> open(
     BuildContext context, {
     String? initialAddress,
     double? initialLatitude,
     double? initialLongitude,
+    int? initialRadiusMeters,
   }) {
     return Navigator.push<SelectedMapAddress>(
       context,
@@ -51,6 +57,7 @@ class SetupLocationMapScreen extends StatefulWidget {
           initialAddress: initialAddress,
           initialLatitude: initialLatitude,
           initialLongitude: initialLongitude,
+          initialRadiusMeters: initialRadiusMeters,
         ),
       ),
     );
@@ -61,17 +68,49 @@ class SetupLocationMapScreen extends StatefulWidget {
 }
 
 class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
-  final _mapController = MapController();
+  static const _selectedMarkerId = MarkerId('selected');
+  static const _radiusCircleId = CircleId('radius');
+  static const _minRadiusMeters = 10;
+  static const _maxRadiusMeters = 5000;
+
   final _searchController = TextEditingController();
+  late final TextEditingController _radiusController;
   final _locationService = LocationServiceImpl();
 
+  GoogleMapController? _mapController;
   late LatLng _selected;
+  late int _radiusMeters;
   String _address = '';
   bool _resolving = false;
   bool _searching = false;
   bool _locating = false;
   List<PlaceSearchResult> _results = const [];
   Timer? _debounce;
+  String? _radiusError;
+
+  CameraPosition get _initialCamera => CameraPosition(
+        target: _selected,
+        zoom: 15,
+      );
+
+  Set<Marker> get _markers => {
+        Marker(
+          markerId: _selectedMarkerId,
+          position: _selected,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        ),
+      };
+
+  Set<Circle> get _circles => {
+        Circle(
+          circleId: _radiusCircleId,
+          center: _selected,
+          radius: _radiusMeters.toDouble(),
+          fillColor: kBlue.withOpacity(0.18),
+          strokeColor: kBlue,
+          strokeWidth: 2,
+        ),
+      };
 
   @override
   void initState() {
@@ -80,6 +119,10 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
       widget.initialLatitude ?? 52.4862,
       widget.initialLongitude ?? -1.8904,
     );
+    _radiusMeters = _normalizeRadius(
+      widget.initialRadiusMeters ?? ManagerLocationModel.defaultRadiusMeters,
+    );
+    _radiusController = TextEditingController(text: '$_radiusMeters');
     _address = widget.initialAddress?.trim() ?? '';
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_address.isEmpty) {
@@ -94,8 +137,33 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
-    _mapController.dispose();
+    _radiusController.dispose();
+    _mapController?.dispose();
     super.dispose();
+  }
+
+  int _normalizeRadius(int value) {
+    if (value < _minRadiusMeters) return _minRadiusMeters;
+    if (value > _maxRadiusMeters) return _maxRadiusMeters;
+    return value;
+  }
+
+  void _onRadiusChanged(String value) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed == null || parsed <= 0) {
+      setState(() => _radiusError = 'Enter a radius in meters.');
+      return;
+    }
+    setState(() {
+      _radiusMeters = _normalizeRadius(parsed);
+      _radiusError = null;
+    });
+  }
+
+  Future<void> _moveCamera(LatLng target, {double zoom = 16}) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    await controller.animateCamera(CameraUpdate.newLatLngZoom(target, zoom));
   }
 
   Future<void> _resolveAddress(LatLng point) async {
@@ -123,7 +191,7 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
     try {
       final reading = await _locationService.getCurrentReading();
       final point = LatLng(reading.location.lat, reading.location.lon);
-      _mapController.move(point, 16);
+      await _moveCamera(point);
       await _resolveAddress(point);
     } catch (e) {
       if (!silent && mounted) {
@@ -164,24 +232,32 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
       _address = result.displayName;
       _selected = point;
     });
-    _mapController.move(point, 16);
+    await _moveCamera(point);
   }
 
   void _confirm() {
     final address = _address.trim();
     if (address.isEmpty || _resolving) return;
+    final parsed = int.tryParse(_radiusController.text.trim());
+    if (parsed == null || parsed <= 0) {
+      setState(() => _radiusError = 'Enter a radius in meters.');
+      return;
+    }
     Navigator.pop(
       context,
       SelectedMapAddress(
         address: address,
         latitude: _selected.latitude,
         longitude: _selected.longitude,
+        radiusMeters: _normalizeRadius(parsed),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return Scaffold(
       backgroundColor: kbackground1,
       body: SafeArea(
@@ -213,14 +289,14 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                           ),
                         )
                       : (_searchController.text.isEmpty
-                            ? null
-                            : IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _results = const []);
-                                },
-                              )),
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _results = const []);
+                              },
+                            )),
                   filled: true,
                   fillColor: kWhite,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -275,35 +351,18 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
             Expanded(
               child: Stack(
                 children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: _selected,
-                      initialZoom: 15,
-                      onTap: (_, point) => _resolveAddress(point),
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.obecno.app',
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _selected,
-                            width: 48,
-                            height: 48,
-                            alignment: Alignment.topCenter,
-                            child: const Icon(
-                              Icons.location_on,
-                              color: kredColor,
-                              size: 44,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  GoogleMap(
+                    initialCameraPosition: _initialCamera,
+                    markers: _markers,
+                    circles: _circles,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                    compassEnabled: false,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                    },
+                    onTap: _resolveAddress,
                   ),
                   Positioned(
                     right: 16,
@@ -346,7 +405,7 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
             ),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 16 + bottomInset),
               decoration: const BoxDecoration(
                 color: kWhite,
                 border: Border(top: BorderSide(color: kDividerColor)),
@@ -403,10 +462,29 @@ class _SetupLocationMapScreenState extends State<SetupLocationMapScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
+                  CustomTextField(
+                    controller: _radiusController,
+                    hintText: '250',
+                    labelText: 'Radius (meters)',
+                    haveLebelText: true,
+                    hasStar: true,
+                    keyboardType: TextInputType.number,
+                    backgroundColor: kWhite,
+                    enabledBorderColor: kBorderColor,
+                    focusedBorderColor: kPrimaryColor,
+                    radius: 12,
+                    bottom: 0,
+                    reserveHelperSpace: false,
+                    errorText: _radiusError,
+                    onChanged: _onRadiusChanged,
+                  ),
+                  const SizedBox(height: 14),
                   MyButton(
                     buttonText: 'Use this address',
-                    backgroundColor: kPrimaryButtonColor,
-                    isactive: !_resolving && _address.trim().isNotEmpty,
+                    backgroundColor: kPrimaryColor,
+                    isactive: !_resolving &&
+                        _address.trim().isNotEmpty &&
+                        _radiusError == null,
                     onTap: () async => _confirm(),
                   ),
                 ],

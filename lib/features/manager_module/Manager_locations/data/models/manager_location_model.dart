@@ -92,7 +92,7 @@ class ManagerLocationModel {
         json['radius_meters'] ?? json['radius'] ?? json['geofence_radius'],
       ),
       isDefault: _asBool(json['is_default'] ?? json['isDefault']),
-      isActive: _asBool(json['is_active'], fallback: true),
+      isActive: _parseIsActive(json),
       allowCheckinAnywhere: _asBool(json['allow_checkin_anywhere']),
       timezone: _timezoneNameFrom(json),
       timezoneId: ManagerLocationModel.timezoneIdFrom(
@@ -107,8 +107,9 @@ class ManagerLocationModel {
 
   /// Body for `POST /manager/locations`.
   ///
-  /// The New Location sheet only collects a name, but the API still requires
-  /// address / lat / lng / radius (see manager spec §13.1).
+  /// The New Location sheet collects a name and map pin; the API also requires
+  /// address / lat / lng / radius (see manager spec §13.1). Radius defaults to
+  /// [defaultRadiusMeters] (250).
   static const defaultLatitude = 52.4862;
   static const defaultLongitude = -1.8904;
   static const defaultRadiusMeters = 250;
@@ -212,6 +213,8 @@ class ManagerLocationModel {
       'time_zone_id': tzValue,
       'timeZoneId': tzValue,
       'timezone_name': resolvedTimezone,
+      'status': '1',
+      'import_company_settings': true,
     };
   }
 
@@ -226,6 +229,7 @@ class ManagerLocationModel {
       latitude: _latLonPart(location.latLon, 0),
       longitude: _latLonPart(location.latLon, 1),
       isDefault: location.isDefault,
+      isActive: location.isActive,
       radiusMeters: location.radiusMeters,
       timezone: location.timezone,
       timezoneId: location.timezoneId,
@@ -318,10 +322,35 @@ bool _asBool(dynamic raw, {bool fallback = false}) {
       raw == 0 ||
       raw == '0' ||
       raw == 'false' ||
-      raw == 'inactive') {
+      raw == 'inactive' ||
+      raw == 'deactivated' ||
+      raw == 'disabled') {
     return false;
   }
   return fallback;
+}
+
+bool _parseIsActive(Map<String, dynamic> json) {
+  final raw =
+      json['is_active'] ??
+      json['isActive'] ??
+      json['active'] ??
+      json['status'] ??
+      json['location_status'];
+  if (raw is String) {
+    final value = raw.trim().toLowerCase();
+    if (value == 'inactive' ||
+        value == 'deactivated' ||
+        value == 'disabled' ||
+        value == 'false' ||
+        value == '0') {
+      return false;
+    }
+    if (value == 'active' || value == 'true' || value == '1') {
+      return true;
+    }
+  }
+  return _asBool(raw, fallback: true);
 }
 
 String _asString(dynamic raw) => raw?.toString().trim() ?? '';

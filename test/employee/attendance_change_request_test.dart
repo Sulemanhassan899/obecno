@@ -128,34 +128,48 @@ void main() {
       expect(body['changes'], isEmpty);
     });
 
-    test('drops change rows that have no attendance detail id', () {
-      final body = AttendanceService.editRequestBody(
-        attendanceId: null,
-        deviceDetails: 'iPhone',
-        lat: 33.57,
-        lon: 73.14,
-        date: '2026-09-03',
-        checkIn: '09:00:00',
-        checkOut: '18:00:00',
-        changes: const [
-          AttendanceChangeRequestPayload(
-            oldValue: '--',
-            newValue: '9:00 AM',
-            type: 'check in',
-          ),
-          AttendanceChangeRequestPayload(
-            oldValue: '--',
-            newValue: '6:00 PM',
-            type: 'check out',
-          ),
-        ],
-      );
+    test(
+      'keeps orphan times in change_requests but omits them from changes',
+      () {
+        final body = AttendanceService.editRequestBody(
+          attendanceId: null,
+          deviceDetails: 'iPhone',
+          lat: 33.57,
+          lon: 73.14,
+          date: '2026-09-03',
+          checkIn: '09:00:00',
+          checkOut: '18:00:00',
+          changes: const [
+            AttendanceChangeRequestPayload(
+              oldValue: '--',
+              newValue: '9:00 AM',
+              type: 'check in',
+            ),
+            AttendanceChangeRequestPayload(
+              oldValue: '--',
+              newValue: '6:00 PM',
+              type: 'check out',
+            ),
+          ],
+        );
 
-      expect(body.containsKey('id'), isFalse);
-      expect(body['date'], '2026-09-03');
-      expect(body['changes'], isEmpty);
-      expect(body.containsKey('change_requests'), isFalse);
-    });
+        expect(body.containsKey('id'), isFalse);
+        expect(body['date'], '2026-09-03');
+        expect(body['changes'], isEmpty);
+        expect(body['change_requests'], [
+          {
+            'type': 'check in',
+            'original_time': '00:00:00',
+            'requested_time': '09:00:00',
+          },
+          {
+            'type': 'check out',
+            'original_time': '00:00:00',
+            'requested_time': '18:00:00',
+          },
+        ]);
+      },
+    );
   });
 
   group('AttendanceDetailsData', () {
@@ -347,10 +361,86 @@ void main() {
         expect(requests, hasLength(1));
         expect(requests.first.status, AttendanceEditRequestStatus.approved);
         expect(requests.first.actionedBy, 'Naveed Ramzan');
-        expect(requests.first.originalTime, '08:55 AM');
-        expect(requests.first.newTime, '07:55 AM');
+        expect(requests.first.originalTime, '8:55 AM');
+        expect(requests.first.newTime, '7:55 AM');
       },
     );
+
+    test('dedupes same pending fix when label padding differs', () {
+      final fromChanges = {
+        'old_value': '17:30:00',
+        'old_value_label': '5:30 PM',
+        'new_value': '13:30:00',
+        'new_value_label': '01:30 PM',
+        'status': 'pending',
+        'created_at': '2026-09-23 17:31:00',
+        'type': 'check in',
+      };
+      final fromRequests = {
+        'id': 99,
+        'original_time': '17:30:00',
+        'requested_time': '13:30:00',
+        'new_value_label': '1:30 PM',
+        'status': 'pending',
+        'created_at': '2026-09-23 17:31:00',
+        'type': 'check in',
+      };
+
+      final requests = AttendanceEditRequest.fromDetailArrays(
+        changes: [fromChanges],
+        changeRequests: [fromRequests],
+      );
+
+      expect(requests, hasLength(1));
+      expect(requests.first.status, AttendanceEditRequestStatus.pending);
+      expect(requests.first.newTime, '1:30 PM');
+      expect(requests.first.originalTime, '5:30 PM');
+    });
+
+    test('dedupes pending fixes with same new time one minute apart', () {
+      final requests = AttendanceEditRequest.dedupe([
+        AttendanceEditRequest(
+          status: AttendanceEditRequestStatus.pending,
+          requestedAt: DateTime(2026, 9, 30, 21, 40),
+          originalTime: '--',
+          newTime: '9:10 PM',
+          eventType: 'breakStart',
+        ),
+        AttendanceEditRequest(
+          status: AttendanceEditRequestStatus.pending,
+          requestedAt: DateTime(2026, 9, 30, 21, 41),
+          originalTime: '--',
+          newTime: '9:10 PM',
+          eventType: 'breakStart',
+        ),
+      ]);
+
+      expect(requests, hasLength(1));
+      expect(requests.single.requestedAt, DateTime(2026, 9, 30, 21, 41));
+      expect(requests.single.newTime, '9:10 PM');
+    });
+
+    test('dedupes pending local -- with API placeholder original', () {
+      final requests = AttendanceEditRequest.dedupe([
+        AttendanceEditRequest(
+          status: AttendanceEditRequestStatus.pending,
+          requestedAt: DateTime(2026, 9, 30, 22, 29),
+          originalTime: '--',
+          newTime: '9:00 AM',
+          eventType: 'checkIn',
+        ),
+        AttendanceEditRequest(
+          status: AttendanceEditRequestStatus.pending,
+          requestedAt: DateTime(2026, 9, 30, 22, 31),
+          originalTime: '12:00 AM',
+          newTime: '9:00 AM',
+          eventType: 'checkIn',
+        ),
+      ]);
+
+      expect(requests, hasLength(1));
+      expect(requests.single.requestedAt, DateTime(2026, 9, 30, 22, 31));
+    });
   });
 
   group('ScheduledAttendanceTimes', () {

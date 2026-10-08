@@ -69,9 +69,12 @@ class TeamAttendanceMapper {
                 ? member.photo
                 : match.photoUrl,
             locationId: match.locationId ?? member.locationId,
+            locationName: match.locationName ?? member.locationName,
           ),
         );
       } else {
+        // Include every directory member — even with no office location —
+        // so Attendance "All Locations" matches the employee directory.
         merged.add(
           ManagerTeamAttendanceItem(
             userId: int.tryParse(member.id),
@@ -79,6 +82,7 @@ class TeamAttendanceMapper {
             departmentTitle: member.departmentTitle ?? member.role,
             photoUrl: member.photo,
             locationId: member.locationId,
+            locationName: member.locationName,
           ),
         );
       }

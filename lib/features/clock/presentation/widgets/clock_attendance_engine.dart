@@ -174,19 +174,25 @@ class AttendanceEngine {
   /// Events sorted oldest-first (chronological), for attendance timelines.
   static List<AttendanceEvent> sortedOldestFirst(List<AttendanceEvent> events) {
     final sorted = [...events]
-      ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+      ..sort((a, b) {
+        final byTime = a.effectiveTime.compareTo(b.effectiveTime);
+        if (byTime != 0) return byTime;
+        return _typeOrder(a.type).compareTo(_typeOrder(b.type));
+      });
     return sorted;
   }
 
+  /// Equal-time order: check-out → check-in → break start → break end so a
+  /// segment boundary at the same minute stays in work sequence.
   static int _typeOrder(AttendanceEventType type) {
     switch (type) {
-      case AttendanceEventType.checkIn:
-        return 0;
-      case AttendanceEventType.breakStart:
-        return 1;
-      case AttendanceEventType.breakEnd:
-        return 2;
       case AttendanceEventType.checkOut:
+        return 0;
+      case AttendanceEventType.checkIn:
+        return 1;
+      case AttendanceEventType.breakStart:
+        return 2;
+      case AttendanceEventType.breakEnd:
         return 3;
     }
   }

@@ -877,13 +877,19 @@ Photo: `POST /manager/locations/{id}/photo` multipart `photo` (same pattern as `
 
 Same body as **§5.4**. Location policy is the default; employee schedule overrides it.
 
-## 12.3 PATCH deactivate
+## 12.3 PATCH deactivate / reactivate
 
 `PATCH /manager/locations/{location_id}/status`
 
 ```json
 { "is_active": false }
 ```
+
+```json
+{ "is_active": true }
+```
+
+**Must work for inactive locations too.** After deactivate, the same route with `is_active: true` must reactivate the office. Do not scope status updates (or location writes) to `is_active = true` only — that makes reactivate return 404.
 
 ## 12.4 DELETE location
 

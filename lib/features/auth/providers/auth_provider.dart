@@ -12,6 +12,40 @@ import '../services/auth_service.dart';
 
 enum AuthFlowStep { email, otp, resetPassword, authenticated }
 
+/// Message shown on the password screen after a failed sign-in.
+///
+/// A wrong password can come back as "verify your email" or "session
+/// expired". The email was already checked on the previous screen, so those
+/// responses stay on this screen as an invalid-password error.
+String passwordLoginErrorMessage(String? raw) {
+  final message = (raw ?? '').trim();
+  if (message.isEmpty) return 'Invalid password.';
+  final lower = message.toLowerCase();
+
+  // A password-rule reply (length, characters) stays as sent.
+  final isPasswordRule =
+      lower.contains('character') ||
+      lower.contains('digit') ||
+      lower.contains('uppercase') ||
+      lower.contains('lowercase') ||
+      lower.contains('symbol') ||
+      lower.contains('at least') ||
+      lower.contains('too short') ||
+      lower.contains('too long');
+  if (isPasswordRule && !lower.contains('email')) return message;
+
+  // Email was already accepted on the previous screen. A failed sign-in
+  // here is a password error, including "Invalid email or password."
+  final aboutEmailOrSession =
+      lower.contains('email') ||
+      lower.contains('verify') ||
+      lower.contains('session has expired') ||
+      lower.contains('log in again') ||
+      lower.contains('login again');
+  if (aboutEmailOrSession) return 'Invalid password.';
+  return message;
+}
+
 enum AuthHomeTarget { employee, manager }
 
 class AuthProvider extends ChangeNotifier {
@@ -169,12 +203,12 @@ class AuthProvider extends ChangeNotifier {
       hasChanged = true;
     }
 
-    if (user.locations.isNotEmpty) {
-      final incoming = _locationsWithPreservedDefault(user.locations);
-      if (!AuthLocationModel.isSameLocationList(_locations, incoming)) {
-        _locations = incoming;
-        hasChanged = true;
-      }
+    final incoming = user.locations.isNotEmpty
+        ? _locationsWithPreservedDefault(user.locations)
+        : const <AuthLocationModel>[];
+    if (!AuthLocationModel.isSameLocationList(_locations, incoming)) {
+      _locations = incoming;
+      hasChanged = true;
     }
 
     AuthLocationModel? preferred;
@@ -202,6 +236,9 @@ class AuthProvider extends ChangeNotifier {
     if (newSelected != _selectedLocation) {
       _selectedLocation = newSelected;
       hasChanged = true;
+      if (newSelected != null) {
+        unawaited(_service.setSelectedLocationId(newSelected.id));
+      }
     }
 
     return hasChanged;
@@ -284,11 +321,16 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> selectLocation(AuthLocationModel location) async {
+  Future<void> selectLocation(
+    AuthLocationModel location, {
+    bool refreshProfile = true,
+  }) async {
     if (_selectedLocation?.id == location.id) return;
     _selectedLocation = location;
     notifyListeners();
     await _service.setSelectedLocationId(location.id);
+
+    if (!refreshProfile) return;
 
     // Bypass TTL: the user explicitly switched locations so we need fresh data.
     _lastMeRefreshedAt = null;
@@ -455,9 +497,24 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
-    _errorMessage = response.message ?? 'Login failed. Please try again.';
+    // Keep the email from step 1. A failed password must not send the user
+    // back to verify it again.
+    _pendingEmail = email;
+    _errorMessage = passwordLoginErrorMessage(response.message);
     notifyListeners();
+
+    // Some backends drop the email-verified step when the password is wrong.
+    // Restore it here so the next password attempt can succeed on this screen.
+    await _reconfirmVerifiedEmail(email, flowToken);
     return false;
+  }
+
+  Future<void> _reconfirmVerifiedEmail(String email, int flowToken) async {
+    final response = await _service.checkEmailExists(email);
+    if (flowToken != _authFlowToken) return;
+    if (response.success && response.data == true) {
+      _pendingEmail = email;
+    }
   }
 
   /// Fast, local-only check (no network call): true if a remembered,
@@ -517,13 +574,31 @@ class AuthProvider extends ChangeNotifier {
     return true;
   }
 
-  Future<bool> refreshCurrentUser() {
+  /// Refreshes `/auth/me` and registered policy/permissions from the network,
+  /// bypassing TTL caches. Safe to call on app resume and pull-to-refresh.
+  Future<void> refreshWorkspaceFromNetwork() async {
+    if (_isLocalInviteSession) return;
+
+    _lastMeRefreshedAt = null;
+    final ok = await refreshCurrentUser();
+    if (!ok && _lastMeFailureConfirmedUnauthorized) {
+      await logout();
+      return;
+    }
+
+    final refreshPolicy = _onPolicyRefresh;
+    if (refreshPolicy != null) {
+      await refreshPolicy();
+    }
+  }
+
+  Future<bool> refreshCurrentUser({bool force = false}) {
     if (_isLocalInviteSession) {
       return Future.value(true);
     }
 
     // TTL guard — return immediately if the cache is still fresh.
-    if (_isMeCacheValid) {
+    if (!force && _isMeCacheValid) {
       AppLogger.info(
         'AuthProvider: /api/auth/me TTL cache hit, skipping network.',
       );
@@ -562,9 +637,7 @@ class AuthProvider extends ChangeNotifier {
       _lastMeFailureConfirmedUnauthorized = false;
       // Mark cache timestamp on success.
       _lastMeRefreshedAt = DateTime.now();
-      if (changed) {
-        notifyListeners();
-      }
+      notifyListeners();
       return true;
     }
 
