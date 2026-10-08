@@ -52,4 +52,25 @@ void main() {
       expect(Validators.phone('123'), isNotNull);
     });
   });
+
+  group('Validators.phoneNumber', () {
+    test('rejects empty and short numbers', () {
+      expect(Validators.phoneNumber(null), isNotNull);
+      expect(Validators.phoneNumber(''), isNotNull);
+      expect(Validators.phoneNumber('123'), isNotNull);
+    });
+
+    test('accepts valid digit length', () {
+      expect(Validators.phoneNumber('3001234567'), isNull);
+      expect(Validators.phoneNumber('300 123 4567'), isNull);
+    });
+  });
+
+  group('Validators.selection', () {
+    test('requires a value', () {
+      expect(Validators.selection(null, label: 'Industry'), isNotNull);
+      expect(Validators.selection('', label: 'Industry'), isNotNull);
+      expect(Validators.selection('Tech', label: 'Industry'), isNull);
+    });
+  });
 }

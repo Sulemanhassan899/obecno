@@ -75,7 +75,14 @@ class AuthService {
       );
     }
 
-    if (user.locations.isEmpty) return;
+    // Always persist — including an empty list — so a deactivated/unassigned
+    // office cannot linger in local cache after /auth/me drops it.
+    if (user.locations.isEmpty) {
+      await _tokenService.cacheLocations(const []);
+      await _tokenService.setSelectedLocationId('');
+      return;
+    }
+
     final locations = resetSelection
         ? user.locations
         : await _locationsWithCachedDefault(user.locations);
@@ -128,7 +135,10 @@ class AuthService {
 
   Future<List<AuthLocationModel>> getCachedLocations() async {
     final raw = await _tokenService.cachedLocations;
-    return raw.map(AuthLocationModel.fromJson).toList(growable: false);
+    // Drop inactive offices that may still be sitting in an older cache.
+    return AuthLocationModel.applyDefaultFlag(
+      raw.map(AuthLocationModel.fromJson).toList(growable: false),
+    );
   }
 
   Future<String?> getCachedSelectedLocationId() =>

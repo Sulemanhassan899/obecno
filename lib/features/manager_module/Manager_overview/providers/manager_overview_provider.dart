@@ -17,15 +17,26 @@ class ManagerOverviewProvider extends BaseProvider {
   Future<bool> load() {
     return safeCall<OverviewSnapshot>(
       operationKey: 'manager_overview_load',
-      request: (cancelToken) =>
-          _service.loadOverview(date: selectedDate, cancelToken: cancelToken),
-      onSuccess: (result) {
-        selectedDate = result.date;
-        summary = result.summary;
-        dashboard = result.dashboard;
-        attendance = result.attendance;
-      },
+      request: (cancelToken) => _service.loadOverview(
+        date: selectedDate,
+        cancelToken: cancelToken,
+        // Dashboard counts are enough to leave the shimmer. Per-person
+        // punch lookups continue and replace this snapshot when they finish.
+        onPreliminary: (result) {
+          if (cancelToken.isCancelled) return;
+          _apply(result);
+          if (isLoading) setSuccess();
+        },
+      ),
+      onSuccess: _apply,
     );
+  }
+
+  void _apply(OverviewSnapshot result) {
+    selectedDate = result.date;
+    summary = result.summary;
+    dashboard = result.dashboard;
+    attendance = result.attendance;
   }
 
   Future<bool> refresh() => load();

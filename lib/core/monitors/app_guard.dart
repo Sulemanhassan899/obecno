@@ -367,10 +367,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _checkAll(trigger: 'LIFECYCLE_RESUME');
 
-      _revalidateSession();
-      if (mounted) {
-        unawaited(context.read<ReminderSettingsProvider>().resync());
-      }
+      unawaited(_revalidateSession());
     }
   }
 
@@ -379,7 +376,9 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
     if (!mounted || authProvider == null) return;
     if (!authProvider.isAuthenticated) return;
 
-    await authProvider.validateSessionOnUnauthorized();
+    await authProvider.refreshWorkspaceFromNetwork();
+    if (!mounted) return;
+    await context.read<ReminderSettingsProvider>().refresh();
   }
 
   void _onAuthChanged() {

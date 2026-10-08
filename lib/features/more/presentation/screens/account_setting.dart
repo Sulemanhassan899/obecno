@@ -6,6 +6,7 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/auth/providers/permission_provider.dart';
 import 'package:obecno/features/more/data/models/employee_profile_model.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
@@ -45,17 +46,16 @@ class _AccountSettingState extends State<AccountSetting> {
   Widget build(BuildContext context) {
     final profileProvider = context.read<ProfileProvider>();
     final permissionProvider = context.read<PermissionProvider>();
+    final authProvider = context.read<AuthProvider>();
 
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
-        padding: AppSizes.HORIZONTAL,
+        padding: AppSizes.horizontalOnly(context),
         child: ShimmerRefreshIndicator(
           onRefresh: () async {
-            await Future.wait([
-              profileProvider.loadProfile(),
-              permissionProvider.refresh(),
-            ]);
+            await authProvider.refreshWorkspaceFromNetwork();
+            await profileProvider.loadProfile();
           },
           child: ListenableBuilder(
             listenable: Listenable.merge([profileProvider, permissionProvider]),

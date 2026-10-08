@@ -10,6 +10,7 @@ import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 enum ManagerDeviceStatus { active, pending, blocked, rejected }
 
@@ -110,7 +111,7 @@ class ManagerLinkedDevicesSheet {
     required String employeeName,
     int? userId,
   }) {
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

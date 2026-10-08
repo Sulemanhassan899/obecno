@@ -92,6 +92,7 @@ internal object AttendanceAlarmScheduler {
         val app = context.applicationContext
         val manager = app.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         manager.cancel(pendingIntent(app, id = id))
+        NotificationManagerCompat.from(app).cancel(id)
     }
 
     fun reschedulePersisted(context: Context) {

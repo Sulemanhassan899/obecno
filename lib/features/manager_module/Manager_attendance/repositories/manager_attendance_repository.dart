@@ -16,9 +16,13 @@ class ManagerAttendanceRepository extends BaseRepository {
     String? filter,
     String? search,
     String? locationId,
+    int page = 1,
+    int pageSize = 200,
     ApiCancelToken? cancelToken,
   }) {
     final query = <String, dynamic>{
+      'page': page,
+      'page_size': pageSize,
       if (date != null && date.isNotEmpty) 'date': date,
       if (filter != null && filter.isNotEmpty && filter != 'all')
         'filter': filter,
@@ -29,7 +33,7 @@ class ManagerAttendanceRepository extends BaseRepository {
 
     return getRequest<ManagerTeamAttendanceData>(
       ManagerEmployeeApiEndpoints.teamAttendance,
-      queryParameters: query.isEmpty ? null : query,
+      queryParameters: query,
       cancelToken: cancelToken,
       parser: (json) {
         final data = _extractData(
@@ -144,6 +148,7 @@ class ManagerAttendanceRepository extends BaseRepository {
     String? checkOutDetailId,
     String? breakStartDetailId,
     String? breakEndDetailId,
+    List<Map<String, dynamic>> additionalEvents = const [],
     required List<AttendanceChangeRequestPayload> changes,
     ApiCancelToken? cancelToken,
   }) async {
@@ -169,6 +174,7 @@ class ManagerAttendanceRepository extends BaseRepository {
       checkOutDetailId: checkOutDetailId,
       breakStartDetailId: breakStartDetailId,
       breakEndDetailId: breakEndDetailId,
+      additionalEvents: additionalEvents,
       changes: changes,
     );
     debugPrint(
@@ -280,6 +286,7 @@ class ManagerAttendanceRepository extends BaseRepository {
     String? checkOutDetailId,
     String? breakStartDetailId,
     String? breakEndDetailId,
+    List<Map<String, dynamic>> additionalEvents = const [],
     required List<AttendanceChangeRequestPayload> changes,
   }) {
     Map<String, dynamic> event(String type, String time, String? id) {
@@ -302,6 +309,7 @@ class ManagerAttendanceRepository extends BaseRepository {
         event('breakin', breakEnd, breakEndDetailId),
       if (checkOut != null && checkOut.isNotEmpty)
         event('checkout', checkOut, checkOutDetailId),
+      ...additionalEvents,
     ];
 
     return {

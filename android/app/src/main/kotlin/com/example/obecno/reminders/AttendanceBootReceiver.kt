@@ -13,7 +13,10 @@ class AttendanceBootReceiver : BroadcastReceiver() {
             Intent.ACTION_TIME_CHANGED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON",
-            -> AttendanceAlarmScheduler.reschedulePersisted(context)
+            -> {
+                AttendanceAlarmScheduler.reschedulePersisted(context)
+                LocationFlagAlarmScheduler.reschedulePersisted(context)
+            }
         }
     }
 }

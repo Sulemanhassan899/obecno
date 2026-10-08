@@ -1,26 +1,23 @@
 import 'dart:async';
 
-import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
-import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
-import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
-import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
+import 'package:obecno/features/join/data/models/join_invite_models.dart';
+import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/screens/manager_attendence_screen.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/presentation/screens/overview_screen.dart';
+import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
+import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
-
-import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
-import 'package:obecno/features/alerts/providers/alerts_provider.dart';
-import 'package:obecno/features/join/data/models/join_invite_models.dart';
-import 'package:obecno/features/join/providers/join_invite_provider.dart';
-import 'package:obecno/widgets/bottom_nav_bars/alerts_nav_icon.dart';
-import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/bottom_nav_bars/bottom_nav_item.dart';
+import 'package:obecno/widgets/bottom_nav_bars/bottom_nav_metrics.dart';
 import 'package:flutter/material.dart';
 
 class ManagerBottomNavBar extends StatefulWidget {
@@ -125,6 +122,9 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     if (index == 3) {
       context.read<AlertsProvider>().markAlertsSeen();
     }
+    if (index == 2 && previousIndex != 2) {
+      unawaited(context.read<ManagerAttendanceProvider>().load());
+    }
     if (index == 1 && previousIndex != 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -163,14 +163,19 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge ||
+    final showAlertsBadge =
+        context.watch<AlertsProvider>().showNavBadge ||
         context.watch<JoinInviteProvider>().managerAlerts().any(
-              (e) => e.status == JoinInviteStatus.pendingApproval,
-            );
+          (e) => e.status == JoinInviteStatus.pendingApproval,
+        );
+    final metrics = BottomNavMetrics.of(context);
     return Scaffold(
       body: IndexedStack(index: selectedIndex, children: screens),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.symmetric(
+          horizontal: metrics.paddingH,
+          vertical: metrics.paddingV,
+        ),
         decoration: BoxDecoration(
           color: kWhite,
           boxShadow: [
@@ -178,36 +183,17 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
           ],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: List.generate(items.length, (index) {
-            final isSelected = selectedIndex == index;
-
-            return ButtonAnimations.press(
+            return BottomNavItem(
+              metrics: metrics,
+              label: items[index]["label"] as String,
+              activeIcon: items[index]["activeIcon"] as String,
+              inactiveIcon: items[index]["inactiveIcon"] as String,
+              selected: selectedIndex == index,
+              isAlerts: index == 3,
+              showAlertsBadge: showAlertsBadge,
               onTap: () => _selectTab(index),
-              child: GestureDetector(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    index == 3
-                        ? AlertsNavIcon(
-                            selected: isSelected,
-                            showBadge: showAlertsBadge,
-                          )
-                        : CommonImageView(
-                            imagePath: isSelected
-                                ? items[index]["activeIcon"]
-                                : items[index]["inactiveIcon"],
-                            height: 20,
-                          ),
-                    const SizedBox(height: 6),
-                    AppText.p4(
-                      items[index]["label"],
-                      color: isSelected ? kPrimaryColor : kGreyColor,
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                ),
-              ),
             );
           }),
         ),

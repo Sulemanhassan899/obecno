@@ -17,9 +17,11 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/invite_sent_dialog.da
 import 'package:obecno/shared/bottom_sheets/location_sheet/select_default_location_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
+import 'package:obecno/widgets/field_error_text.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:obecno/widgets/phone_feild.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 enum _InviteMode { email, phone }
 
@@ -54,7 +56,7 @@ class AddEmployeeSheet {
   AddEmployeeSheet._();
 
   static Future<void> show(BuildContext context) {
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -404,22 +406,18 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
             PhoneField(
               controller: row.phoneController,
               selectedCode: row.dialCode,
+              errorText: row.error('contact'),
               onCodeChanged: (code) {
                 setState(() {
                   row.dialCode = code;
                   row.errors.remove('contact');
                 });
               },
+              onChanged: (_) {
+                if (row.error('contact') == null) return;
+                setState(() => row.errors.remove('contact'));
+              },
             ),
-            if (row.error('contact') != null) ...[
-              const SizedBox(height: 6),
-              AppText.caption(
-                row.error('contact')!,
-                color: kRed,
-                weight: FontWeight.w400,
-                align: TextAlign.left,
-              ),
-            ],
           ],
           const SizedBox(height: 16),
           _selectField(
@@ -480,7 +478,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
       children: [
         AppText.caption(
           label,
-          color: error != null ? kRed : kBlack,
+          color: kBlack,
           weight: FontWeight.w500,
           align: TextAlign.left,
         ),
@@ -511,15 +509,7 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
             ),
           ),
         ),
-        if (error != null) ...[
-          const SizedBox(height: 6),
-          AppText.caption(
-            error,
-            color: kRed,
-            weight: FontWeight.w400,
-            align: TextAlign.left,
-          ),
-        ],
+        if (error != null) FieldErrorText(error),
       ],
     );
   }

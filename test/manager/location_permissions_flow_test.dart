@@ -182,7 +182,24 @@ class _FakeLocationApi extends http.BaseClient {
         ];
         final incomingItems = body?['permission_items'];
         if (incomingItems is List) {
-          currentItems.addAll(incomingItems);
+          for (final item in incomingItems) {
+            if (item is! Map) continue;
+            final map = Map<String, dynamic>.from(item);
+            final section = map['section']?.toString();
+            final key = map['key']?.toString();
+            currentItems.removeWhere((existing) {
+              if (existing is! Map) return false;
+              return existing['section']?.toString() == section &&
+                  existing['key']?.toString() == key;
+            });
+            currentItems.add(map);
+          }
+        }
+        // Keep the latest scalar field write visible on the setting bag.
+        final field = body?['field']?.toString();
+        final value = body?['value'];
+        if (field != null && field.isNotEmpty && value != null) {
+          currentSetting[field] = value;
         }
         permissions[id] = {
           ...current,
@@ -445,17 +462,18 @@ void main() {
       final workingPut = puts.firstWhere(
         (call) => call.body?['section'] == 'working_days',
       );
-      expect(workingPut.body!['value'], 'monday, tuesday, wednesday, thursday');
+      // Portal location form posts working_days as day codes.
+      expect(workingPut.body!['value'], 'mon,tue,wed,thr');
       expect(workingPut.body!['is_override'], isTrue);
       expect(
         (workingPut.body!['location_setting'] as Map)['working_days'],
-        unorderedEquals(['monday', 'tuesday', 'wednesday', 'thursday']),
+        unorderedEquals(['mon', 'tue', 'wed', 'thr']),
       );
 
       final breakPut = puts.firstWhere(
         (call) => call.body?['section'] == 'break_timing',
       );
-      expect(breakPut.body!['value'], '30:00 mins');
+      expect(breakPut.body!['value'], 30);
       expect(
         (breakPut.body!['location_setting'] as Map)['max_break_minutes'],
         30,

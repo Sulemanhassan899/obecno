@@ -217,7 +217,12 @@ class ManagerEmployeeModel {
         json['status'] ?? json['account_status'] ?? json['status_label'],
       ),
       badge: _parseBadge(
-        json['badge'] ?? json['job_title'] ?? json['role'] ?? json['name'],
+        json['badge'] ??
+            json['user_type'] ??
+            json['account_type'] ??
+            json['job_title'] ??
+            json['role'] ??
+            json['designation'],
       ),
     );
   }
@@ -372,18 +377,28 @@ ManagerEmployeeStatus _parseStatus(dynamic raw) {
 
 ManagerEmployeeBadge _parseBadge(dynamic raw) {
   final value = raw?.toString().trim().toLowerCase() ?? '';
+  if (value.isEmpty) return ManagerEmployeeBadge.none;
+
   switch (value) {
     case 'owner':
     case 'ceo':
       return ManagerEmployeeBadge.owner;
     case 'manager':
+      return ManagerEmployeeBadge.manager;
     case 'you':
-      return value == 'you'
-          ? ManagerEmployeeBadge.you
-          : ManagerEmployeeBadge.manager;
+      return ManagerEmployeeBadge.you;
+    case 'employee':
+    case 'staff':
+    case 'member':
+      return ManagerEmployeeBadge.none;
     default:
-      if (value.contains('manager')) return ManagerEmployeeBadge.manager;
-      if (value.contains('owner') || value.contains('ceo')) {
+      // Role labels only (e.g. "Senior Manager") — never employee display names.
+      final tokens = value
+          .split(RegExp(r'[^a-z0-9]+'))
+          .where((t) => t.isNotEmpty)
+          .toSet();
+      if (tokens.contains('manager')) return ManagerEmployeeBadge.manager;
+      if (tokens.contains('owner') || tokens.contains('ceo')) {
         return ManagerEmployeeBadge.owner;
       }
       return ManagerEmployeeBadge.none;

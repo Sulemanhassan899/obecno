@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:obecno/core/monitors/app_guard.dart';
+import 'package:obecno/demo/location_flags/engine/location_flag_background.dart';
+import 'package:obecno/demo/location_flags/presentation/location_flag_monitor_host.dart';
 import 'package:obecno/core/state/multi_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/binding/app_binding.dart';
@@ -30,8 +32,8 @@ import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/join/services/join_deep_link_service.dart';
 import 'package:obecno/features/more/services/reminder_notification_service.dart';
-import 'package:obecno/features/clock/location_flags/providers/location_flag_provider.dart';
 import 'package:obecno/shared/location/service/location_provider.dart';
+import 'package:obecno/widgets/responsive_body.dart';
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
@@ -39,6 +41,13 @@ late final AppBindings bindings;
 
 void _reportError(Object error, StackTrace stack) {
   AppLogger.error('UNCAUGHT', 'app', error, stackTrace: stack);
+}
+
+/// Headless entrypoint for Android location-flag alarms (app closed / locked).
+@pragma('vm:entry-point')
+void locationFlagBackgroundMain() {
+  // Defined in main.dart so the native FlutterEngine can resolve it.
+  locationFlagBackgroundEntrypoint();
 }
 
 Future<void> main() async {
@@ -165,10 +174,6 @@ class _MyAppState extends State<MyApp> {
           notifier: bindings.joinInviteProvider,
           child: child,
         ),
-        (child) => ChangeNotifierProvider<LocationFlagProvider>(
-          notifier: bindings.locationFlagProvider,
-          child: child,
-        ),
         (child) => ChangeNotifierProvider<ThemeProvider>(
           notifier: _themeProvider,
           child: child,
@@ -183,7 +188,11 @@ class _MyAppState extends State<MyApp> {
             themeMode: _themeProvider.themeMode,
             routerConfig: router,
             builder: (context, child) {
-              return AppGuard(child: child ?? const SizedBox.shrink());
+              return ResponsiveAppShell(
+                child: LocationFlagMonitorHost(
+                  child: AppGuard(child: child ?? const SizedBox.shrink()),
+                ),
+              );
             },
           );
         },

@@ -173,15 +173,18 @@ class _HelpFeedbackScreenState extends State<HelpFeedbackScreen> {
                         hasStar: true,
                         hintText: 'Enter your name',
                         isExpanded: true,
+                        reserveHelperSpace: false,
                         validator: (value) =>
                             Validators.required(value, label: 'Name'),
                       ),
+                      const SizedBox(height: 12),
                       CustomTextField(
                         controller: emailController,
                         labelText: 'Email ',
                         hasStar: true,
                         hintText: 'Enter your email',
                         isExpanded: true,
+                        reserveHelperSpace: false,
                         keyboardType: TextInputType.emailAddress,
                         havePrefixIcon: true,
                         preffixWidget: CommonImageView(
@@ -190,6 +193,7 @@ class _HelpFeedbackScreenState extends State<HelpFeedbackScreen> {
                         ),
                         validator: Validators.email,
                       ),
+                      const SizedBox(height: 12),
                       PhoneField(
                         key: ValueKey(_didPrefill),
                         controller: phoneController,
@@ -197,15 +201,18 @@ class _HelpFeedbackScreenState extends State<HelpFeedbackScreen> {
                         onCodeChanged: (String code) {
                           setState(() => selectedCode = code);
                         },
+                        validator: Validators.phoneNumber,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       CustomTextField(
                         controller: departmentController,
                         labelText: 'Department',
                         hintText: 'Department',
                         isExpanded: true,
                         readOnly: true,
+                        reserveHelperSpace: false,
                       ),
+                      const SizedBox(height: 12),
                       CustomTextField(
                         controller: issueController,
                         labelText: 'Describe the issue ',
@@ -215,6 +222,7 @@ class _HelpFeedbackScreenState extends State<HelpFeedbackScreen> {
                         maxlines: 5,
                         minHeight: 120,
                         keyboardType: TextInputType.multiline,
+                        reserveHelperSpace: false,
                         validator: (value) =>
                             Validators.required(value, label: 'Issue'),
                       ),

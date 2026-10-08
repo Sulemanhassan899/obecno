@@ -105,8 +105,38 @@ class ReminderNotificationService {
     required String payload,
   }) async {
     await init();
-    if (!_initialized) return false;
+    if (!_initialized) {
+      AppLogger.error(
+        'ReminderNotificationService',
+        'showCustom',
+        StateError('notification service not initialized'),
+      );
+      return false;
+    }
     await _ensurePermission();
+    // Never bail solely on Permission.notification — on some Android builds
+    // it reports denied while NotificationManager still posts. Always try.
+    var posted = false;
+    Object? lastError;
+    try {
+      if (NativeReminderScheduler.isAndroid) {
+        await NativeReminderScheduler.show(
+          id: id,
+          title: title,
+          message: body,
+          payload: payload,
+        );
+        posted = true;
+      }
+    } catch (e, st) {
+      lastError = e;
+      AppLogger.error(
+        'ReminderNotificationService',
+        'showCustom.native',
+        e,
+        stackTrace: st,
+      );
+    }
     try {
       await _plugin.show(
         id: id,
@@ -115,15 +145,56 @@ class ReminderNotificationService {
         notificationDetails: _details,
         payload: payload,
       );
-      return true;
+      posted = true;
     } catch (e, st) {
+      lastError = e;
       AppLogger.error(
         'ReminderNotificationService',
-        'showCustom',
+        'showCustom.plugin',
         e,
         stackTrace: st,
       );
-      return false;
+    }
+    if (!posted && lastError != null) {
+      AppLogger.error(
+        'ReminderNotificationService',
+        'showCustom',
+        lastError,
+      );
+    }
+    return posted;
+  }
+
+  /// Premises / smart-attendance / location-flag banners from the demo.
+  static const demoNotificationIds = <int>[
+    88021,
+    88022,
+    88023,
+    88024,
+    88025,
+    88031,
+    88032,
+    88033,
+    88034,
+  ];
+
+  Future<void> cancelDemoNotifications() async {
+    await init();
+    if (!_initialized) return;
+    try {
+      if (NativeReminderScheduler.isAndroid) {
+        await NativeReminderScheduler.cancelIds(demoNotificationIds);
+      }
+      for (final id in demoNotificationIds) {
+        await _plugin.cancel(id: id);
+      }
+    } catch (e, st) {
+      AppLogger.error(
+        'ReminderNotificationService',
+        'cancelDemo',
+        e,
+        stackTrace: st,
+      );
     }
   }
 
@@ -134,6 +205,7 @@ class ReminderNotificationService {
       for (final id in ReminderNotificationPlan.allIds()) {
         await _plugin.cancel(id: id);
       }
+      await cancelDemoNotifications();
     } catch (e, st) {
       AppLogger.error(
         'ReminderNotificationService',
@@ -530,7 +602,14 @@ class ReminderNotificationService {
             .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin
             >();
-        await android?.requestNotificationsPermission();
+        final granted = await android?.requestNotificationsPermission();
+        if (granted == false) {
+          AppLogger.error(
+            'ReminderNotificationService',
+            'ensurePermission',
+            StateError('Android notification permission not granted'),
+          );
+        }
         await android?.requestExactAlarmsPermission();
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
         final ios = _plugin

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
@@ -15,6 +17,7 @@ import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 export 'package:obecno/features/manager_module/Manager_employees/domain/employee_location_assignment.dart'
     show EmployeeLocationsSheetMode;
@@ -30,7 +33,7 @@ class EmployeeDefaultLocationsSheet {
     Set<String>? initialSelectedIds,
     EmployeeLocationsSheetMode mode = EmployeeLocationsSheetMode.assigned,
   }) {
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -112,7 +115,7 @@ class _EmployeeDefaultLocationsSheetBodyState
       }
 
       final company = List<LocationFilterOption>.from(
-        locationsProvider.filterOptions,
+        locationsProvider.activeFilterOptions,
       );
       // Assigned locations first, then the rest (manager can select those).
       company.sort((a, b) {
@@ -230,6 +233,8 @@ class _EmployeeDefaultLocationsSheetBodyState
             : payload.locationIds,
         locationName: saved?.locationName,
       );
+      unawaited(bindings.managerEmployeesProvider.refresh());
+      unawaited(bindings.managerLocationsProvider.refresh());
     }
 
     Navigator.of(context).pop();

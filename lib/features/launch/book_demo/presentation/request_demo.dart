@@ -37,7 +37,7 @@ class _DemoRequestScreenState extends State<DemoRequestScreen> {
       },
       child: Scaffold(
         body: Padding(
-          padding: AppSizes.DEFAULT,
+          padding: AppSizes.defaultOf(context),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

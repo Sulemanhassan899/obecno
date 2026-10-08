@@ -41,13 +41,15 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 1200),
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
-    _scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.92,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
     _controller.forward();
 
@@ -103,8 +105,10 @@ class _SplashScreenState extends State<SplashScreen>
       dest = _fallbackPath();
     }
 
+    // Session is already known. Wait only for the splash animation (1.2s),
+    // not a fixed 2s floor. If the check took longer, navigate immediately.
     final remaining =
-        const Duration(seconds: 2) - DateTime.now().difference(startTime);
+        _controller.duration! - DateTime.now().difference(startTime);
     if (remaining > Duration.zero) {
       await Future.delayed(remaining);
     }
@@ -145,8 +149,11 @@ class _SplashScreenState extends State<SplashScreen>
 
     var permissionsAllowed = false;
     try {
-      permissionsAllowed = await PermissionService.areCriticalPermissionsAllowed()
-          .timeout(const Duration(seconds: 2), onTimeout: () => true);
+      permissionsAllowed =
+          await PermissionService.areCriticalPermissionsAllowed().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => true,
+          );
     } catch (e) {
       debugPrint('[SplashScreen] permission check failed: $e');
       permissionsAllowed = true;

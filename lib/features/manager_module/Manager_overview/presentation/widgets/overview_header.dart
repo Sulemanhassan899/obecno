@@ -3,6 +3,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/responsive/responsive.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
@@ -350,6 +351,14 @@ class OverviewActionsGrid extends StatelessWidget {
         : overview.summary?.totalTeamMembers ?? 0;
     final locationCount = locations.locations.length;
 
+    final aspectRatio = Responsive.value(
+      context,
+      phone: 2.0,
+      smallTablet: 2.3,
+      mediumTablet: 2.5,
+      largeTablet: 2.6,
+    );
+
     return Column(
       children: [
         GridView.count(
@@ -359,7 +368,7 @@ class OverviewActionsGrid extends StatelessWidget {
           crossAxisCount: 2,
           crossAxisSpacing: 10,
           mainAxisSpacing: 14,
-          childAspectRatio: 2,
+          childAspectRatio: aspectRatio,
           children: [
             ActionTile(
               "Add Location",

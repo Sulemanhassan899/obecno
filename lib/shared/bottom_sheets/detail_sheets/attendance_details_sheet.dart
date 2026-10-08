@@ -32,6 +32,7 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart'
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class AttendanceDetailsSheet {
   AttendanceDetailsSheet._();
@@ -47,7 +48,7 @@ class AttendanceDetailsSheet {
     bool onLeave = false,
     bool preferLocalEvents = false,
   }) {
-    return showModalBottomSheet(
+    return AppSheet.show(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -104,7 +105,7 @@ class _AttendanceDetailsSheetBodyState
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
   List<HistoryAttendanceEvent> _pendingAddEvents = const [];
-  TimelineSortMode _sortMode = TimelineSortMode.newestFirst;
+  TimelineSortMode _sortMode = TimelineSortMode.oldestFirst;
 
   String _yyyyMMdd(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -116,6 +117,7 @@ class _AttendanceDetailsSheetBodyState
     super.initState();
     _events = widget.events;
     _summary = widget.summary;
+    _loadingDetails = widget.events.isEmpty;
     _loadDetailsFromApi();
   }
 
@@ -143,7 +145,10 @@ class _AttendanceDetailsSheetBodyState
   }
 
   Future<void> _loadDetailsFromApi() async {
-    setState(() => _loadingDetails = true);
+    final showPlaceholder = _events.isEmpty && _reminderLogs.isEmpty;
+    if (showPlaceholder && mounted) {
+      setState(() => _loadingDetails = true);
+    }
 
     try {
       final response = await AttendanceService(
@@ -318,7 +323,7 @@ class _AttendanceDetailsSheetBodyState
       }
     }
 
-    // Newest activity first — never collapse to one-of-each-type.
+    // Base list is newest-first; Sort by → Oldest first reverses into sequence.
     final timeline = HistoryAttendanceEngine.sortedNewestFirst([
       ..._events,
       ..._pendingAddEvents,
@@ -572,11 +577,32 @@ class _AttendanceDetailsSheetBodyState
                       height: 16,
                     ),
                     onTap: () async {
+                      final allEvents =
+                          HistoryAttendanceEngine.sortedOldestFirst([
+                            ..._events,
+                            ..._pendingAddEvents,
+                          ]);
+                      HistoryAttendanceEvent? editCheckIn;
+                      HistoryAttendanceEvent? editCheckOut;
+                      HistoryAttendanceEvent? editBreakOut;
+                      HistoryAttendanceEvent? editBreakIn;
+                      for (final e in allEvents) {
+                        switch (e.type) {
+                          case AttendanceHisotryEventType.checkIn:
+                            editCheckIn ??= e;
+                            break;
+                          case AttendanceHisotryEventType.checkOut:
+                            editCheckOut ??= e;
+                            break;
+                          case AttendanceHisotryEventType.breakStart:
+                            editBreakOut ??= e;
+                            break;
+                          case AttendanceHisotryEventType.breakEnd:
+                            editBreakIn ??= e;
+                            break;
+                        }
+                      }
                       final editAttendanceId = _attendanceId;
-                      final editCheckIn = checkIn;
-                      final editCheckOut = checkOut;
-                      final editBreakOut = breakOut;
-                      final editBreakIn = breakIn;
                       Navigator.of(context).pop();
 
                       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -599,14 +625,50 @@ class _AttendanceDetailsSheetBodyState
                           initialBreakEnd: editBreakIn != null
                               ? _timeOfDay(editBreakIn.time)
                               : null,
-                          checkInDetailId: editCheckIn?.id,
-                          checkOutDetailId: editCheckOut?.id,
-                          breakStartDetailId: editBreakOut?.id,
-                          breakEndDetailId: editBreakIn?.id,
-                          hadInitialCheckIn: editCheckIn != null,
-                          hadInitialCheckOut: editCheckOut != null,
-                          hadInitialBreakStart: editBreakOut != null,
-                          hadInitialBreakEnd: editBreakIn != null,
+                          checkInDetailId:
+                              AttendanceTimelineAssembler.isPendingAddId(
+                                editCheckIn?.id,
+                              )
+                              ? null
+                              : editCheckIn?.id,
+                          checkOutDetailId:
+                              AttendanceTimelineAssembler.isPendingAddId(
+                                editCheckOut?.id,
+                              )
+                              ? null
+                              : editCheckOut?.id,
+                          breakStartDetailId:
+                              AttendanceTimelineAssembler.isPendingAddId(
+                                editBreakOut?.id,
+                              )
+                              ? null
+                              : editBreakOut?.id,
+                          breakEndDetailId:
+                              AttendanceTimelineAssembler.isPendingAddId(
+                                editBreakIn?.id,
+                              )
+                              ? null
+                              : editBreakIn?.id,
+                          hadInitialCheckIn:
+                              editCheckIn != null &&
+                              !AttendanceTimelineAssembler.isPendingAddId(
+                                editCheckIn.id,
+                              ),
+                          hadInitialCheckOut:
+                              editCheckOut != null &&
+                              !AttendanceTimelineAssembler.isPendingAddId(
+                                editCheckOut.id,
+                              ),
+                          hadInitialBreakStart:
+                              editBreakOut != null &&
+                              !AttendanceTimelineAssembler.isPendingAddId(
+                                editBreakOut.id,
+                              ),
+                          hadInitialBreakEnd:
+                              editBreakIn != null &&
+                              !AttendanceTimelineAssembler.isPendingAddId(
+                                editBreakIn.id,
+                              ),
                         );
 
                         onEditAttendance?.call();
@@ -823,7 +885,7 @@ class _TimelineTileState extends State<_TimelineTile> {
                   ),
                 ],
               ),
-              if (isEdited)
+              if (widget.event.editRequests.isNotEmpty)
                 AttendanceEditHistorySection(
                   requests: widget.event.editRequests,
                 ),

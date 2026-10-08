@@ -29,6 +29,14 @@ class ReminderSettingsProvider extends ChangeNotifier {
   final String Function() _userIdProvider;
   final String Function()? _locationNameProvider;
 
+  /// AppBindings wires Smart Attendance start/stop without a hard import cycle.
+  void Function()? onSmartAttendanceTogglesChanged;
+  Future<void> Function()? onSmartAttendanceEvaluate;
+
+  void _syncSmartAttendance() {
+    onSmartAttendanceTogglesChanged?.call();
+  }
+
   static const defaultCheckInLabel = '09:00 AM';
   static const defaultCheckOutLabel = '06:00 PM';
   static const defaultGraceLabel = '5 mins';
@@ -43,7 +51,8 @@ class ReminderSettingsProvider extends ChangeNotifier {
     for (final type in ReminderType.values)
       type:
           type != ReminderType.enterLocation &&
-          type != ReminderType.leaveLocation,
+          type != ReminderType.leaveLocation &&
+          type != ReminderType.smartAttendance,
   };
 
   TimeOfDay checkInTime = const TimeOfDay(hour: 9, minute: 0);
@@ -74,6 +83,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
   Timer? _watch;
   DateTime _lastWall = DateTime.now();
   bool _clockActivated = false;
+  /// Serializes OS reschedule so a cold-start [activateFromClock] cannot
+  /// overwrite a concurrent [load] (or vice versa) with stale times.
+  Future<void> _rescheduleChain = Future<void>.value();
+  int _rescheduleGeneration = 0;
 
   String checkInTimeLabel = defaultCheckInLabel;
   String checkOutTimeLabel = defaultCheckOutLabel;
@@ -123,8 +136,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
         await _policyService.refreshFromNetwork(force: true);
       }
       await Future.wait([_loadSettings(), _loadPolicyTimes()]);
-      _enabled[ReminderType.enterLocation] = false;
-      _enabled[ReminderType.leaveLocation] = false;
+      // enter/leave default OFF via ReminderDao; preserve user choice when set.
       _applyCustomTimes();
       final userId = _userIdProvider();
       if (userId.isEmpty) return;
@@ -144,6 +156,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       }
       await NativeReminderScheduler.ensureUnrestricted();
       await refreshHealth();
+      _syncSmartAttendance();
     } finally {
       _loading = false;
       notifyListeners();
@@ -159,13 +172,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
     final userId = _userIdProvider();
     if (userId.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
-    final alreadyArmed = prefs.getBool(_armedKey()) ?? false;
     await prefs.setBool(_armedKey(), true);
     _clockActivated = true;
-    if (!alreadyArmed) {
-      await Future.wait([_loadSettings(), _loadPolicyTimes()]);
-      _applyCustomTimes();
-    }
+    // Always reload customs from DB before scheduling. Skipping this when
+    // already-armed let cold-start races replaceAll with policy defaults.
+    await Future.wait([_loadSettings(), _loadPolicyTimes()]);
+    _applyCustomTimes();
     // OS notifications follow the phone clock, not trusted punch time.
     await _rescheduleNotifications(now: DateTime.now());
     await NativeReminderScheduler.ensureUnrestricted();
@@ -183,6 +195,15 @@ class ReminderSettingsProvider extends ChangeNotifier {
     if (value) await _clearOsFired(DateTime.now(), type);
     await _persistSettingsSnapshot();
     await _rescheduleNotifications();
+    if (type == ReminderType.enterLocation ||
+        type == ReminderType.leaveLocation ||
+        type == ReminderType.smartAttendance) {
+      _syncSmartAttendance();
+      if (value) {
+        final evaluate = onSmartAttendanceEvaluate;
+        if (evaluate != null) unawaited(evaluate());
+      }
+    }
   }
 
   Future<void> setReminderTime(ReminderType type, TimeOfDay value) async {
@@ -331,6 +352,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     _watch?.cancel();
     _watch = null;
     _clockActivated = false;
+    _rescheduleGeneration++;
     return ReminderNotificationService.instance.cancelAll();
   }
 
@@ -382,8 +404,109 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required List<ReminderPunch> punches,
     String? locationName,
   }) async {
-    return;
+    // Auto punch is owned by SyncedClockScreenController. This hook stays for
+    // reminder-side side effects after a transition is observed.
+    _punches = List.of(punches);
+    await _maybeSmartAlreadyCheckedInAlert(now, punches);
   }
+
+  /// After a successful Smart Attendance auto check-in.
+  Future<void> notifySmartAttendanceSuccess({
+    required bool entered,
+    required String locationName,
+    required DateTime now,
+  }) async {
+    if (!entered) return;
+    // Enter-location toggle owns the "checked in" banner; auto punch itself
+    // is silent when that notify toggle is off.
+    if (!isEnabled(ReminderType.enterLocation)) return;
+    final place = _locationName(locationName);
+    await ReminderNotificationService.instance.showCustom(
+      id: _smartEnterNotifId,
+      title: ReminderCopy.smartAttendanceTitle,
+      body: ReminderCopy.enterCheckedIn(place),
+      payload: 'smart-enter',
+    );
+  }
+
+  /// Enter/Leave reminder toggles — notifications only (no punch).
+  Future<void> notifyPremisesReminder({
+    required bool inside,
+    required bool checkedIn,
+    required String locationName,
+  }) async {
+    final place = _locationName(locationName);
+    if (inside) {
+      if (!isEnabled(ReminderType.enterLocation)) return;
+      await ReminderNotificationService.instance.showCustom(
+        id: _smartEnterNotifId,
+        title: ReminderCopy.smartAttendanceTitle,
+        body: checkedIn
+            ? ReminderCopy.enterCheckedIn(place)
+            : ReminderCopy.enterPleaseCheckIn(place),
+        payload: checkedIn ? 'smart-enter-checked-in' : 'smart-enter-please',
+      );
+      return;
+    }
+
+    if (!isEnabled(ReminderType.leaveLocation)) return;
+    await ReminderNotificationService.instance.showCustom(
+      id: _smartLeaveNotifId,
+      title: ReminderCopy.smartAttendanceTitle,
+      body: checkedIn
+          ? ReminderCopy.leavePleaseCheckOut(place)
+          : ReminderCopy.leaveCheckedOut(place),
+      payload: checkedIn ? 'smart-leave-please' : 'smart-leave-checked-out',
+    );
+  }
+
+  /// Smart Attendance: nag to manually check out while outside, every 5 min.
+  Future<void> notifySmartCheckoutNag({required String locationName}) async {
+    if (!isEnabled(ReminderType.smartAttendance)) return;
+    final place = _locationName(locationName);
+    await ReminderNotificationService.instance.showCustom(
+      id: _smartCheckoutNagNotifId,
+      title: ReminderCopy.smartAttendanceTitle,
+      body: ReminderCopy.leavePleaseCheckOut(place),
+      payload: 'smart-checkout-nag',
+    );
+  }
+
+  Future<void> _maybeSmartAlreadyCheckedInAlert(
+    DateTime when,
+    List<ReminderPunch> punches,
+  ) async {
+    if (!isEnabled(ReminderType.enterLocation)) return;
+    final status = ReminderClockStatus.fromPunches(punches);
+    if (status.hasNotStarted || status.firstCheckIn == null) return;
+
+    final day = DateTime(when.year, when.month, when.day);
+    final checkInAt = ReminderNotificationPlan.at(day, checkInTime);
+    if (when.isBefore(checkInAt)) return;
+    if (status.firstCheckIn!.isAfter(checkInAt)) return;
+
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key =
+        'smart_already_ci_${userId}_${when.year}-${when.month}-${when.day}';
+    if (prefs.getBool(key) == true) return;
+
+    final place = _locationName(null);
+    final shown = await ReminderNotificationService.instance.showCustom(
+      id: _smartAlreadyNotifId,
+      title: ReminderCopy.smartAttendanceTitle,
+      body: ReminderCopy.enterCheckedIn(place),
+      payload: 'smart-already-checked-in',
+    );
+    if (!shown) return;
+    await prefs.setBool(key, true);
+  }
+
+  static const _smartEnterNotifId = 88031;
+  static const _smartLeaveNotifId = 88032;
+  static const _smartAlreadyNotifId = 88033;
+  static const _smartCheckoutNagNotifId = 88034;
 
   Future<List<ReminderLog>> syncForDay({
     required DateTime day,
@@ -430,6 +553,8 @@ class ReminderSettingsProvider extends ChangeNotifier {
     });
   }
 
+  String? _lastReminderSignature;
+
   Future<void> _onWatchTick() async {
     final now = DateTime.now();
     final gap = now.difference(_lastWall);
@@ -438,47 +563,117 @@ class ReminderSettingsProvider extends ChangeNotifier {
       await _rescheduleNotifications(now: now);
       return;
     }
-    await _rescheduleNotifications(now: now, rebuildSchedule: false);
+    final punches = await _loadTodayPunches(now);
+    final fired = await _loadOsFired(now);
+    final signature = _reminderSignature(punches, fired: fired);
+    if (signature == _lastReminderSignature) return;
+    _punches = punches;
+    await _rescheduleNotifications(
+      now: now,
+      rebuildSchedule: false,
+      reloadPunches: false,
+    );
+  }
+
+  String _reminderSignature(
+    List<ReminderPunch> punches, {
+    Set<ReminderType> fired = const {},
+  }) {
+    final punchPart = punches
+        .map((punch) => '${punch.kind.name}@${punch.time.toIso8601String()}')
+        .join(',');
+    final enabledPart = _enabled.entries
+        .map((entry) => '${entry.key.name}=${entry.value}')
+        .join(',');
+    return '$enabledPart|$punchPart|${_locationName(null)}|'
+        '$checkInTime|$checkOutTime|$policyCheckInTime|$policyCheckOutTime|'
+        '$breakReminderTime|$breakEndedReminderTime|$checkInMissedTime|'
+        '$checkOutMissedTime|$graceMinutes|$checkInMissedMinutes|'
+        '$checkOutMissedMinutes|$longerBreakMinutes|$breakMinutes|'
+        '$longAttendanceMinutes|${fired.map((type) => type.name).join(',')}';
   }
 
   Future<void> _rescheduleNotifications({
     DateTime? now,
     bool rebuildSchedule = true,
     bool reloadPunches = true,
-  }) async {
-    if (!_clockActivated) return;
+  }) {
+    if (!_clockActivated) return Future<void>.value();
     final when = now ?? DateTime.now();
+    final generation = ++_rescheduleGeneration;
+    final run = _rescheduleChain.then(
+      (_) => _rescheduleNotificationsBody(
+        when: when,
+        rebuildSchedule: rebuildSchedule,
+        reloadPunches: reloadPunches,
+        generation: generation,
+      ),
+    );
+    _rescheduleChain = run.catchError((_) {});
+    return run;
+  }
+
+  Future<void> _rescheduleNotificationsBody({
+    required DateTime when,
+    required bool rebuildSchedule,
+    required bool reloadPunches,
+    required int generation,
+  }) async {
+    if (!_clockActivated || generation != _rescheduleGeneration) return;
     if (reloadPunches) {
       _punches = await _loadTodayPunches(when);
     }
+    if (generation != _rescheduleGeneration) return;
     await _persistClockState(when, _punches);
     final alreadyFired = await _loadOsFired(when);
     final place = _locationName(null);
     final status = ReminderClockStatus.fromPunches(_punches);
+    _lastReminderSignature = _reminderSignature(_punches, fired: alreadyFired);
+    // Snapshot times after settings load so a concurrent activate/load cannot
+    // pass half-updated fields into sync/replaceAll.
+    final enabled = Map<ReminderType, bool>.from(_enabled);
+    final inTime = checkInTime;
+    final outTime = checkOutTime;
+    final policyIn = policyCheckInTime;
+    final policyOut = policyCheckOutTime;
+    final breakAt = breakReminderTime;
+    final breakEndedAt = breakEndedReminderTime;
+    final inMissed = checkInMissedTime;
+    final outMissed = checkOutMissedTime;
+    final grace = graceMinutes;
+    final inMissedMins = checkInMissedMinutes;
+    final outMissedMins = checkOutMissedMinutes;
+    final longerBreak = longerBreakMinutes;
+    final breakMins = breakMinutes;
+    final longMins = longAttendanceMinutes;
+    final weekdays = Set<int>.from(workingWeekdays);
+    final punches = List<ReminderPunch>.from(_punches);
+    if (generation != _rescheduleGeneration) return;
     final result = await ReminderNotificationService.instance.sync(
       now: when,
-      enabled: _enabled,
-      checkInTime: checkInTime,
-      checkOutTime: checkOutTime,
-      policyCheckInTime: policyCheckInTime,
-      policyCheckOutTime: policyCheckOutTime,
-      breakReminderTime: breakReminderTime,
-      breakEndedReminderTime: breakEndedReminderTime,
-      checkInMissedTime: checkInMissedTime,
-      checkOutMissedTime: checkOutMissedTime,
-      graceMinutes: graceMinutes,
-      checkInMissedMinutes: checkInMissedMinutes,
-      checkOutMissedMinutes: checkOutMissedMinutes,
-      longerBreakMinutes: longerBreakMinutes,
-      breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceMinutes,
-      punches: _punches,
-      workingWeekdays: workingWeekdays,
+      enabled: enabled,
+      checkInTime: inTime,
+      checkOutTime: outTime,
+      policyCheckInTime: policyIn,
+      policyCheckOutTime: policyOut,
+      breakReminderTime: breakAt,
+      breakEndedReminderTime: breakEndedAt,
+      checkInMissedTime: inMissed,
+      checkOutMissedTime: outMissed,
+      graceMinutes: grace,
+      checkInMissedMinutes: inMissedMins,
+      checkOutMissedMinutes: outMissedMins,
+      longerBreakMinutes: longerBreak,
+      breakMinutes: breakMins,
+      longAttendanceHours: longMins,
+      punches: punches,
+      workingWeekdays: weekdays,
       alreadyFired: alreadyFired,
       locationName: place,
       rebuildSchedule: rebuildSchedule,
       requestPermission: rebuildSchedule,
     );
+    if (generation != _rescheduleGeneration) return;
     for (final type in result.seenTypes) {
       await _markOsFired(when, type);
     }
@@ -492,20 +687,20 @@ class ReminderSettingsProvider extends ChangeNotifier {
     final day = DateTime(when.year, when.month, when.day);
     final schedule = ReminderFireSchedule.forDay(
       day: day,
-      checkInTime: checkInTime,
-      checkOutTime: checkOutTime,
-      policyCheckInTime: policyCheckInTime,
-      policyCheckOutTime: policyCheckOutTime,
-      breakReminderTime: breakReminderTime,
-      breakEndedReminderTime: breakEndedReminderTime,
-      checkInMissedTime: checkInMissedTime,
-      checkOutMissedTime: checkOutMissedTime,
-      graceMinutes: graceMinutes,
-      checkInMissedMinutes: checkInMissedMinutes,
-      checkOutMissedMinutes: checkOutMissedMinutes,
-      longerBreakMinutes: longerBreakMinutes,
-      breakMinutes: breakMinutes,
-      longAttendanceHours: longAttendanceMinutes,
+      checkInTime: inTime,
+      checkOutTime: outTime,
+      policyCheckInTime: policyIn,
+      policyCheckOutTime: policyOut,
+      breakReminderTime: breakAt,
+      breakEndedReminderTime: breakEndedAt,
+      checkInMissedTime: inMissed,
+      checkOutMissedTime: outMissed,
+      graceMinutes: grace,
+      checkInMissedMinutes: inMissedMins,
+      checkOutMissedMinutes: outMissedMins,
+      longerBreakMinutes: longerBreak,
+      breakMinutes: breakMins,
+      longAttendanceHours: longMins,
       status: status,
     );
     await _persistLeftoverIfShown(
@@ -532,6 +727,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
         fireAt: longAt,
       );
     }
+    await _maybeSmartAlreadyCheckedInAlert(when, punches);
   }
 
   Future<void> _persistLeftoverIfShown({

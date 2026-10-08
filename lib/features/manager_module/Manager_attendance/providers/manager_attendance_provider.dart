@@ -29,6 +29,15 @@ class ManagerAttendanceProvider extends BaseProvider {
 
   final Map<String, PendingAttendanceSave> _pendingSaves = {};
 
+  List<ManagerTeamAttendanceItem>? _tilesItems;
+  List<ManagerEmployeeModel>? _tilesMembers;
+  String? _tilesStatus;
+  String? _tilesLocationId;
+  String? _tilesLocationName;
+  String? _tilesUserId;
+  String? _tilesUserName;
+  List<ManagerAttendanceModel>? _tilesCache;
+
   bool get isAllStatus => ManagerAttendanceFilters.isAllStatus(statusFilterId);
 
   List<ManagerTeamAttendanceItem> get filteredItems {
@@ -41,11 +50,36 @@ class ManagerAttendanceProvider extends BaseProvider {
     );
   }
 
-  List<ManagerAttendanceModel> get tiles => TeamAttendanceMapper.toTiles(
-    filteredItems,
-    currentUserId: _service.currentUserId,
-    currentUserName: _currentUserName,
-  );
+  List<ManagerAttendanceModel> get tiles {
+    final userId = _service.currentUserId;
+    final userName = _currentUserName;
+    final cached = _tilesCache;
+    if (cached != null &&
+        identical(items, _tilesItems) &&
+        identical(members, _tilesMembers) &&
+        statusFilterId == _tilesStatus &&
+        locationId == _tilesLocationId &&
+        locationName == _tilesLocationName &&
+        userId == _tilesUserId &&
+        userName == _tilesUserName) {
+      return cached;
+    }
+
+    final next = TeamAttendanceMapper.toTiles(
+      filteredItems,
+      currentUserId: userId,
+      currentUserName: userName,
+    );
+    _tilesItems = items;
+    _tilesMembers = members;
+    _tilesStatus = statusFilterId;
+    _tilesLocationId = locationId;
+    _tilesLocationName = locationName;
+    _tilesUserId = userId;
+    _tilesUserName = userName;
+    _tilesCache = next;
+    return next;
+  }
 
   Iterable<PendingAttendanceSave> get pendingSaves => _pendingSaves.values;
 
@@ -297,14 +331,12 @@ class ManagerAttendanceProvider extends BaseProvider {
     if (seedItems != null && seedItems.isNotEmpty) {
       items = List<ManagerTeamAttendanceItem>.from(seedItems);
       total = items.length;
+      notifyListeners();
     }
 
-    if (dateChanged || items.isEmpty || status != ViewStatus.success) {
-      if (items.isNotEmpty) notifyListeners();
-      return load();
-    }
-    notifyListeners();
-    return Future.value(true);
+    // Always reload so the directory merge includes everyone (including
+    // employees with no location), not only the overview live subset.
+    return load();
   }
 
   Future<bool> setDate(DateTime date) {

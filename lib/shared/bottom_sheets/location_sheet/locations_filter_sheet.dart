@@ -6,6 +6,7 @@ import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class LocationFilterOption {
   const LocationFilterOption({
@@ -87,7 +88,7 @@ class LocationsFilterSheet {
   }) {
     final isSingleOrEmpty = locations.length <= 1;
 
-    return showModalBottomSheet<String>(
+    return AppSheet.show<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

@@ -53,4 +53,23 @@ class EmployeeLocationSavePayload {
       locationIds: ids,
     );
   }
+
+  /// After a location is deactivated: drop it from the assigned set and
+  /// promote the next remaining location when it was the default.
+  factory EmployeeLocationSavePayload.afterRemovingLocation({
+    required Iterable<String> assignedIds,
+    required String removedLocationId,
+    required String currentDefaultId,
+  }) {
+    final removed = removedLocationId.trim().toLowerCase();
+    final remaining = <String>{
+      for (final id in assignedIds)
+        if (id.trim().isNotEmpty && id.trim().toLowerCase() != removed)
+          id.trim(),
+    };
+    return EmployeeLocationSavePayload.fromAssigned(
+      selectedIds: remaining,
+      currentDefaultId: currentDefaultId,
+    );
+  }
 }

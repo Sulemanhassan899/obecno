@@ -287,6 +287,13 @@ class ManagerTeamAttendanceItem {
           _asBool(json['is_late']) ||
           _asBool(json['late_check_in']) ||
           _asBool(json['is_late_check_in']) ||
+          _asBool(
+            json['flags'] is Map
+                ? (json['flags'] as Map)['is_late'] ??
+                      (json['flags'] as Map)['late_check_in'] ??
+                      (json['flags'] as Map)['is_late_check_in']
+                : null,
+          ) ||
           _looksLate(liveStatus) ||
           _looksLate(statusLabel),
       isEarlyCheckout: _asBool(json['is_early_checkout']),

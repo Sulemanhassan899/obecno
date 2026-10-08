@@ -20,6 +20,7 @@ import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_det
 import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/monthly_picker.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -261,6 +262,61 @@ void main() {
       expect(merged.first.checkin, '11:33:44');
       expect(TeamAttendanceMapper.uiStatus(merged.first), 'working');
       expect(TeamAttendanceMapper.uiStatus(merged[1]), isEmpty);
+    });
+
+    test('keeps employees with no office location on All Locations', () {
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 31,
+          employeeName: 'Employee3',
+          locationId: 'head',
+          checkin: '11:33:44',
+          isOpen: true,
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '31',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: 'head',
+          locationName: 'Head Office',
+        ),
+        ManagerEmployeeModel(
+          id: '55',
+          name: 'Unassigned Sam',
+          role: 'Sales',
+        ),
+      ];
+
+      final merged = TeamAttendanceMapper.mergeWithMembers(
+        attendance: attendance,
+        members: members,
+      );
+      expect(merged.map((e) => e.employeeName), [
+        'Employee3',
+        'Unassigned Sam',
+      ]);
+      expect(merged.last.locationId, isNull);
+
+      final allLocations = ManagerAttendanceFilters.applyItems(
+        source: attendance,
+        selectedLocation: LocationFilterOption.allId,
+        members: members,
+      );
+      expect(allLocations.map((e) => e.employeeName), [
+        'Employee3',
+        'Unassigned Sam',
+      ]);
+
+      final headOnly = ManagerAttendanceFilters.applyItems(
+        source: merged,
+        selectedLocation: 'head',
+        locationName: 'Head Office',
+        members: members,
+      );
+      expect(headOnly.map((e) => e.employeeName), ['Employee3']);
+      expect(headOnly.any((e) => e.employeeName == 'Unassigned Sam'), isFalse);
     });
 
     test('location merge keeps only assigned members', () {

@@ -1,7 +1,7 @@
-// ignore: must_be_immutable
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/widgets/field_error_text.dart';
 import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -167,128 +167,149 @@ class CustomTextField extends StatelessWidget {
         top: top,
         bottom: bottom,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          /// =====================
-          /// LABEL
-          /// =====================
-          if (haveLebelText)
-            Row(
-              children: [
-                AppText.p2(
-                  labelText ?? '',
-                  weight: FontWeight.w500,
-                  color: errorText != null ? kRed : lableColor,
+      child: FormField<String>(
+        initialValue: controller?.text,
+        validator: validator == null
+            ? null
+            : (_) => validator!(controller?.text ?? ''),
+        builder: (field) {
+          final displayError = errorText ?? field.errorText;
+          final hasError = displayError != null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              /// =====================
+              /// LABEL
+              /// =====================
+              if (haveLebelText)
+                Row(
+                  children: [
+                    AppText.p2(
+                      labelText ?? '',
+                      weight: FontWeight.w500,
+                      color: lableColor,
+                    ),
+
+                    if (hasStar)
+                      const TextWidget(
+                        text: ' *',
+                        size: 14,
+                        weight: FontWeight.w600,
+                        color: kRed,
+                      ),
+                  ],
                 ),
 
-                if (hasStar)
-                  const TextWidget(
-                    text: ' *',
-                    size: 14,
-                    weight: FontWeight.w600,
-                    color: kRed,
-                  ),
-              ],
-            ),
+              if (haveLebelText) const SizedBox(height: 6),
 
-          if (haveLebelText) const SizedBox(height: 6),
+              /// =====================
+              /// TEXT FIELD
+              /// =====================
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minHeight),
+                child: SizedBox(
+                  width: isExpanded ? double.infinity : width,
+                  child: TextField(
+                    keyboardType: keyboardType,
+                    focusNode: focusNode,
+                    controller: controller,
+                    maxLines: maxlines,
+                    obscureText: obscureText,
+                    readOnly: readOnly,
+                    enabled: enabled,
+                    enableInteractiveSelection: textFieldEnable,
+                    cursorColor: kPrimaryColor,
+                    style: TextStyle(
+                      color: txtColor,
+                      fontSize: 12,
+                      fontFamily: AppFonts.Poppins,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    onTap: onTextFieldTap,
+                    onChanged: (value) {
+                      field.didChange(value);
+                      onChanged?.call(value);
+                      if (field.hasError) {
+                        field.validate();
+                      }
+                    },
 
-          /// =====================
-          /// TEXT FIELD
-          /// =====================
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: minHeight, // ✅ prevents shrinking
-            ),
-            child: SizedBox(
-              width: isExpanded ? double.infinity : width,
-              child: TextFormField(
-                keyboardType: keyboardType,
-                focusNode: focusNode,
-                validator: validator,
-                controller: controller,
-                maxLines: maxlines,
-                obscureText: obscureText,
-                readOnly: readOnly,
-                enabled: enabled,
-                enableInteractiveSelection: textFieldEnable,
-                cursorColor: kPrimaryColor,
-                style: TextStyle(
-                  color: txtColor,
-                  fontSize: 12,
-                  fontFamily: AppFonts.Poppins,
-                  fontWeight: FontWeight.w400,
-                ),
-                onTap: onTextFieldTap,
-                onChanged: onChanged,
+                    decoration: InputDecoration(
+                      /// ICONS
+                      prefixIcon: havePrefixIcon
+                          ? SizedBox(
+                              width: 40,
+                              child: Center(child: preffixWidget),
+                            )
+                          : null,
 
-                decoration: InputDecoration(
-                  helperText: errorText == null && reserveHelperSpace ? ' ' : null,
-                  errorText: errorText,
-                  errorMaxLines: 2,
+                      suffixIcon: haveSuffixIcon
+                          ? GestureDetector(
+                              onTap: onSuffixTap,
+                              child: SizedBox(
+                                width: 40,
+                                child: Center(child: suffixWidget),
+                              ),
+                            )
+                          : null,
 
-                  /// ICONS
-                  prefixIcon: havePrefixIcon
-                      ? SizedBox(width: 40, child: Center(child: preffixWidget))
-                      : null,
+                      /// STYLE
+                      filled: filled,
+                      fillColor: backgroundColor,
+                      hintText: hintText,
 
-                  suffixIcon: haveSuffixIcon
-                      ? GestureDetector(
-                          onTap: onSuffixTap,
-                          child: SizedBox(
-                            width: 40,
-                            child: Center(child: suffixWidget),
-                          ),
-                        )
-                      : null,
+                      hintStyle: TextStyle(
+                        color: hintTextFontColor,
+                        fontSize: hintTextFontSize,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: AppFonts.Poppins,
+                      ),
 
-                  /// STYLE
-                  filled: filled,
-                  fillColor: backgroundColor,
-                  hintText: hintText,
+                      contentPadding: EdgeInsets.only(
+                        left: contentPaddingLeft,
+                        right: contentPaddingRight,
+                        top: contentPaddingTop,
+                        bottom: contentPaddingBottom,
+                      ),
 
-                  hintStyle: TextStyle(
-                    color: hintTextFontColor,
-                    fontSize: hintTextFontSize,
-                    fontWeight: FontWeight.w400,
-                    fontFamily: AppFonts.Poppins,
-                  ),
-
-                  contentPadding: EdgeInsets.only(
-                    left: contentPaddingLeft,
-                    right: contentPaddingRight,
-                    top: contentPaddingTop,
-                    bottom: contentPaddingBottom,
-                  ),
-
-                  /// BORDERS
-                  border: _border(
-                    errorText != null ? errorBorderColor : enabledBorderColor,
-                    errorText != null ? errorBorderWidth : enabledBorderWidth,
-                  ),
-                  enabledBorder: _border(
-                    errorText != null ? errorBorderColor : enabledBorderColor,
-                    errorText != null ? errorBorderWidth : enabledBorderWidth,
-                  ),
-                  focusedBorder: _border(
-                    errorText != null ? errorBorderColor : focusedBorderColor,
-                    errorText != null ? errorBorderWidth : focusedBorderWidth,
-                  ),
-                  errorBorder: _border(errorBorderColor, errorBorderWidth),
-                  focusedErrorBorder: _border(
-                    errorBorderColor,
-                    errorBorderWidth,
-                  ),
-                  disabledBorder: _border(
-                    disabledBorderColor,
-                    disabledBorderWidth,
+                      /// BORDERS
+                      border: _border(
+                        hasError ? errorBorderColor : enabledBorderColor,
+                        hasError ? errorBorderWidth : enabledBorderWidth,
+                      ),
+                      enabledBorder: _border(
+                        hasError ? errorBorderColor : enabledBorderColor,
+                        hasError ? errorBorderWidth : enabledBorderWidth,
+                      ),
+                      focusedBorder: _border(
+                        hasError ? errorBorderColor : focusedBorderColor,
+                        hasError ? errorBorderWidth : focusedBorderWidth,
+                      ),
+                      errorBorder: _border(errorBorderColor, errorBorderWidth),
+                      focusedErrorBorder: _border(
+                        errorBorderColor,
+                        errorBorderWidth,
+                      ),
+                      disabledBorder: _border(
+                        disabledBorderColor,
+                        disabledBorderWidth,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
+
+              /// =====================
+              /// ERROR / HELPER (Book a Demo spacing)
+              /// =====================
+              if (hasError)
+                FieldErrorText(displayError)
+              else if (reserveHelperSpace)
+                const SizedBox(height: 22),
+            ],
+          );
+        },
       ),
     );
   }

@@ -132,7 +132,7 @@ class _LinkedDevicesState extends State<LinkedDevices> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
-        padding: AppSizes.HORIZONTAL,
+        padding: AppSizes.horizontalOnly(context),
         child: ListenableBuilder(
           listenable: deviceProvider,
           builder: (context, _) {

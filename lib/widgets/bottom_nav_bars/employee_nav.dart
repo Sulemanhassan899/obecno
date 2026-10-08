@@ -1,22 +1,22 @@
-import 'package:obecno/core/animations/app_animations.dart';
+import 'dart:async';
+
 import 'package:obecno/core/constants/all_colors.dart';
-import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/responsive/responsive.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
-import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
+import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
 import 'package:obecno/features/join/presentation/widgets/unverified_account_banner.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/join/services/join_device_auto_approve.dart';
-import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/presentation/screens/profile_settings_screen.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
-import 'package:obecno/widgets/bottom_nav_bars/alerts_nav_icon.dart';
-import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/bottom_nav_bars/bottom_nav_item.dart';
+import 'package:obecno/widgets/bottom_nav_bars/bottom_nav_metrics.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
 
 class EmployeeBottomNavBar extends StatefulWidget {
   const EmployeeBottomNavBar({super.key});
@@ -60,10 +60,12 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
       if (!mounted) return;
       _join = context.read<JoinInviteProvider>();
       _join!.addListener(_syncJoinDeviceApproval);
-      unawaited(_join!.ensureLoaded().then((_) {
-        if (!mounted) return;
-        _syncJoinDeviceApproval();
-      }));
+      unawaited(
+        _join!.ensureLoaded().then((_) {
+          if (!mounted) return;
+          _syncJoinDeviceApproval();
+        }),
+      );
     });
   }
 
@@ -118,17 +120,24 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   @override
   Widget build(BuildContext context) {
     final showAlertsBadge = context.watch<AlertsProvider>().showNavBadge;
-    final showUnverified =
-        context.watch<JoinInviteProvider>().showUnverifiedBanner;
+    final showUnverified = context
+        .watch<JoinInviteProvider>()
+        .showUnverifiedBanner;
+    final metrics = BottomNavMetrics.of(context);
     return Scaffold(
       body: Column(
         children: [
           if (showUnverified)
-            const SafeArea(
+            SafeArea(
               bottom: false,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: UnverifiedAccountBanner(),
+                padding: EdgeInsets.fromLTRB(
+                  Responsive.pagePadding(context),
+                  8,
+                  Responsive.pagePadding(context),
+                  0,
+                ),
+                child: const UnverifiedAccountBanner(),
               ),
             ),
           Expanded(
@@ -140,7 +149,10 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.symmetric(
+              horizontal: metrics.paddingH,
+              vertical: metrics.paddingV,
+            ),
             decoration: BoxDecoration(
               color: kWhite,
               boxShadow: [
@@ -151,11 +163,16 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: List.generate(items.length, (index) {
-                final isSelected = selectedIndex == index;
-
-                return ButtonAnimations.press(
+                return BottomNavItem(
+                  metrics: metrics,
+                  label: items[index]["label"] as String,
+                  activeIcon: items[index]["activeIcon"] as String,
+                  inactiveIcon: items[index]["inactiveIcon"] as String,
+                  selected: selectedIndex == index,
+                  isAlerts: index == 2,
+                  showAlertsBadge: showAlertsBadge,
                   onTap: () {
                     final previousIndex = selectedIndex;
                     setState(() {
@@ -171,30 +188,6 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
                       _attendanceKey.currentState?.notifyTabResumed();
                     }
                   },
-                  child: GestureDetector(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        index == 2
-                            ? AlertsNavIcon(
-                                selected: isSelected,
-                                showBadge: showAlertsBadge,
-                              )
-                            : CommonImageView(
-                                imagePath: isSelected
-                                    ? items[index]["activeIcon"]
-                                    : items[index]["inactiveIcon"],
-                                height: 20,
-                              ),
-                        const SizedBox(height: 6),
-                        AppText.p4(
-                          items[index]["label"],
-                          color: isSelected ? kPrimaryColor : kGreyColor,
-                        ),
-                        const SizedBox(height: 6),
-                      ],
-                    ),
-                  ),
                 );
               }),
             ),

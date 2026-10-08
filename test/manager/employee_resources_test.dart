@@ -293,6 +293,22 @@ void main() {
         '/manager/locations/9/inactive',
       );
       expect(
+        ManagerEmployeeApiEndpoints.postLocationActive(9).method,
+        'POST',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationActive(9).path,
+        '/manager/locations/9/active',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.putLocationStatus(9).path,
+        '/manager/locations/9/status',
+      );
+      expect(
+        ManagerEmployeeApiEndpoints.postLocationStatus(9).method,
+        'POST',
+      );
+      expect(
         ManagerEmployeeApiEndpoints.postLegacyLocationPermissionsUpdate.path,
         '/manager/location/permissions/update',
       );

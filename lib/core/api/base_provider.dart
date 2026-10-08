@@ -60,6 +60,7 @@ abstract class BaseProvider extends ChangeNotifier {
     request,
     required void Function(T data) onSuccess,
     bool guardAgainstDuplicate = true,
+    bool silent = false,
   }) async {
     if (guardAgainstDuplicate) {
       final existing = _activeCalls[operationKey];
@@ -80,9 +81,8 @@ abstract class BaseProvider extends ChangeNotifier {
       }
     }
 
-    setLoading();
+    if (!silent) setLoading();
     final cancelToken = newCancelToken(operationKey);
-    debugPrint('[BaseProvider] -> "$operationKey" request starting');
 
     try {
       final response = await request(cancelToken);
@@ -95,9 +95,13 @@ abstract class BaseProvider extends ChangeNotifier {
       }
 
       if (response.success && response.data != null) {
-        debugPrint('[BaseProvider] <- "$operationKey" succeeded');
         onSuccess(response.data as T);
-        setSuccess();
+        if (silent) {
+          _status = ViewStatus.success;
+          _errorMessage = null;
+        } else {
+          setSuccess();
+        }
         return true;
       }
 

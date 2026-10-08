@@ -250,7 +250,7 @@ class AttendanceDay {
       checkInLocations: checkInLocations,
       checkOutLocations: checkOutLocations,
       breaks: breaks,
-      isEdited: false,
+      isEdited: AttendanceEditRequest.historyItemHasTimeEdit(merged),
       isHoliday: _asBool(merged['is_holiday']) || dayStatus == 'holiday',
       isLeave: _asBool(merged['is_leave']) || dayStatus == 'leave',
       holidayName: holidayTitle,
@@ -491,6 +491,39 @@ class AttendanceCalendarData {
     }
 
     addLeaveRaw(json['leave_dates'] ?? json['leaves']);
+
+    void addHolidayRaw(dynamic raw) {
+      if (raw is! List) return;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final parsed = AttendanceDay._parseDate(
+          map['date'] ??
+              map['holiday_date'] ??
+              map['day'] ??
+              map['start_date'] ??
+              map['from_date'],
+        );
+        if (parsed == null) continue;
+        final dateOnly = DateTime(parsed.year, parsed.month, parsed.day);
+        final name =
+            (map['holiday_name'] ??
+                    map['name'] ??
+                    map['title'] ??
+                    map['label'] ??
+                    'Public Holiday')
+                .toString()
+                .trim();
+        holidays.add((
+          date: dateOnly,
+          name: name.isEmpty ? 'Public Holiday' : name,
+        ));
+      }
+    }
+
+    addHolidayRaw(
+      json['holidays'] ?? json['public_holidays'] ?? json['publicHolidays'],
+    );
 
     return AttendanceCalendarData(
       monthLabel: label,

@@ -103,6 +103,17 @@ class ManagerEmployeeApiEndpoints {
   static ManagerApiRoute patchLocationStatus(Object locationId) =>
       ManagerApiRoute.patch('$_locations/$locationId/status');
 
+  static ManagerApiRoute putLocationStatus(Object locationId) =>
+      ManagerApiRoute.put('$_locations/$locationId/status');
+
+  static ManagerApiRoute postLocationStatus(Object locationId) =>
+      ManagerApiRoute.post('$_locations/$locationId/status');
+
+  /// Collection-level status (avoids path binding that can 404 inactive rows).
+  static const patchLocationsStatus = ManagerApiRoute.patch('$_locations/status');
+  static const postLocationsStatus = ManagerApiRoute.post('$_locations/status');
+  static const putLocationsStatus = ManagerApiRoute.put('$_locations/status');
+
   static ManagerApiRoute deleteLocation(Object locationId) =>
       ManagerApiRoute.delete('$_locations/$locationId');
 
@@ -139,6 +150,9 @@ class ManagerEmployeeApiEndpoints {
 
   static ManagerApiRoute postLocationInactive(Object locationId) =>
       ManagerApiRoute.post('$_locations/$locationId/inactive');
+
+  static ManagerApiRoute postLocationActive(Object locationId) =>
+      ManagerApiRoute.post('$_locations/$locationId/active');
 
   static ManagerApiRoute postLocationMembers(Object locationId) =>
       ManagerApiRoute.post('$_locations/$locationId/members');
@@ -211,6 +225,37 @@ class ManagerEmployeeApiEndpoints {
 
   static ManagerApiRoute patchEmployeePermissions(Object employeeId) =>
       ManagerApiRoute.patch('${_employee(employeeId)}/permissions');
+
+  /// Web portal inline field save:
+  /// `POST /manager/employees/permissions/field?id={employeeId}`
+  /// (not nested under `/employees/{id}/…`).
+  static const postEmployeePermissionFieldCollection = ManagerApiRoute.post(
+    '$_employees/permissions/field',
+  );
+
+  /// Alternate nested path some API builds expose.
+  static ManagerApiRoute postEmployeePermissionField(Object employeeId) =>
+      ManagerApiRoute.post('${_employee(employeeId)}/permissions/field');
+
+  static const postLegacyEmployeePermissionField = ManagerApiRoute.post(
+    '$_legacyEmployee/permissions/field',
+  );
+
+  // Employee schedule (working days / timings / break) — see manager API §5.4
+  static ManagerApiRoute getEmployeeSchedule(Object employeeId) =>
+      ManagerApiRoute.get('${_employee(employeeId)}/schedule');
+
+  static ManagerApiRoute putEmployeeSchedule(Object employeeId) =>
+      ManagerApiRoute.put('${_employee(employeeId)}/schedule');
+
+  static ManagerApiRoute patchEmployeeSchedule(Object employeeId) =>
+      ManagerApiRoute.patch('${_employee(employeeId)}/schedule');
+
+  static ManagerApiRoute putEmployeeWorkingDays(Object employeeId) =>
+      ManagerApiRoute.put('${_employee(employeeId)}/schedule/working-days');
+
+  static ManagerApiRoute patchEmployeeWorkingDays(Object employeeId) =>
+      ManagerApiRoute.patch('${_employee(employeeId)}/schedule/working-days');
 
   static ManagerApiRoute getEmployeeDevices(Object employeeId) =>
       ManagerApiRoute.get('${_employee(employeeId)}/devices');
@@ -380,6 +425,15 @@ class ManagerEmployeeApiEndpoints {
   static const postLegacyLocationInactive = ManagerApiRoute.post(
     '$_legacyLocation/inactive',
   );
+  static const postLegacyLocationActive = ManagerApiRoute.post(
+    '$_legacyLocation/active',
+  );
+  static const postLegacyLocationStatus = ManagerApiRoute.post(
+    '$_legacyLocation/status',
+  );
+  static const patchLegacyLocationStatus = ManagerApiRoute.patch(
+    '$_legacyLocation/status',
+  );
 
   // ---------------------------------------------------------------------
   // Path-only aliases for existing repositories (prefer ManagerApiRoute).
@@ -425,6 +479,9 @@ class ManagerEmployeeApiEndpoints {
 
   static String locationInactive(Object locationId) =>
       postLocationInactive(locationId).path;
+
+  static String locationActive(Object locationId) =>
+      postLocationActive(locationId).path;
 
   static const String locationsDelete = '$_locations/delete';
 
@@ -473,6 +530,12 @@ class ManagerEmployeeApiEndpoints {
 
   static String employeePermissions(Object employeeId) =>
       getEmployeePermissions(employeeId).path;
+
+  static String employeeSchedule(Object employeeId) =>
+      getEmployeeSchedule(employeeId).path;
+
+  static String employeeWorkingDays(Object employeeId) =>
+      putEmployeeWorkingDays(employeeId).path;
 
   static String employeeLocations(Object employeeId) =>
       getEmployeeLocations(employeeId).path;
@@ -530,6 +593,7 @@ class ManagerEmployeeApiEndpoints {
       '$_legacyLocation/permissions/delete';
   static const String legacyLocationDelete = '$_legacyLocation/delete';
   static const String legacyLocationInactive = '$_legacyLocation/inactive';
+  static const String legacyLocationActive = '$_legacyLocation/active';
 
   static const String subscriptions = '$_base/subscriptions';
   static const String payments = '$_base/payments';

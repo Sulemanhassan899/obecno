@@ -5,6 +5,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ReminderDurationPickerSheet {
   ReminderDurationPickerSheet._();
@@ -15,7 +16,7 @@ class ReminderDurationPickerSheet {
     required int resetMinutes,
     String title = 'Notify me after',
   }) {
-    return showModalBottomSheet<int>(
+    return AppSheet.show<int>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

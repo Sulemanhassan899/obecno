@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/api/manager_api_endpoints.dart';
@@ -45,6 +46,9 @@ class ManagerLocationsService {
     return Set<String>.from(_assignedMemberIds[locationId.trim()] ?? const {});
   }
 
+  /// Fast locations list for counts / directory. Attendance present/total is
+  /// filled later via [enrichWithAttendanceStats] so Overview is not blocked
+  /// on the heavy team-attendance hydrate (per-employee punch lookups).
   Future<ApiResponse<List<ManagerLocationModel>>> loadLocations({
     DateTime? date,
     ApiCancelToken? cancelToken,
@@ -70,26 +74,26 @@ class ManagerLocationsService {
           .toList(growable: false);
     }
 
-    final stamped = await _withAttendanceStats(
-      locations: locations,
-      date: date ?? DateTime.now(),
-    );
     return ApiResponse.success(
-      stamped,
+      locations,
       message: message,
       statusCode: statusCode,
     );
   }
 
-  Future<List<ManagerLocationModel>> _withAttendanceStats({
+  /// Stamps present / total / late onto [locations]. Safe to run after the
+  /// list is already shown — failures leave the input list unchanged.
+  Future<List<ManagerLocationModel>> enrichWithAttendanceStats({
     required List<ManagerLocationModel> locations,
-    required DateTime date,
+    DateTime? date,
   }) async {
     final attendanceService = _attendanceService;
     if (attendanceService == null || locations.isEmpty) return locations;
 
     try {
-      final response = await attendanceService.loadTeamAttendance(date: date);
+      final response = await attendanceService.loadTeamAttendance(
+        date: date ?? DateTime.now(),
+      );
       if (!response.success || response.data == null) return locations;
       return LocationAttendanceStats.stamp(
         locations: locations,
@@ -409,18 +413,73 @@ class ManagerLocationsService {
           )
         : scheduleBase;
 
-    final lastWritten = _lastWrittenSchedules[locationId];
-    final usedLastWrite =
-        lastWritten != null && !resolved.samePolicyAs(lastWritten);
-    if (usedLastWrite) {
-      resolved = lastWritten;
+    // Working days are often stored via the location form (`working_days[]=mon`)
+    // and echoed on GET as `value` + source_level=location without location_value.
+    // A strict locationOnly read then falls back to company Mon–Fri incorrectly.
+    final hasLocationWorkingDays =
+        PermissionItemModel.hasLocationLevelPermissions(
+          fromPerms,
+          section: 'working_days',
+          keys: LocationSchedule.workingDaysPermissionKeys,
+        );
+    if (hasLocationWorkingDays) {
+      final daysResolved = LocationSchedule.fromPermissionItems(
+        fromPerms,
+        locationOnly: false,
+        fallback: resolved,
+      );
+      resolved = resolved.copyWith(
+        workingDays: daysResolved.workingDays,
+        weekStartDay: daysResolved.weekStartDay,
+        hoursPerDay: daysResolved.hoursPerDay,
+        hoursPerWeek: daysResolved.hoursPerWeek,
+        workingWeekEnabled: daysResolved.workingWeekEnabled,
+      );
     }
+
+    final hasLocationBreak = PermissionItemModel.hasLocationLevelPermissions(
+      fromPerms,
+      section: 'break_timing',
+      keys: LocationSchedule.breakTimingPermissionKeys,
+    );
+    if (hasLocationBreak) {
+      final breakResolved = LocationSchedule.fromPermissionItems(
+        fromPerms,
+        locationOnly: false,
+        fallback: resolved,
+      );
+      resolved = resolved.copyWith(
+        maxBreakMinutes: breakResolved.maxBreakMinutes,
+        breakLocationTracking: breakResolved.breakLocationTracking,
+      );
+    }
+
+    final hasLocationAttendance =
+        PermissionItemModel.hasLocationLevelPermissions(
+          fromPerms,
+          section: 'attendance',
+          keys: LocationSchedule.attendancePermissionKeys,
+        );
+    if (hasLocationAttendance) {
+      final attendanceResolved = LocationSchedule.fromPermissionItems(
+        fromPerms,
+        locationOnly: false,
+        fallback: resolved,
+      );
+      resolved = resolved.copyWith(
+        checkIn: attendanceResolved.checkIn,
+        checkOut: attendanceResolved.checkOut,
+        graceMinutes: attendanceResolved.graceMinutes,
+      );
+    }
+
+    // Drop stale optimistic cache — never substitute it for a real GET.
+    _lastWrittenSchedules.remove(locationId);
 
     if (!detail.success &&
         fromSchedule == null &&
         fromPerms.isEmpty &&
-        company == null &&
-        lastWritten == null) {
+        company == null) {
       LocationPolicyLog.dump(
         sheet: 'location_schedule',
         phase: 'fetched',
@@ -445,7 +504,7 @@ class ManagerLocationsService {
       extra: {
         'permissionItems': fromPerms.length,
         'hasLocationPermissions': hasLocationPerms,
-        'usedLastWrite': usedLastWrite,
+        'usedLastWrite': false,
         'fromDetail': fromDetail != null,
         'fromScheduleEndpoint': fromSchedule != null,
       },
@@ -494,8 +553,8 @@ class ManagerLocationsService {
     );
     if (!written.success) return written;
 
-    _lastWrittenSchedules[locationId] = schedule;
-
+    // Do not cache the outbound payload as truth — re-read from the server.
+    _lastWrittenSchedules.remove(locationId);
     final latest = await loadLocationSchedule(
       locationId: locationId,
       cancelToken: cancelToken,
@@ -505,8 +564,56 @@ class ManagerLocationsService {
         latest.data!.samePolicyAs(schedule)) {
       return latest;
     }
+
+    // Working days often 200 on write but GET still returns company values.
+    final readBack = latest.data;
+    final daysMatch = readBack != null &&
+        readBack.workingDays.length == schedule.workingDays.length &&
+        schedule.workingDays.every(readBack.workingDays.contains);
+    if (!daysMatch) {
+      debugPrint(
+        '[LocationSchedule] working_days did not persist for '
+        'location=$locationId wanted=${schedule.workingDays} '
+        'got=${readBack?.workingDays}',
+      );
+      return ApiResponse.failure(
+        'Working days did not persist on the server. Please try again.',
+        statusCode: written.statusCode,
+      );
+    }
+
+    final breakMatch = readBack != null &&
+        readBack.maxBreakMinutes == schedule.maxBreakMinutes &&
+        readBack.breakLocationTracking == schedule.breakLocationTracking;
+    if (!breakMatch) {
+      debugPrint(
+        '[LocationSchedule] break_timing did not persist for '
+        'location=$locationId wanted=${schedule.maxBreakMinutes}/'
+        '${schedule.breakLocationTracking} '
+        'got=${readBack.maxBreakMinutes}/${readBack.breakLocationTracking}',
+      );
+      return ApiResponse.failure(
+        'Break timing did not persist on the server. Please try again.',
+        statusCode: written.statusCode,
+      );
+    }
+
+    final graceMatch =
+        readBack != null && readBack.graceMinutes == schedule.graceMinutes;
+    if (!graceMatch) {
+      debugPrint(
+        '[LocationSchedule] grace_period did not persist for '
+        'location=$locationId wanted=${schedule.graceMinutes} '
+        'got=${readBack.graceMinutes}',
+      );
+      return ApiResponse.failure(
+        'Grace period did not persist on the server. Please try again.',
+        statusCode: written.statusCode,
+      );
+    }
+
     return ApiResponse.success(
-      written.data ?? schedule,
+      readBack ?? written.data ?? schedule,
       message: written.message,
       statusCode: written.statusCode,
     );
@@ -516,12 +623,10 @@ class ManagerLocationsService {
     required String locationId,
     ApiCancelToken? cancelToken,
   }) async {
-    final api =
-        'PATCH ${ManagerEmployeeApiEndpoints.locationStatus(locationId)}';
     AddLocationLog.dump(
       sheet: 'Deactivate Location',
       phase: 'user sending',
-      api: api,
+      api: 'PATCH/PUT/POST status · inactive · location',
       apiNeeds: 'is_active',
       userSending: {'location_id': locationId, 'is_active': false},
     );
@@ -530,15 +635,68 @@ class ManagerLocationsService {
       isActive: false,
       cancelToken: cancelToken,
     );
+    debugPrint(
+      '[LocationStatus] service.deactivate '
+      'id=$locationId success=${result.isHttpOk} '
+      'status=${result.statusCode} message=${result.message}',
+    );
     AddLocationLog.dump(
       sheet: 'Deactivate Location',
       phase: 'response',
-      api: api,
-      success: result.success,
+      api: 'updateLocationStatus',
+      success: result.isHttpOk,
       statusCode: result.statusCode,
       message: result.message,
     );
-    return result;
+    return result.isHttpOk
+        ? result
+        : ApiResponse.failure(
+            result.message ?? 'Failed to deactivate location.',
+            statusCode: result.statusCode,
+            fieldErrors: result.fieldErrors,
+          );
+  }
+
+  Future<ApiResponse<bool>> activateLocation({
+    required String locationId,
+    ApiCancelToken? cancelToken,
+  }) async {
+    AddLocationLog.dump(
+      sheet: 'Activate Location',
+      phase: 'user sending',
+      api: 'PATCH/PUT/POST status · active · location',
+      apiNeeds: 'is_active',
+      userSending: {'location_id': locationId, 'is_active': true},
+    );
+    final result = await _repository.updateLocationStatus(
+      locationId: locationId,
+      isActive: true,
+      cancelToken: cancelToken,
+    );
+    debugPrint(
+      '[LocationStatus] service.activate '
+      'id=$locationId success=${result.isHttpOk} '
+      'status=${result.statusCode} message=${result.message}',
+    );
+    AddLocationLog.dump(
+      sheet: 'Activate Location',
+      phase: 'response',
+      api: 'updateLocationStatus',
+      success: result.isHttpOk,
+      statusCode: result.statusCode,
+      message: result.message,
+    );
+    return result.isHttpOk
+        ? result
+        : ApiResponse.failure(
+            result.message ?? 'Failed to activate location.',
+            statusCode: result.statusCode,
+            fieldErrors: result.fieldErrors,
+          );
+  }
+
+  void clearAssignedMembers(String locationId) {
+    _assignedMemberIds.remove(locationId.trim());
   }
 
   Future<ApiResponse<bool>> deleteLocation({
@@ -615,7 +773,7 @@ class ManagerLocationsService {
       locationId: locationId,
       cancelToken: cancelToken,
     );
-    if (result.success && result.data != null) {
+    if (result.isHttpOk && result.data != null) {
       rememberAssignedMembers(
         locationId,
         result.data!.map((member) => member.id),
@@ -625,7 +783,7 @@ class ManagerLocationsService {
       sheet: 'location_members',
       phase: 'fetched',
       locationId: locationId,
-      success: result.success,
+      success: result.isHttpOk,
       statusCode: result.statusCode,
       message: result.message,
       extra: {

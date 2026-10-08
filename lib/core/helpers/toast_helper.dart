@@ -146,6 +146,13 @@ class ToastHelper {
     );
   }
 
+  static void locationActivated(BuildContext context) {
+    success(
+      context,
+      message: 'Location activated.',
+    );
+  }
+
   static void accountDeactivated(BuildContext context) {
     success(
       context,

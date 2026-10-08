@@ -17,43 +17,35 @@ class AttendanceDao {
 
     await db.transaction((txn) async {
       // Wipe the previous fetch for this month before storing the new one.
-      final staleDates = await txn.query(
-        AttendanceDb.daysTable,
-        columns: ['date'],
-        where: 'month = ? AND user_id = ?',
-        whereArgs: [monthKey, userId],
+      // Dates are zero-padded YYYY-MM-DD, so a month range matches the old
+      // per-day deletes without one query per day.
+      final nextMonth = _nextMonthKey(monthKey);
+      await txn.delete(
+        AttendanceDb.eventsTable,
+        where: 'user_id = ? AND date >= ? AND date < ?',
+        whereArgs: [userId, '$monthKey-01', '$nextMonth-01'],
       );
-      for (final row in staleDates) {
-        await txn.delete(
-          AttendanceDb.eventsTable,
-          where: 'date = ? AND user_id = ?',
-          whereArgs: [row['date'], userId],
-        );
-      }
       await txn.delete(
         AttendanceDb.daysTable,
         where: 'month = ? AND user_id = ?',
         whereArgs: [monthKey, userId],
       );
 
+      final batch = txn.batch();
       for (final day in days) {
-        await _upsertDay(txn, userId, day);
+        _queueDay(batch, userId, day);
       }
-
-      await txn.insert(AttendanceDb.monthMetaTable, {
+      batch.insert(AttendanceDb.monthMetaTable, {
         'month': monthKey,
         'user_id': userId,
         'is_empty': days.isEmpty ? 1 : 0,
         'synced_at': DateTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await batch.commit(noResult: true);
     });
   }
 
-  Future<void> _upsertDay(
-    Transaction txn,
-    String userId,
-    AttendanceDay day,
-  ) async {
+  void _queueDay(Batch batch, String userId, AttendanceDay day) {
     final dateKey = _dateKey(day.date);
     final monthKey = _monthKey(day.date);
 
@@ -67,7 +59,7 @@ class AttendanceDao {
     // (matches AttendanceEngine / HistoryAttendanceEngine).
     final totalWork = _computeWorkDuration(day) - totalBreak;
 
-    await txn.insert(AttendanceDb.daysTable, {
+    batch.insert(AttendanceDb.daysTable, {
       'date': dateKey,
       'user_id': userId,
       'month': monthKey,
@@ -82,16 +74,10 @@ class AttendanceDao {
       'holiday_name': day.holidayName,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    await txn.delete(
-      AttendanceDb.eventsTable,
-      where: 'date = ? AND user_id = ?',
-      whereArgs: [dateKey, userId],
-    );
-
     var index = 0;
-    Future<void> insertEvent(String type, String time, String? location) {
+    void insertEvent(String type, String time, String? location) {
       final id = '${dateKey}_${type}_${index++}';
-      return txn.insert(AttendanceDb.eventsTable, {
+      batch.insert(AttendanceDb.eventsTable, {
         'id': id,
         'user_id': userId,
         'date': dateKey,
@@ -105,21 +91,21 @@ class AttendanceDao {
       final loc = i < day.checkInLocations.length
           ? day.checkInLocations[i]
           : null;
-      await insertEvent('check_in', day.checkIns[i], loc);
+      insertEvent('check_in', day.checkIns[i], loc);
     }
     for (final b in day.breaks) {
       // Stored with swapped start/end labels intentionally so the existing
       // read path can rebuild BreakSession with API naming
       // (breakOut = start, breakIn = end). Do not "fix" without a
       // matching read-side migration.
-      await insertEvent('break_start', b.breakIn, b.breakInLocation);
-      await insertEvent('break_end', b.breakOut, b.breakOutLocation);
+      insertEvent('break_start', b.breakIn, b.breakInLocation);
+      insertEvent('break_end', b.breakOut, b.breakOutLocation);
     }
     for (var i = 0; i < day.checkOuts.length; i++) {
       final loc = i < day.checkOutLocations.length
           ? day.checkOutLocations[i]
           : null;
-      await insertEvent('check_out', day.checkOuts[i], loc);
+      insertEvent('check_out', day.checkOuts[i], loc);
     }
   }
 
@@ -187,17 +173,26 @@ class AttendanceDao {
     );
 
     final days = <AttendanceDay>[];
+    if (dayRows.isEmpty) return days;
+
+    final dateKeys = [for (final row in dayRows) row['date'] as String];
+    final placeholders = List.filled(dateKeys.length, '?').join(', ');
+    final eventRows = await db.query(
+      AttendanceDb.eventsTable,
+      where: 'user_id = ? AND date IN ($placeholders)',
+      whereArgs: [userId, ...dateKeys],
+      orderBy: 'timestamp ASC',
+    );
+    final eventsByDate = <String, List<Map<String, Object?>>>{};
+    for (final event in eventRows) {
+      final dateKey = event['date'] as String;
+      (eventsByDate[dateKey] ??= []).add(event);
+    }
 
     for (final row in dayRows) {
       final dateKey = row['date'] as String;
       final date = DateTime.parse(dateKey);
-
-      final eventRows = await db.query(
-        AttendanceDb.eventsTable,
-        where: 'date = ? AND user_id = ?',
-        whereArgs: [dateKey, userId],
-        orderBy: 'timestamp ASC',
-      );
+      final dayEvents = eventsByDate[dateKey] ?? const <Map<String, Object?>>[];
 
       final checkIns = <String>[];
       final checkInLocations = <String?>[];
@@ -208,7 +203,7 @@ class AttendanceDao {
       final breakEnds = <String>[];
       final breakEndLocations = <String?>[];
 
-      for (final e in eventRows) {
+      for (final e in dayEvents) {
         final time = _timeOnly(e['timestamp'] as String);
         final location = e['location'] as String?;
         switch (e['type'] as String) {
@@ -267,6 +262,17 @@ class AttendanceDao {
 
   String _monthKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
+
+  String _nextMonthKey(String monthKey) {
+    final parts = monthKey.split('-');
+    var year = int.parse(parts[0]);
+    var month = int.parse(parts[1]) + 1;
+    if (month == 13) {
+      month = 1;
+      year += 1;
+    }
+    return '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}';
+  }
 
   String _dateKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

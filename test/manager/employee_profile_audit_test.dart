@@ -441,16 +441,23 @@ void main() {
         checkOutLabel: '05:00 PM',
         graceMinutes: 10,
       );
+      expect(payload['field'], 'check_in_time');
+      expect(payload['section'], 'attendance');
+      expect(payload['permission_section'], 'attendance');
+      expect(payload['employee_setting'], {
+        'check_in_time': '08:00',
+        'check_out_time': '17:00',
+      });
       expect(payload['attendance'], {
-        'check_in_time': '08:00 AM',
-        'check_out_time': '05:00 PM',
-        'grace_period': '10',
+        'check_in_time': '08:00',
+        'check_out_time': '17:00',
+        'grace_period': '10-min',
+        'grace_minutes': 10,
       });
       final items = payload['permission_items'] as List<dynamic>;
       expect(items.map((item) => (item as Map)['key']), [
         'check_in_time',
         'check_out_time',
-        'grace_period',
       ]);
     });
 
@@ -459,28 +466,46 @@ void main() {
         breakLabel: '60:00 mins',
         trackLocation: false,
       );
-      expect(payload['break_timing'], {
-        'break_time': '60:00 mins',
-        'break_location_tracking': '0',
+      expect(payload['field'], 'break_time');
+      expect(payload['employee_setting'], {
+        'break_time': 60,
       });
-      expect((payload['permission_items'] as List).length, 4);
+      expect(payload['break_timing'], {
+        'break_time': 60,
+        'break_location_tracking': false,
+      });
+      expect((payload['permission_items'] as List).length, 1);
     });
 
-    test('builds permission payload for working days', () {
-      final payload = ManagerEmployeePolicy.workingDaysPermissionPayload(
+    test('builds schedule + permission payloads for working days', () {
+      final schedule = ManagerEmployeePolicy.workingDaysSchedulePayload(
         workingDays: const ['Monday', 'Wednesday'],
         weekStartDay: 'Monday',
         hoursPerDay: '08:00',
         hoursPerWeek: '40:00',
         workingWeekEnabled: true,
       );
-      expect(payload['working_week'], {
-        'working_days': ['monday', 'wednesday'],
-        'week_start_day': 'monday',
-        'hours_per_day': '08:00',
-        'hours_per_week': '40:00',
-        'working_week_enabled': true,
-      });
+      expect(schedule['working_days'], ['monday', 'wednesday']);
+      expect(schedule['week_start_day'], 'monday');
+      expect(schedule['schedule'], isA<Map>());
+
+      final payloads = ManagerEmployeePolicy.workingDaysPermissionPayloads(
+        workingDays: const ['Monday', 'Wednesday'],
+        weekStartDay: 'Monday',
+        hoursPerDay: '08:00',
+        hoursPerWeek: '40:00',
+        workingWeekEnabled: true,
+      );
+      final panel = payloads.first;
+      expect(panel['section'], 'attendance');
+      expect(panel['field'], 'working_days');
+      expect(panel['value'], 'Monday, Wednesday');
+      expect(panel['employee_setting']['working_days'], 'Monday, Wednesday');
+      expect(panel['force_method'], 'PUT');
+      expect(
+        payloads.any((p) => p['field'] == 'week_start_day'),
+        isTrue,
+      );
     });
 
     test('reads working days from a profile schedule list', () {
@@ -493,9 +518,9 @@ void main() {
   });
 
   group('Employee permission write method', () {
-    test('uses PATCH for partial employee setting updates', () {
+    test('uses PUT for first employee override and PATCH afterwards', () {
       expect(PermissionItemModel.writeMethod(hasEmployeeLevel: true), 'PATCH');
-      expect(PermissionItemModel.writeMethod(hasEmployeeLevel: false), 'PATCH');
+      expect(PermissionItemModel.writeMethod(hasEmployeeLevel: false), 'PUT');
     });
 
     test('detects existing employee-level overrides', () {

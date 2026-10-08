@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/widgets/back_button.dart';
@@ -28,8 +29,14 @@ class _OfficeLocationState extends State<OfficeLocation> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(context.read<LocationProvider>().refreshUserLocation());
+      unawaited(_refresh());
     });
+  }
+
+  Future<void> _refresh() async {
+    await context.read<AuthProvider>().refreshWorkspaceFromNetwork();
+    if (!mounted) return;
+    await context.read<LocationProvider>().refreshUserLocation();
   }
 
   @override
@@ -40,16 +47,19 @@ class _OfficeLocationState extends State<OfficeLocation> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
-        padding: AppSizes.HORIZONTAL,
-        child: ListenableBuilder(
-          listenable: Listenable.merge([authProvider, locationProvider]),
-          builder: (context, _) {
-            final locations = _orderedLocations(authProvider);
-            final defaultLocation = authProvider.defaultLocation;
-            final defaultId = defaultLocation?.id;
+        padding: AppSizes.horizontalOnly(context),
+        child: ShimmerRefreshIndicator(
+          onRefresh: _refresh,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([authProvider, locationProvider]),
+            builder: (context, _) {
+              final locations = _orderedLocations(authProvider);
+              final defaultLocation = authProvider.defaultLocation;
+              final defaultId = defaultLocation?.id;
 
-            return ListView(
-              children: [
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
                 const SizedBox(height: 20),
 
                 /// HEADER
@@ -70,9 +80,10 @@ class _OfficeLocationState extends State<OfficeLocation> {
                           : null,
                     ),
                   ],
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 /// Single-select location picker shown after approving a via-link join.
 class SelectDefaultLocationSheet {
@@ -18,7 +19,7 @@ class SelectDefaultLocationSheet {
     BuildContext context, {
     String? selectedId,
   }) {
-    return showModalBottomSheet<LocationFilterOption>(
+    return AppSheet.show<LocationFilterOption>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -55,7 +56,8 @@ class _SelectDefaultLocationBodyState
 
   @override
   Widget build(BuildContext context) {
-    final locations = context.watch<ManagerLocationsProvider>().filterOptions;
+    final locations =
+        context.watch<ManagerLocationsProvider>().activeFilterOptions;
 
     return ConstrainedBox(
       constraints: AppSheetSize.constraintsOf(context),

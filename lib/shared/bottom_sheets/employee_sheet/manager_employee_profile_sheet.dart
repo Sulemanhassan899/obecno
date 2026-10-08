@@ -6,7 +6,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
-import 'package:obecno/features/auth/data/models/communication_options.dart';
+import 'package:obecno/core/utils/contact_launcher.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
@@ -25,6 +25,7 @@ import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ManagerEmployeeProfileSheet {
   ManagerEmployeeProfileSheet._();
@@ -36,7 +37,7 @@ class ManagerEmployeeProfileSheet {
     VoidCallback? onLocationsTap,
     VoidCallback? onSettingsTap,
   }) {
-    return showModalBottomSheet(
+    return AppSheet.show(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -75,6 +76,8 @@ class _ManagerEmployeeProfileSheetBodyState
   File? _localPhoto;
   int _locationsRevision = 0;
   bool _updatingStatus = false;
+  String _contactEmail = '';
+  String _contactPhone = '';
 
   bool get _canEditPhoto =>
       bindings.authProvider.homeTarget == AuthHomeTarget.manager;
@@ -96,10 +99,30 @@ class _ManagerEmployeeProfileSheetBodyState
   void initState() {
     super.initState();
     _data = widget.data;
+    final member = _memberFor(_data.userId);
+    _contactEmail = member?.email?.trim() ?? '';
+    _contactPhone = member?.phone?.trim() ?? '';
+    _loadContactInfo();
+  }
+
+  Future<void> _loadContactInfo() async {
+    final userId = _data.userId;
+    if (userId == null) return;
+    final result = await bindings.managerEmployeesService.loadEmployeeProfile(
+      userId: userId,
+    );
+    if (!mounted || !result.success || result.data == null) return;
+    final profile = result.data!;
+    final email = profile.email?.trim() ?? '';
+    final phone = profile.phone?.trim() ?? '';
+    setState(() {
+      if (email.isNotEmpty) _contactEmail = email;
+      if (phone.isNotEmpty) _contactPhone = phone;
+    });
   }
 
   Future<ImageSource?> _pickPhotoSource() {
-    return showModalBottomSheet<ImageSource>(
+    return AppSheet.show<ImageSource>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -492,31 +515,37 @@ class _ManagerEmployeeProfileSheetBodyState
                       _settingsTile(
                         iconAsset: Assets.ClockIcon,
                         title: "Check In / Out Timing",
-                        onTap: () => CheckInOutTimingSheet.show(
-                          context,
-                          userId: _data.userId,
-                          employeeName: _data.name,
-                        ),
+                        onTap: () {
+                          CheckInOutTimingSheet.show(
+                            context,
+                            userId: _data.userId,
+                            employeeName: _data.name,
+                          );
+                        },
                       ),
                       const Divider(height: 1, color: kDividerColor),
                       _settingsTile(
                         iconAsset: Assets.WorkingDays,
                         title: "Working Days",
-                        onTap: () => WorkingDaysSheet.show(
-                          context,
-                          userId: _data.userId,
-                          employeeName: _data.name,
-                        ),
+                        onTap: () {
+                          WorkingDaysSheet.show(
+                            context,
+                            userId: _data.userId,
+                            employeeName: _data.name,
+                          );
+                        },
                       ),
                       const Divider(height: 1, color: kDividerColor),
                       _settingsTile(
                         iconAsset: Assets.BreakIcon,
                         title: "Break Timing",
-                        onTap: () => BreakTimingSheet.show(
-                          context,
-                          userId: _data.userId,
-                          employeeName: _data.name,
-                        ),
+                        onTap: () {
+                          BreakTimingSheet.show(
+                            context,
+                            userId: _data.userId,
+                            employeeName: _data.name,
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -580,14 +609,44 @@ class _ManagerEmployeeProfileSheetBodyState
   }
 
   Widget _contactButtons() {
-    final options =
-        bindings.authProvider.user?.communicationOptions ??
-        CommunicationOptions.all;
+    final email = _contactEmail.trim();
+    final phone = _contactPhone.trim();
+    final hasEmail = email.isNotEmpty;
+    final hasPhone = phone.isNotEmpty;
+
     final buttons = <Widget>[
-      if (options.showCall) _contactButton(Assets.CallMP),
-      if (options.showMessage) _contactButton(Assets.MsgMP),
-      if (options.showWhatsapp) _contactButton(Assets.WhatsappMP),
-      if (options.showEmail) _contactButton(Assets.EmailMP),
+      if (hasPhone)
+        _contactButton(
+          Assets.CallMP,
+          onTap: () => _openContact(
+            () => ContactLauncher.call(phone),
+            failureMessage: 'Unable to open the phone dialer.',
+          ),
+        ),
+      if (hasPhone)
+        _contactButton(
+          Assets.MsgMP,
+          onTap: () => _openContact(
+            () => ContactLauncher.message(phone),
+            failureMessage: 'Unable to open Messages.',
+          ),
+        ),
+      if (hasPhone)
+        _contactButton(
+          Assets.WhatsappMP,
+          onTap: () => _openContact(
+            () => ContactLauncher.whatsapp(phone),
+            failureMessage: 'Unable to open WhatsApp.',
+          ),
+        ),
+      if (hasEmail)
+        _contactButton(
+          Assets.EmailMP,
+          onTap: () => _openContact(
+            () => ContactLauncher.email(email),
+            failureMessage: 'Unable to open the mail app.',
+          ),
+        ),
     ];
     if (buttons.isEmpty) return const SizedBox.shrink();
     return Row(
@@ -601,9 +660,19 @@ class _ManagerEmployeeProfileSheetBodyState
     );
   }
 
-  Widget _contactButton(String asset) {
+  Future<void> _openContact(
+    Future<bool> Function() launch, {
+    required String failureMessage,
+  }) async {
+    final opened = await launch();
+    if (!opened && mounted) {
+      ToastHelper.error(context, message: failureMessage);
+    }
+  }
+
+  Widget _contactButton(String asset, {required VoidCallback onTap}) {
     return ButtonAnimations.press(
-      onTap: () {},
+      onTap: onTap,
       child: CommonImageView(imagePath: asset, height: 50, fit: BoxFit.contain),
     );
   }

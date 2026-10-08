@@ -62,51 +62,76 @@ class _WaterRippleEffectState extends State<WaterRippleEffect>
     super.dispose();
   }
 
-  double _calcOpacity(double progress) {
-    return (1 - progress) * widget.opacityFactor;
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return CustomPaint(
+              painter: _RipplePainter(
+                progress: _controller.value,
+                color: widget.color,
+                rippleCount: widget.rippleCount,
+                minScale: widget.minScale,
+                maxScale: widget.maxScale,
+                opacityFactor: widget.opacityFactor,
+              ),
+              child: child,
+            );
+          },
+          child: widget.child,
+        ),
+      ),
+    );
   }
+}
 
-  double _calcScale(double progress) {
-    return widget.minScale + (widget.maxScale - widget.minScale) * progress;
+class _RipplePainter extends CustomPainter {
+  _RipplePainter({
+    required this.progress,
+    required this.color,
+    required this.rippleCount,
+    required this.minScale,
+    required this.maxScale,
+    required this.opacityFactor,
+  });
+
+  final double progress;
+  final Color color;
+  final int rippleCount;
+  final double minScale;
+  final double maxScale;
+  final double opacityFactor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rippleCount <= 0) return;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide / 2;
+    for (var index = 0; index < rippleCount; index++) {
+      final delay = index / rippleCount;
+      final t = (progress + delay) % 1;
+      final scale = minScale + (maxScale - minScale) * t;
+      final opacity = ((1 - t) * opacityFactor).clamp(0.0, 1.0);
+      canvas.drawCircle(
+        center,
+        radius * scale,
+        Paint()..color = color.withOpacity(opacity),
+      );
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          ...List.generate(widget.rippleCount, (index) {
-            final double delay = index / widget.rippleCount;
-
-            return AnimatedBuilder(
-              animation: _controller,
-              builder: (_, __) {
-                double progress = (_controller.value + delay) % 1;
-
-                return Transform.scale(
-                  scale: _calcScale(progress),
-                  child: Opacity(
-                    opacity: _calcOpacity(progress),
-                    child: Container(
-                      width: widget.size,
-                      height: widget.size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: widget.color,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
-
-          if (widget.child != null) widget.child!,
-        ],
-      ),
-    );
+  bool shouldRepaint(covariant _RipplePainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.rippleCount != rippleCount ||
+        oldDelegate.minScale != minScale ||
+        oldDelegate.maxScale != maxScale ||
+        oldDelegate.opacityFactor != opacityFactor;
   }
 }

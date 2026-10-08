@@ -93,5 +93,41 @@ void main() {
       expect(day.firstCheckIn, '11:33:44');
       expect(day.lastCheckOut, '18:12:00');
     });
+
+    test('marks the day edited for pending, approved, and rejected times', () {
+      AttendanceDay dayWith(String status) {
+        return AttendanceDay.fromApiHistoryItem({
+          'date': '2026-09-14',
+          'attendance_details': [
+            {
+              'type': 'check in',
+              'attendance_time': '09:03:00',
+              'change_requests': [
+                {
+                  'old_value': '09:30:00',
+                  'new_value': '09:03:00',
+                  'status': status,
+                  'created_at': '2026-09-14 10:00:00',
+                },
+              ],
+            },
+            {'type': 'check out', 'attendance_time': '17:23:00'},
+          ],
+        });
+      }
+
+      expect(dayWith('pending').isEdited, isTrue);
+      expect(dayWith('approved').isEdited, isTrue);
+      expect(dayWith('rejected').isEdited, isTrue);
+      expect(
+        AttendanceDay.fromApiHistoryItem({
+          'date': '2026-09-15',
+          'attendance_details': [
+            {'type': 'check in', 'attendance_time': '08:52:00'},
+          ],
+        }).isEdited,
+        isFalse,
+      );
+    });
   });
 }

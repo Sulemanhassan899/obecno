@@ -27,7 +27,7 @@ class YouveJoinedScreen extends StatelessWidget {
       backgroundColor: kbackground1,
       body: SafeArea(
         child: Padding(
-          padding: AppSizes.HORIZONTAL,
+          padding: AppSizes.horizontalOnly(context),
           child: Column(
             children: [
               const SizedBox(height: 8),

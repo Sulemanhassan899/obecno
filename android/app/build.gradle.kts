@@ -13,6 +13,13 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY", "")
+
 android {
     namespace = "com.example.obecno"
     compileSdk = flutter.compileSdkVersion
@@ -35,6 +42,7 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
     }
 
     signingConfigs {

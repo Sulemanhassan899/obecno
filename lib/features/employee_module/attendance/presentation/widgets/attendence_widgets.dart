@@ -8,20 +8,22 @@ import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-class AttendanceSummaryCard extends StatefulWidget {
-  const AttendanceSummaryCard({super.key, required this.summary});
+class AttendanceSummaryCard extends StatelessWidget {
+  const AttendanceSummaryCard({
+    super.key,
+    required this.summary,
+    this.selectedFilter,
+    this.onFilterTap,
+  });
 
   final MonthSummary summary;
+  final AttendanceSummaryFilter? selectedFilter;
+  final ValueChanged<AttendanceSummaryFilter>? onFilterTap;
 
-  @override
-  State<AttendanceSummaryCard> createState() => _AttendanceSummaryCardState();
-}
-
-class _AttendanceSummaryCardState extends State<AttendanceSummaryCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(25),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: kWhite,
         border: Border.all(color: kBorderColor),
@@ -33,10 +35,16 @@ class _AttendanceSummaryCardState extends State<AttendanceSummaryCard> {
             children: [
               Expanded(
                 child: _StatItem(
-                  value: "${widget.summary.workingDays}",
-                  suffix: " / ${widget.summary.totalDays}",
+                  value: "${summary.workingDays}",
+                  suffix: " / ${summary.totalDays}",
                   valueColor: kPrimaryColor,
                   label: "Working Days",
+                  selected:
+                      selectedFilter == AttendanceSummaryFilter.workingDays,
+                  onTap: onFilterTap == null
+                      ? null
+                      : () =>
+                            onFilterTap!(AttendanceSummaryFilter.workingDays),
                 ),
               ),
               const SizedBox(
@@ -46,23 +54,37 @@ class _AttendanceSummaryCardState extends State<AttendanceSummaryCard> {
               ),
               Expanded(
                 child: _StatItem(
-                  value: "${widget.summary.absentOrLeaves}",
+                  value: "${summary.absentOrLeaves}",
                   valueColor: kPurple,
                   label: "Absent / Leaves",
+                  selected:
+                      selectedFilter ==
+                      AttendanceSummaryFilter.absentOrLeaves,
+                  onTap: onFilterTap == null
+                      ? null
+                      : () => onFilterTap!(
+                          AttendanceSummaryFilter.absentOrLeaves,
+                        ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           const Divider(height: 1, color: kDividerColor),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: _StatItem(
-                  value: widget.summary.lateCheckIns.toString().padLeft(2, '0'),
+                  value: summary.lateCheckIns.toString().padLeft(2, '0'),
                   valueColor: kredColor,
                   label: "Late Check-in",
+                  selected:
+                      selectedFilter == AttendanceSummaryFilter.lateCheckIn,
+                  onTap: onFilterTap == null
+                      ? null
+                      : () =>
+                            onFilterTap!(AttendanceSummaryFilter.lateCheckIn),
                 ),
               ),
               const SizedBox(
@@ -72,9 +94,15 @@ class _AttendanceSummaryCardState extends State<AttendanceSummaryCard> {
               ),
               Expanded(
                 child: _StatItem(
-                  value: "${widget.summary.lateCheckOuts}",
+                  value: "${summary.lateCheckOuts}",
                   valueColor: kPrimaryColor,
                   label: "Late Check-out",
+                  selected:
+                      selectedFilter == AttendanceSummaryFilter.lateCheckOut,
+                  onTap: onFilterTap == null
+                      ? null
+                      : () =>
+                            onFilterTap!(AttendanceSummaryFilter.lateCheckOut),
                 ),
               ),
             ],
@@ -91,37 +119,68 @@ class _StatItem extends StatelessWidget {
     required this.valueColor,
     required this.label,
     this.suffix,
+    this.selected = false,
+    this.onTap,
   });
 
   final String value;
   final String? suffix;
   final Color valueColor;
   final String label;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            AppText.h5(value, color: valueColor, weight: FontWeight.w600),
-            if (suffix != null)
-              AppText.h5(suffix!, color: kSubText, weight: FontWeight.w600),
-          ],
-        ),
-        const SizedBox(height: 4),
-        AppText.caption(label, color: kGreyColor, weight: FontWeight.w500),
-      ],
+    final content = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: selected ? valueColor.withOpacity(0.08) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: selected
+            ? Border.all(color: valueColor.withOpacity(0.35))
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppText.h5(value, color: valueColor, weight: FontWeight.w600),
+              if (suffix != null)
+                AppText.h5(suffix!, color: kSubText, weight: FontWeight.w600),
+            ],
+          ),
+          const SizedBox(height: 4),
+          AppText.caption(label, color: kGreyColor, weight: FontWeight.w500),
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+
+    return ButtonAnimations.press(
+      pressedScale: 0.97,
+      onTap: onTap,
+      child: content,
     );
   }
 }
 
 class AttendanceDayTile extends StatelessWidget {
-  const AttendanceDayTile({super.key, required this.record, this.onTap});
+  const AttendanceDayTile({
+    super.key,
+    required this.record,
+    this.onTap,
+    this.backgroundColor,
+  });
 
   final AttendanceDayRecord record;
   final VoidCallback? onTap;
+
+  /// Soft holiday tint when the employee worked on a public holiday.
+  final Color? backgroundColor;
 
   bool _isInvalidCheckOut(String? value) {
     return value == null || value.trim() == "--:-- PM";
@@ -131,7 +190,11 @@ class AttendanceDayTile extends StatelessWidget {
 
   bool get _isAbsent => record.isAbsent;
 
+  bool get _workedOnHoliday =>
+      record.status == AttendanceDayStatus.holiday && record.hasVisiblePunch;
+
   bool _isHolidayOrLeave() {
+    if (_workedOnHoliday) return false;
     return _isOnLeave ||
         _isAbsent ||
         record.status == AttendanceDayStatus.holiday ||
@@ -139,47 +202,45 @@ class AttendanceDayTile extends StatelessWidget {
         record.checkOut == "Holiday";
   }
 
-  Widget? _statusIcon() {
-    if (_isHolidayOrLeave()) {
-      return null;
-    }
+  List<Widget> _statusIcons() {
+    if (_isHolidayOrLeave()) return const [];
 
-    /// ✅ PRIORITY: show warning if checkout is invalid
-    if (_isInvalidCheckOut(record.checkOut)) {
-      return CommonImageView(
-        imagePath: Assets.imagesTriangleExclamation,
-        height: 20,
+    final icons = <Widget>[];
+    final missingOut =
+        _isInvalidCheckOut(record.checkOut) ||
+        record.status == AttendanceDayStatus.missingCheckOut;
+    if (missingOut) {
+      icons.add(
+        CommonImageView(
+          imagePath: Assets.imagesTriangleExclamation,
+          height: 20,
+        ),
       );
     }
 
-    /// existing logic
-    switch (record.status) {
-      case AttendanceDayStatus.missingCheckOut:
-        return CommonImageView(
-          imagePath: Assets.imagesTriangleExclamation,
-          height: 20,
-        );
-      case AttendanceDayStatus.manuallyEdited:
-        return CommonImageView(imagePath: Assets.imagesUserPen, height: 20);
-      case AttendanceDayStatus.normal:
-      case AttendanceDayStatus.weekend:
-      case AttendanceDayStatus.onLeave:
-      case AttendanceDayStatus.absent:
-      case AttendanceDayStatus.holiday:
-        return null;
-      default:
-        return null;
+    if (record.hasEditedTime ||
+        record.status == AttendanceDayStatus.manuallyEdited) {
+      icons.add(CommonImageView(imagePath: Assets.imagesUserPen, height: 20));
     }
+    return icons;
   }
 
   @override
   Widget build(BuildContext context) {
-    final icon = _statusIcon();
+    final icons = _statusIcons();
+    final tileColor =
+        backgroundColor ?? (_workedOnHoliday ? const Color(0xFFEFF6FF) : null);
 
     return ButtonAnimations.press(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+        decoration: tileColor == null
+            ? null
+            : BoxDecoration(
+                color: tileColor,
+                borderRadius: BorderRadius.circular(14),
+              ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -204,8 +265,16 @@ class AttendanceDayTile extends StatelessWidget {
 
             const SizedBox(width: 16),
 
-            /// ✅ STATUS ICON (LEFT SIDE)
-            if (icon != null) ...[icon],
+            if (icons.isNotEmpty)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < icons.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    icons[i],
+                  ],
+                ],
+              ),
 
             const SizedBox(width: 30),
 
@@ -367,16 +436,12 @@ class AttendanceHolidayCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEFF6FF),
+          color: const Color.fromARGB(255, 209, 229, 255),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           children: [
-            AppText.h5(
-              title,
-              weight: FontWeight.w700,
-              color: const Color(0xFF1E293B),
-            ),
+            AppText.h5(title, weight: FontWeight.w500),
             const SizedBox(height: 6),
             AppText.p2(date, color: kSubText, weight: FontWeight.w400),
           ],

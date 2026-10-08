@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
@@ -16,6 +17,7 @@ import 'package:obecno/features/manager_module/Manager_locations/data/models/man
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_attendance_stats.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_policy_log.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/location_setup_screen.dart';
+import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
 import 'package:obecno/main.dart';
@@ -23,6 +25,7 @@ import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_det
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/location_deactivated_banner.dart';
 import 'package:obecno/widgets/share_button.dart';
 import 'package:obecno/widgets/text_widget.dart';
 import 'package:flutter/material.dart';
@@ -54,8 +57,9 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
 
   /// True after the first location-scoped employees load finishes.
   bool _locationReady = false;
+  late ManagerLocationModel _location;
 
-  ManagerLocationModel get location => widget.location;
+  ManagerLocationModel get location => _location;
 
   String get _todayLabel {
     final now = DateTime.now();
@@ -65,10 +69,29 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   @override
   void initState() {
     super.initState();
+    _location = widget.location;
+    debugPrint(
+      '[LocationStatus] overview.init '
+      'id=${_location.id} name=${_location.name} isActive=${_location.isActive}',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _syncLocationFromProvider();
+      setState(() {});
       _load();
     });
+  }
+
+  void _syncLocationFromProvider() {
+    final refreshed = context.read<ManagerLocationsProvider>().byId(
+      _location.id,
+    );
+    if (refreshed == null) return;
+    debugPrint(
+      '[LocationStatus] overview.syncFromProvider '
+      'id=${_location.id} was=${_location.isActive} now=${refreshed.isActive}',
+    );
+    _location = refreshed;
   }
 
   Future<void> _load() async {
@@ -85,8 +108,10 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
           ? attendance.load()
           : attendance.setDate(today),
       employees.load(),
+      context.read<ManagerLocationsProvider>().load(),
     ]);
     if (!mounted) return;
+    _syncLocationFromProvider();
     try {
       await bindings.managerLocationsService.loadLocationMembers(
         locationId: location.id,
@@ -102,7 +127,13 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
         'remembered': bindings.managerLocationsService
             .assignedMemberIds(location.id)
             .join(','),
+        'is_active': location.isActive,
       },
+    );
+    debugPrint(
+      '[LocationStatus] overview.load.done '
+      'id=${location.id} isActive=${location.isActive} '
+      'showBanner=${!location.isActive}',
     );
     setState(() => _locationReady = true);
   }
@@ -181,6 +212,13 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
       ),
     );
     if (!mounted) return;
+    _syncLocationFromProvider();
+    debugPrint(
+      '[LocationStatus] overview.backFromSettings '
+      'id=${location.id} isActive=${location.isActive} '
+      'showBanner=${!location.isActive}',
+    );
+    setState(() {});
     await _load();
   }
 
@@ -203,6 +241,12 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   Widget build(BuildContext context) {
     final attendance = context.watch<ManagerAttendanceProvider>();
     final employees = context.watch<ManagerEmployeesProvider>();
+    final locationsProvider = context.watch<ManagerLocationsProvider>();
+    final providerLocation = locationsProvider.byId(_location.id);
+    final isActive = providerLocation?.isActive ?? _location.isActive;
+    if (providerLocation != null && providerLocation.id == _location.id) {
+      _location = _location.copyWith(isActive: providerLocation.isActive);
+    }
     final merged = _mergedItems(attendance: attendance, employees: employees);
     final tiles = TeamAttendanceMapper.toTiles(merged);
     final teamCount = merged.isNotEmpty
@@ -223,34 +267,38 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              BackButtonBg(
-                title: location.name,
-                padding: EdgeInsets.zero,
-                rightWidget: ButtonAnimations.press(
-                  onTap: () => _openSettings(context),
-                  child: Container(
-                    height: 42,
-                    width: 42,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: kGreyContainerColor,
-                      shape: BoxShape.circle,
+        child: Column(
+          children: [
+            if (!isActive) const LocationDeactivatedBanner(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    BackButtonBg(
+                      title: location.name,
+                      padding: EdgeInsets.zero,
+                      rightWidget: ButtonAnimations.press(
+                        onTap: () => _openSettings(context),
+                        child: Container(
+                          height: 42,
+                          width: 42,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: kGreyContainerColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: CommonImageView(
+                            imagePath: Assets.imagesSetting,
+                            height: 18,
+                          ),
+                        ),
+                      ),
                     ),
-                    child: CommonImageView(
-                      imagePath: Assets.imagesSetting,
-                      height: 18,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: ShimmerRefreshIndicator(
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: ShimmerRefreshIndicator(
                   onRefresh: _load,
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(
@@ -377,8 +425,11 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

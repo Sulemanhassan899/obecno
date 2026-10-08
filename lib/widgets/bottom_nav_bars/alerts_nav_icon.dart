@@ -8,10 +8,12 @@ class AlertsNavIcon extends StatelessWidget {
     super.key,
     required this.selected,
     required this.showBadge,
+    this.size = 18,
   });
 
   final bool selected;
   final bool showBadge;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -19,29 +21,35 @@ class AlertsNavIcon extends StatelessWidget {
       imagePath: selected
           ? Assets.navigationActiveAlertsIcon
           : Assets.navigationUnactiveAlertsIcon,
-      height: 20,
+      height: size,
+      width: size,
+      fit: BoxFit.contain,
     );
 
-    if (!showBadge) return icon;
-
+    // Same footprint as other nav icons so gaps stay even with/without badge.
     return SizedBox(
-      width: 24,
-      height: 22,
+      width: size + 6,
+      height: size + 4,
       child: Stack(
         clipBehavior: Clip.none,
+        alignment: Alignment.center,
         children: [
-          Center(child: icon),
-          const Positioned(
-            right: 0,
-            top: 0,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: kredColor,
-                shape: BoxShape.circle,
+          icon,
+          if (showBadge)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: kredColor,
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: size * 0.45,
+                  height: size * 0.45,
+                ),
               ),
-              child: SizedBox(width: 8, height: 8),
             ),
-          ),
         ],
       ),
     );

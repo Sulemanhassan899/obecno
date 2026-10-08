@@ -1,4 +1,5 @@
 import 'package:obecno/core/api/constants.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 
 class ManagerEmployeeAttendanceData {
   const ManagerEmployeeAttendanceData({
@@ -81,6 +82,7 @@ class ManagerEmployeeAttendanceDay {
     this.isLeave = false,
     this.dayStatus,
     this.holidayName,
+    this.isEdited = false,
   });
 
   final int? id;
@@ -99,6 +101,7 @@ class ManagerEmployeeAttendanceDay {
   final bool isLeave;
   final String? dayStatus;
   final String? holidayName;
+  final bool isEdited;
 
   factory ManagerEmployeeAttendanceDay.fromJson(Map<String, dynamic> json) {
     final nestedRaw = json['attendance'];
@@ -167,6 +170,10 @@ class ManagerEmployeeAttendanceDay {
             nested['holiday_name'] ??
             nested['holiday_title'],
       ),
+      isEdited: AttendanceEditRequest.historyItemHasTimeEdit({
+        ...nested,
+        ...json,
+      }),
     );
   }
 
@@ -196,6 +203,7 @@ class ManagerEmployeeAttendanceDay {
       isLeave: isLeave,
       dayStatus: dayStatus,
       holidayName: holidayName,
+      isEdited: isEdited,
     );
   }
 

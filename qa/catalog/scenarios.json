@@ -1,0 +1,3858 @@
+{
+   "cases" : [
+      {
+         "functionality" : "2–4 sec logo",
+         "id" : "employee-003",
+         "module" : "Splash",
+         "role" : "employee",
+         "screen" : "Launch",
+         "sheet_row" : 3,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Goes to onboarding on a fresh install",
+         "id" : "employee-004",
+         "module" : "Splash",
+         "role" : "employee",
+         "screen" : "Launch",
+         "sheet_row" : 4,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Goes to home when a session exists",
+         "id" : "employee-005",
+         "module" : "Splash",
+         "role" : "employee",
+         "screen" : "Launch",
+         "sheet_row" : 5,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Images",
+         "id" : "employee-008",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 8,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Buttons",
+         "id" : "employee-009",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 9,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Text",
+         "id" : "employee-010",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 10,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Book a Demo",
+         "id" : "employee-011",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 11,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Sign in",
+         "id" : "employee-012",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 12,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Terms",
+         "id" : "employee-013",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 13,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Privacy policy",
+         "id" : "employee-014",
+         "module" : "Onboarding",
+         "role" : "employee",
+         "screen" : "Screens",
+         "sheet_row" : 14,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Name",
+         "id" : "employee-017",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 17,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Email",
+         "id" : "employee-018",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 18,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Phone",
+         "id" : "employee-019",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 19,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Industry",
+         "id" : "employee-020",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 20,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Submit button",
+         "id" : "employee-021",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 21,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Success screen",
+         "id" : "employee-022",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 22,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-023",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 23,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Fails offline (no queue)",
+         "id" : "employee-024",
+         "module" : "Book a Demo",
+         "role" : "employee",
+         "screen" : "Form",
+         "sheet_row" : 24,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Loads from the server",
+         "id" : "employee-027",
+         "module" : "Terms",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 27,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Shows cached text offline",
+         "id" : "employee-028",
+         "module" : "Terms",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 28,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "employee-029",
+         "module" : "Terms",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 29,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Loads from the server",
+         "id" : "employee-032",
+         "module" : "Privacy policy",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 32,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Shows cached text offline",
+         "id" : "employee-033",
+         "module" : "Privacy policy",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 33,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "employee-034",
+         "module" : "Privacy policy",
+         "role" : "employee",
+         "screen" : "Content",
+         "sheet_row" : 34,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Email field",
+         "id" : "employee-037",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Email",
+         "sheet_row" : 37,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Continue",
+         "id" : "employee-038",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Email",
+         "sheet_row" : 38,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Field error",
+         "id" : "employee-039",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Email",
+         "sheet_row" : 39,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-040",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Email",
+         "sheet_row" : 40,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Fails offline",
+         "id" : "employee-041",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Email",
+         "sheet_row" : 41,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Email shown",
+         "id" : "employee-043",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 43,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Password field",
+         "id" : "employee-044",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 44,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Show / hide password",
+         "id" : "employee-045",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 45,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Continue",
+         "id" : "employee-046",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 46,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Forgot password",
+         "id" : "employee-047",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 47,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Field error",
+         "id" : "employee-048",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 48,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-049",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 49,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Fails offline",
+         "id" : "employee-050",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Password",
+         "sheet_row" : 50,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Email / phone field",
+         "id" : "employee-052",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Forgot password",
+         "sheet_row" : 52,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Submit",
+         "id" : "employee-053",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Forgot password",
+         "sheet_row" : 53,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Success",
+         "id" : "employee-054",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Forgot password",
+         "sheet_row" : 54,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-055",
+         "module" : "Login",
+         "role" : "employee",
+         "screen" : "Forgot password",
+         "sheet_row" : 55,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Notification",
+         "id" : "employee-058",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 58,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Location",
+         "id" : "employee-059",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 59,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Physical / motion",
+         "id" : "employee-060",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 60,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Continue when all are allowed",
+         "id" : "employee-061",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 61,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Stays on the screen when one is denied",
+         "id" : "employee-062",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 62,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-063",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 63,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Open Settings",
+         "id" : "employee-064",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Permissions",
+         "sheet_row" : 64,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Request device",
+         "id" : "employee-066",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 66,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Status check of device",
+         "id" : "employee-067",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 67,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Pending / unregistered toast",
+         "id" : "employee-068",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 68,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Approved device (no toast)",
+         "id" : "employee-069",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 69,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Blocked device screen",
+         "id" : "employee-070",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 70,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Resend request of device",
+         "id" : "employee-071",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 71,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Logout from blocked screen",
+         "id" : "employee-072",
+         "module" : "Enable permissions",
+         "role" : "employee",
+         "screen" : "Device",
+         "sheet_row" : 72,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Clock tab",
+         "id" : "employee-075",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 75,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Attendance tab",
+         "id" : "employee-076",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 76,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Alerts tab",
+         "id" : "employee-077",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 77,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "More tab",
+         "id" : "employee-078",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 78,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Alerts badge",
+         "id" : "employee-079",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 79,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Each tab keeps its screen",
+         "id" : "employee-080",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 80,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Unverified account banner",
+         "id" : "employee-081",
+         "module" : "Employee home",
+         "role" : "employee",
+         "screen" : "Bottom nav",
+         "sheet_row" : 81,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in",
+         "id" : "employee-084",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 84,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break in",
+         "id" : "employee-085",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 85,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break out",
+         "id" : "employee-086",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 86,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out",
+         "id" : "employee-087",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 87,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Success toast",
+         "id" : "employee-088",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 88,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Business error toast",
+         "id" : "employee-089",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 89,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Offline punch stores in the queue",
+         "id" : "employee-090",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 90,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Sync when the internet returns",
+         "id" : "employee-091",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 91,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Synced toast",
+         "id" : "employee-092",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 92,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Multiple check-in cycles in one day",
+         "id" : "employee-093",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Button states",
+         "sheet_row" : 93,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Company name",
+         "id" : "employee-095",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 95,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Monotonic clock",
+         "id" : "employee-096",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 96,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Location name",
+         "id" : "employee-097",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 97,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Not in location range",
+         "id" : "employee-098",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 98,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "No internet banner",
+         "id" : "employee-099",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 99,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Reminders arm on this tab",
+         "id" : "employee-100",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Clock screen",
+         "sheet_row" : 100,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Auto location",
+         "id" : "employee-102",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 102,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Assigned location",
+         "id" : "employee-103",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 103,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Map image",
+         "id" : "employee-104",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 104,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Location name",
+         "id" : "employee-105",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 105,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Radio selection",
+         "id" : "employee-106",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 106,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Status wise time",
+         "id" : "employee-107",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 107,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Near this location",
+         "id" : "employee-108",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Location detail sheet",
+         "sheet_row" : 108,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in",
+         "id" : "employee-110",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance card",
+         "sheet_row" : 110,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in location",
+         "id" : "employee-111",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance card",
+         "sheet_row" : 111,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Work duration",
+         "id" : "employee-112",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance card",
+         "sheet_row" : 112,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out",
+         "id" : "employee-113",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance card",
+         "sheet_row" : 113,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out location",
+         "id" : "employee-114",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance card",
+         "sheet_row" : 114,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Attendance card",
+         "id" : "employee-116",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 116,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Timeline row",
+         "id" : "employee-117",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 117,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Sorting filters",
+         "id" : "employee-118",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 118,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Status wise time",
+         "id" : "employee-119",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 119,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Location",
+         "id" : "employee-120",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 120,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Edit attendance button",
+         "id" : "employee-121",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 121,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Edit request pending",
+         "id" : "employee-122",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 122,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Approved request",
+         "id" : "employee-123",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 123,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Rejected request",
+         "id" : "employee-124",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 124,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "employee-126",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 126,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "employee-127",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 127,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break in time",
+         "id" : "employee-128",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 128,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break out time",
+         "id" : "employee-129",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 129,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Save button",
+         "id" : "employee-130",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 130,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Sends an edit request (not a direct save)",
+         "id" : "employee-131",
+         "module" : "Clock",
+         "role" : "employee",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 131,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Working days",
+         "id" : "employee-134",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 134,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Absents / Leaves",
+         "id" : "employee-135",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 135,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Late Check in",
+         "id" : "employee-136",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 136,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Late Check out",
+         "id" : "employee-137",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 137,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Month",
+         "id" : "employee-138",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 138,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Cannot open a month before joining",
+         "id" : "employee-139",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 139,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Cannot open a future month",
+         "id" : "employee-140",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Overview card",
+         "sheet_row" : 140,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Date",
+         "id" : "employee-142",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 142,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Day",
+         "id" : "employee-143",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 143,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "employee-144",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 144,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "employee-145",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 145,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Edit request",
+         "id" : "employee-146",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 146,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Edit request icon",
+         "id" : "employee-147",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 147,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Offline records",
+         "id" : "employee-148",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 148,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Weekend card",
+         "id" : "employee-149",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 149,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Holiday sheet",
+         "id" : "employee-150",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 150,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Tap day opens details",
+         "id" : "employee-151",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 151,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Cached month offline",
+         "id" : "employee-152",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 152,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "employee-153",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 153,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "employee-154",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Attendance list",
+         "sheet_row" : 154,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "employee-156",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Add / Edit from list",
+         "sheet_row" : 156,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "employee-157",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Add / Edit from list",
+         "sheet_row" : 157,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break in time",
+         "id" : "employee-158",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Add / Edit from list",
+         "sheet_row" : 158,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Break out time",
+         "id" : "employee-159",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Add / Edit from list",
+         "sheet_row" : 159,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Save button",
+         "id" : "employee-160",
+         "module" : "Attendance",
+         "role" : "employee",
+         "screen" : "Add / Edit from list",
+         "sheet_row" : 160,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Month",
+         "id" : "employee-163",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 163,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "All",
+         "id" : "employee-164",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 164,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check-In",
+         "id" : "employee-165",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 165,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Check-Out",
+         "id" : "employee-166",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 166,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Leaves",
+         "id" : "employee-167",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 167,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Device",
+         "id" : "employee-168",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 168,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Alert row",
+         "id" : "employee-169",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 169,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Device request approved",
+         "id" : "employee-170",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 170,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "New device request",
+         "id" : "employee-171",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 171,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "No alerts",
+         "id" : "employee-172",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 172,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "employee-173",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 173,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Badge clears when the tab opens",
+         "id" : "employee-174",
+         "module" : "Alerts",
+         "role" : "employee",
+         "screen" : "Alerts list",
+         "sheet_row" : 174,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Account Info",
+         "id" : "employee-177",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 177,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Account Info offline",
+         "id" : "employee-178",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 178,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Photo",
+         "id" : "employee-179",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 179,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Profile picture update request",
+         "id" : "employee-180",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 180,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Profile picture offline store",
+         "id" : "employee-181",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 181,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Name",
+         "id" : "employee-182",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 182,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Department",
+         "id" : "employee-183",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 183,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "employee-184",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 184,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "employee-185",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Profile",
+         "sheet_row" : 185,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Location count",
+         "id" : "employee-187",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Offices & locations",
+         "sheet_row" : 187,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Default office location",
+         "id" : "employee-188",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Offices & locations",
+         "sheet_row" : 188,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Assigned office location",
+         "id" : "employee-189",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Offices & locations",
+         "sheet_row" : 189,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Offline location stored",
+         "id" : "employee-190",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Offices & locations",
+         "sheet_row" : 190,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Reminder list",
+         "id" : "employee-192",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "My Reminders",
+         "sheet_row" : 192,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Time picker",
+         "id" : "employee-193",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "My Reminders",
+         "sheet_row" : 193,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Duration picker",
+         "id" : "employee-194",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "My Reminders",
+         "sheet_row" : 194,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "employee-195",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "My Reminders",
+         "sheet_row" : 195,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Request device",
+         "id" : "employee-197",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 197,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Already approved device",
+         "id" : "employee-198",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 198,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Pending request device",
+         "id" : "employee-199",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 199,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Blocked device",
+         "id" : "employee-200",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 200,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Resend request",
+         "id" : "employee-201",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 201,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Offline device list",
+         "id" : "employee-202",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Linked devices",
+         "sheet_row" : 202,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Current password",
+         "id" : "employee-204",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 204,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "New password",
+         "id" : "employee-205",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 205,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Confirm new password",
+         "id" : "employee-206",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 206,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "employee-207",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 207,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "employee-208",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 208,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Fails offline",
+         "id" : "employee-209",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Change password",
+         "sheet_row" : 209,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Terms of use",
+         "id" : "employee-211",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 211,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Privacy policy",
+         "id" : "employee-212",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 212,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Help & Feedback fields",
+         "id" : "employee-213",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 213,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Help & Feedback submit",
+         "id" : "employee-214",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 214,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Help & Feedback success",
+         "id" : "employee-215",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 215,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Help fails offline",
+         "id" : "employee-216",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Legal & help",
+         "sheet_row" : 216,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Confirm dialog",
+         "id" : "employee-218",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 218,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Clear token",
+         "id" : "employee-219",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 219,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Clear session",
+         "id" : "employee-220",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 220,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Clear data",
+         "id" : "employee-221",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 221,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Goes to onboarding",
+         "id" : "employee-222",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 222,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Next login shows the new user only",
+         "id" : "employee-223",
+         "module" : "More",
+         "role" : "employee",
+         "screen" : "Logout",
+         "sheet_row" : 223,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "401 logs the user out",
+         "id" : "employee-226",
+         "module" : "Session",
+         "role" : "employee",
+         "screen" : "Safety",
+         "sheet_row" : 226,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Restart keeps the session when the token is valid",
+         "id" : "employee-227",
+         "module" : "Session",
+         "role" : "employee",
+         "screen" : "Safety",
+         "sheet_row" : 227,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Unsynced punches sync before logout when possible",
+         "id" : "employee-228",
+         "module" : "Session",
+         "role" : "employee",
+         "screen" : "Safety",
+         "sheet_row" : 228,
+         "template" : "employee"
+      },
+      {
+         "functionality" : "Overview tab",
+         "id" : "manager-003",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 3,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Clock tab",
+         "id" : "manager-004",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 4,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Attendance tab",
+         "id" : "manager-005",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 5,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Alerts tab",
+         "id" : "manager-006",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 6,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "More tab",
+         "id" : "manager-007",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 7,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Alerts badge (unread or join waiting)",
+         "id" : "manager-008",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 8,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Each tab keeps its screen",
+         "id" : "manager-009",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 9,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Stat tap opens Attendance with that filter",
+         "id" : "manager-010",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 10,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Leaving Attendance clears the filter",
+         "id" : "manager-011",
+         "module" : "Manager home",
+         "role" : "manager",
+         "screen" : "Bottom nav",
+         "sheet_row" : 11,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Today title",
+         "id" : "manager-014",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Header",
+         "sheet_row" : 14,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Date",
+         "id" : "manager-015",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Header",
+         "sheet_row" : 15,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Present Today",
+         "id" : "manager-017",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 17,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Active",
+         "id" : "manager-018",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 18,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "On Break",
+         "id" : "manager-019",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 19,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Late Check-in",
+         "id" : "manager-020",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 20,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Absent",
+         "id" : "manager-021",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 21,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap a stat opens team Attendance",
+         "id" : "manager-022",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 22,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "manager-023",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 23,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Loading",
+         "id" : "manager-024",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 24,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-025",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Stats card",
+         "sheet_row" : 25,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add Location",
+         "id" : "manager-027",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 27,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add Employee",
+         "id" : "manager-028",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 28,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Employees count",
+         "id" : "manager-029",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 29,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Employees View All",
+         "id" : "manager-030",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 30,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Locations count",
+         "id" : "manager-031",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 31,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Locations View All",
+         "id" : "manager-032",
+         "module" : "Overview",
+         "role" : "manager",
+         "screen" : "Actions",
+         "sheet_row" : 32,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add via link",
+         "id" : "manager-035",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 35,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Share link",
+         "id" : "manager-036",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 36,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Email / Phone toggle",
+         "id" : "manager-037",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 37,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Email",
+         "id" : "manager-038",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 38,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Phone",
+         "id" : "manager-039",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 39,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location",
+         "id" : "manager-040",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 40,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "+ Add Another",
+         "id" : "manager-041",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 41,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Clear",
+         "id" : "manager-042",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 42,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Send Invites",
+         "id" : "manager-043",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 43,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Invite sent dialog",
+         "id" : "manager-044",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 44,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Error toast",
+         "id" : "manager-045",
+         "module" : "Add Employee",
+         "role" : "manager",
+         "screen" : "Invite sheet",
+         "sheet_row" : 45,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Total",
+         "id" : "manager-048",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 48,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Active",
+         "id" : "manager-049",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 49,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pending",
+         "id" : "manager-050",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 50,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Disabled",
+         "id" : "manager-051",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 51,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Search by name",
+         "id" : "manager-052",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 52,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Status filter (All, Active, Pending, Disabled)",
+         "id" : "manager-053",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 53,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location filter",
+         "id" : "manager-054",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 54,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Photo",
+         "id" : "manager-055",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 55,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Name",
+         "id" : "manager-056",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 56,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Role",
+         "id" : "manager-057",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 57,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Owner / Manager badge",
+         "id" : "manager-058",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 58,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Empty state",
+         "id" : "manager-059",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 59,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-060",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 60,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "manager-061",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 61,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap row opens profile",
+         "id" : "manager-062",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Directory",
+         "sheet_row" : 62,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Photo",
+         "id" : "manager-064",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 64,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Edit photo",
+         "id" : "manager-065",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 65,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Name",
+         "id" : "manager-066",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 66,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Role",
+         "id" : "manager-067",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 67,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Call",
+         "id" : "manager-068",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 68,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Message",
+         "id" : "manager-069",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 69,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "WhatsApp",
+         "id" : "manager-070",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 70,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Email",
+         "id" : "manager-071",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 71,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Attendance",
+         "id" : "manager-072",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 72,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Locations",
+         "id" : "manager-073",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Profile sheet",
+         "sheet_row" : 73,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Linked Devices",
+         "id" : "manager-075",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 75,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reset password",
+         "id" : "manager-076",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 76,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Default Offices & Locations",
+         "id" : "manager-077",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 77,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Attendance rules banner",
+         "id" : "manager-078",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 78,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check In / Out Timing",
+         "id" : "manager-079",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 79,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Working Days",
+         "id" : "manager-080",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 80,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break Timing",
+         "id" : "manager-081",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 81,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Deactivate Account",
+         "id" : "manager-082",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 82,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Activate Account",
+         "id" : "manager-083",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 83,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Created by / created at",
+         "id" : "manager-084",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Settings",
+         "sheet_row" : 84,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Approved device",
+         "id" : "manager-086",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 86,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pending device",
+         "id" : "manager-087",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 87,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Approve",
+         "id" : "manager-088",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 88,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reject",
+         "id" : "manager-089",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 89,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Block Device",
+         "id" : "manager-090",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 90,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Unblock Device",
+         "id" : "manager-091",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Linked devices",
+         "sheet_row" : 91,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Month",
+         "id" : "manager-093",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 93,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Working days",
+         "id" : "manager-094",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 94,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Absents / Leaves",
+         "id" : "manager-095",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 95,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Late Check in",
+         "id" : "manager-096",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 96,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Early Check out",
+         "id" : "manager-097",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 97,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Date",
+         "id" : "manager-098",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 98,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Day",
+         "id" : "manager-099",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 99,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "manager-100",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 100,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "manager-101",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 101,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Weekend card",
+         "id" : "manager-102",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 102,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Holiday sheet",
+         "id" : "manager-103",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 103,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add attendance on an empty day",
+         "id" : "manager-104",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 104,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap day opens details",
+         "id" : "manager-105",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Employee attendance",
+         "sheet_row" : 105,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check-in time",
+         "id" : "manager-107",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 107,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check-out time",
+         "id" : "manager-108",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 108,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Grace",
+         "id" : "manager-109",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 109,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Working days",
+         "id" : "manager-110",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 110,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Workweek start day",
+         "id" : "manager-111",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 111,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Hours in a week",
+         "id" : "manager-112",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 112,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Hours in a day",
+         "id" : "manager-113",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 113,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break start",
+         "id" : "manager-114",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 114,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break end",
+         "id" : "manager-115",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 115,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reset",
+         "id" : "manager-116",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 116,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "manager-117",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Schedule sheets",
+         "sheet_row" : 117,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Assigned locations",
+         "id" : "manager-119",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Default locations",
+         "sheet_row" : 119,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Default location",
+         "id" : "manager-120",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Default locations",
+         "sheet_row" : 120,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Confirm location change",
+         "id" : "manager-121",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Default locations",
+         "sheet_row" : 121,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "manager-122",
+         "module" : "Employees",
+         "role" : "manager",
+         "screen" : "Default locations",
+         "sheet_row" : 122,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Office / location name",
+         "id" : "manager-125",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 125,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Present",
+         "id" : "manager-126",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 126,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Late",
+         "id" : "manager-127",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 127,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "No location",
+         "id" : "manager-128",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 128,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Empty state",
+         "id" : "manager-129",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 129,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-130",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 130,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "manager-131",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 131,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap opens location overview",
+         "id" : "manager-132",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "All locations",
+         "sheet_row" : 132,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Office / Location Name",
+         "id" : "manager-134",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 134,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Clear",
+         "id" : "manager-135",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 135,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Create",
+         "id" : "manager-136",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 136,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Empty name error",
+         "id" : "manager-137",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 137,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add members after create",
+         "id" : "manager-138",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 138,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Opens the new location",
+         "id" : "manager-139",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "New location",
+         "sheet_row" : 139,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Search",
+         "id" : "manager-141",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Add members",
+         "sheet_row" : 141,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Role badge",
+         "id" : "manager-142",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Add members",
+         "sheet_row" : 142,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Select members",
+         "id" : "manager-143",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Add members",
+         "sheet_row" : 143,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Clear",
+         "id" : "manager-144",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Add members",
+         "sheet_row" : 144,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add",
+         "id" : "manager-145",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Add members",
+         "sheet_row" : 145,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location name",
+         "id" : "manager-147",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 147,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Settings button",
+         "id" : "manager-148",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 148,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Attendance card",
+         "id" : "manager-149",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 149,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Employees card",
+         "id" : "manager-150",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 150,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Today Attendance",
+         "id" : "manager-151",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 151,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Date",
+         "id" : "manager-152",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 152,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Present Today",
+         "id" : "manager-153",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 153,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Active",
+         "id" : "manager-154",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 154,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "On Break",
+         "id" : "manager-155",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 155,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Late Check-in",
+         "id" : "manager-156",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 156,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "On Leaves",
+         "id" : "manager-157",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 157,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Absent",
+         "id" : "manager-158",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 158,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Employee list",
+         "id" : "manager-159",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 159,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "No employees assigned",
+         "id" : "manager-160",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 160,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-161",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 161,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "manager-162",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location overview",
+         "sheet_row" : 162,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in from this location",
+         "id" : "manager-164",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 164,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in from anywhere",
+         "id" : "manager-165",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 165,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add to location",
+         "id" : "manager-166",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 166,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Set up Location",
+         "id" : "manager-167",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 167,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Address",
+         "id" : "manager-168",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 168,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check In / Out Timing",
+         "id" : "manager-169",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 169,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Working Days",
+         "id" : "manager-170",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 170,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break Timing",
+         "id" : "manager-171",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 171,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Deactivate location",
+         "id" : "manager-172",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 172,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Delete location",
+         "id" : "manager-173",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 173,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Created by",
+         "id" : "manager-174",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 174,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Created at",
+         "id" : "manager-175",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Location settings",
+         "sheet_row" : 175,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Search address",
+         "id" : "manager-177",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Set up location map",
+         "sheet_row" : 177,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap the map",
+         "id" : "manager-178",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Set up location map",
+         "sheet_row" : 178,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Selected address",
+         "id" : "manager-179",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Set up location map",
+         "sheet_row" : 179,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Use this address",
+         "id" : "manager-180",
+         "module" : "Locations",
+         "role" : "manager",
+         "screen" : "Set up location map",
+         "sheet_row" : 180,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Today date",
+         "id" : "manager-183",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 183,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Date picker",
+         "id" : "manager-184",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 184,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Search by name",
+         "id" : "manager-185",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 185,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Recent searches stay on device",
+         "id" : "manager-186",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 186,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Status filter",
+         "id" : "manager-187",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 187,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location filter",
+         "id" : "manager-188",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 188,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Create a location from the filter",
+         "id" : "manager-189",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 189,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Photo",
+         "id" : "manager-190",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 190,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Name",
+         "id" : "manager-191",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 191,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Role",
+         "id" : "manager-192",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 192,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Team",
+         "id" : "manager-193",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 193,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Status badge",
+         "id" : "manager-194",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 194,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "manager-195",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 195,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "manager-196",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 196,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Empty dash when no punch",
+         "id" : "manager-197",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 197,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Edited icon",
+         "id" : "manager-198",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 198,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Red warning",
+         "id" : "manager-199",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 199,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Grey warning",
+         "id" : "manager-200",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 200,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Out of range",
+         "id" : "manager-201",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 201,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Info alert",
+         "id" : "manager-202",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 202,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "No attendance",
+         "id" : "manager-203",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 203,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-204",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 204,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Pull to refresh",
+         "id" : "manager-205",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 205,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Tap row opens details",
+         "id" : "manager-206",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Team list",
+         "sheet_row" : 206,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "All Status",
+         "id" : "manager-208",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 208,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Present Today",
+         "id" : "manager-209",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 209,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Active / Working",
+         "id" : "manager-210",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 210,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "On Break",
+         "id" : "manager-211",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 211,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Late Check-in",
+         "id" : "manager-212",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 212,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Early Check-Out",
+         "id" : "manager-213",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 213,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Absent",
+         "id" : "manager-214",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 214,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reset",
+         "id" : "manager-215",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 215,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "manager-216",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Status filter",
+         "sheet_row" : 216,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "All locations",
+         "id" : "manager-218",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Location filter",
+         "sheet_row" : 218,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "One location",
+         "id" : "manager-219",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Location filter",
+         "sheet_row" : 219,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Create a Location",
+         "id" : "manager-220",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Location filter",
+         "sheet_row" : 220,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reset",
+         "id" : "manager-221",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Location filter",
+         "sheet_row" : 221,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "manager-222",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Location filter",
+         "sheet_row" : 222,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Attendance card",
+         "id" : "manager-224",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 224,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Timeline row",
+         "id" : "manager-225",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 225,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Status wise time",
+         "id" : "manager-226",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 226,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location",
+         "id" : "manager-227",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 227,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Open location in maps",
+         "id" : "manager-228",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 228,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Edit Attendance",
+         "id" : "manager-229",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 229,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Add Attendance",
+         "id" : "manager-230",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Attendance detail sheet",
+         "sheet_row" : 230,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in time",
+         "id" : "manager-232",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 232,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check out time",
+         "id" : "manager-233",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 233,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break in time",
+         "id" : "manager-234",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 234,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break out time",
+         "id" : "manager-235",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 235,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Save",
+         "id" : "manager-236",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 236,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Applies on the employee record",
+         "id" : "manager-237",
+         "module" : "Attendance",
+         "role" : "manager",
+         "screen" : "Add / Edit attendance",
+         "sheet_row" : 237,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Month",
+         "id" : "manager-240",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 240,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "All",
+         "id" : "manager-241",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 241,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check-In",
+         "id" : "manager-242",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 242,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check-Out",
+         "id" : "manager-243",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 243,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Leaves",
+         "id" : "manager-244",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 244,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Device",
+         "id" : "manager-245",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 245,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Alert row",
+         "id" : "manager-246",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 246,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "No alerts",
+         "id" : "manager-247",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 247,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Failed to load / Retry",
+         "id" : "manager-248",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 248,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Badge clears when the tab opens",
+         "id" : "manager-249",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Alerts list",
+         "sheet_row" : 249,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Employee waiting to join",
+         "id" : "manager-251",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 251,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Approve",
+         "id" : "manager-252",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 252,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reject",
+         "id" : "manager-253",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 253,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Approved",
+         "id" : "manager-254",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 254,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Rejected",
+         "id" : "manager-255",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 255,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Auto Approved",
+         "id" : "manager-256",
+         "module" : "Alerts",
+         "role" : "manager",
+         "screen" : "Join request",
+         "sheet_row" : 256,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Same Clock screen as the employee sheet",
+         "id" : "manager-259",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 259,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check in",
+         "id" : "manager-260",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 260,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break in",
+         "id" : "manager-261",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 261,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Break out",
+         "id" : "manager-262",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 262,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Check out",
+         "id" : "manager-263",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 263,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Location",
+         "id" : "manager-264",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 264,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "No internet banner",
+         "id" : "manager-265",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 265,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Reminders arm when the manager home opens",
+         "id" : "manager-266",
+         "module" : "Clock",
+         "role" : "manager",
+         "screen" : "Own clock",
+         "sheet_row" : 266,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Same More screen as the employee sheet",
+         "id" : "manager-269",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 269,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Profile",
+         "id" : "manager-270",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 270,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Office & location",
+         "id" : "manager-271",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 271,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Linked devices",
+         "id" : "manager-272",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 272,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Change password",
+         "id" : "manager-273",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 273,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Terms",
+         "id" : "manager-274",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 274,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Privacy policy",
+         "id" : "manager-275",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 275,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Help and support",
+         "id" : "manager-276",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 276,
+         "template" : "manager"
+      },
+      {
+         "functionality" : "Log out",
+         "id" : "manager-277",
+         "module" : "More",
+         "role" : "manager",
+         "screen" : "Own account",
+         "sheet_row" : 277,
+         "template" : "manager"
+      }
+   ],
+   "counts" : {
+      "employee" : 186,
+      "manager" : 241,
+      "total" : 427
+   },
+   "generated_at" : "Thu Oct  8 17:10:29 2026",
+   "source" : {
+      "employee" : "docs/Employee_Tests_Before_Build.xlsx",
+      "manager" : "docs/Manager_Tests_Before_Build.xlsx"
+   },
+   "version" : 1
+}

@@ -53,6 +53,7 @@ class AlertsProvider extends ChangeNotifier {
   bool _refreshing = false;
   bool _unseenNotification = false;
   Set<String> _knownPendingKeys = {};
+
   /// Non-pending cards marked seen this session stay visible until restart.
   Set<String> _keepVisibleThisSession = {};
   Timer? _pollTimer;
@@ -230,6 +231,7 @@ class AlertsProvider extends ChangeNotifier {
       notifyListeners();
     }
 
+    final before = _alertSignature();
     try {
       await _seenStore.load();
       if (_managerView) {
@@ -240,7 +242,9 @@ class AlertsProvider extends ChangeNotifier {
       }
       _loading = false;
       _hasLoadedOnce = true;
-      notifyListeners();
+      if (!(silent && before == _alertSignature())) {
+        notifyListeners();
+      }
     } catch (e, st) {
       AppLogger.error('AlertsProvider', 'refresh', e, stackTrace: st);
       _loading = false;
@@ -249,6 +253,16 @@ class AlertsProvider extends ChangeNotifier {
     } finally {
       _refreshing = false;
     }
+  }
+
+  String _alertSignature() {
+    final items = _items
+        .map(
+          (item) =>
+              '${item.key}:${item.device.normalizedStatus}:${item.device.isPending}',
+        )
+        .join(',');
+    return '$_unseenNotification|$items';
   }
 
   bool _isLocalCurrent(DeviceModel device) {
@@ -330,9 +344,7 @@ class AlertsProvider extends ChangeNotifier {
           }
 
           // Approved / rejected / blocked cards show once per device request.
-          if ((device.isRejected ||
-                  device.isApproved ||
-                  device.isBlocked) &&
+          if ((device.isRejected || device.isApproved || device.isBlocked) &&
               _shouldShowNonPending(item.key)) {
             collected.add(item);
           }

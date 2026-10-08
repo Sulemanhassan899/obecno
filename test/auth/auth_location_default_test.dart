@@ -33,6 +33,23 @@ void main() {
       expect(preserved[0].isDefault, isTrue);
       expect(preserved[1].isDefault, isFalse);
     });
+
+    test('filters deactivated offices out of /auth/me locations', () {
+      final locations = AuthLocationModel.listFrom([
+        {'id': '1', 'name': 'Bhara Khou', 'is_active': false},
+        {'id': '2', 'name': 'Head Office', 'is_active': true},
+      ]);
+
+      expect(locations.map((l) => l.id), ['2']);
+    });
+
+    test('drops the last office when it is deactivated', () {
+      final locations = AuthLocationModel.listFrom([
+        {'id': '1', 'name': 'Bhara Khou', 'is_active': false},
+      ]);
+
+      expect(locations, isEmpty);
+    });
   });
 
   group('AuthUserModel default office', () {

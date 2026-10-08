@@ -18,6 +18,8 @@ class AuthRepository {
       final response = await _client.post(
         EmployeeApiEndpoints.login,
         data: {'email': email},
+        // Pre-login. A 401 here is "no account", not a lost session.
+        skipAuthInterceptor: true,
       );
       return _parseCheckEmail(response.data, response.statusCode);
     } on ApiError catch (e) {
@@ -68,6 +70,10 @@ class AuthRepository {
       final response = await _client.post(
         EmployeeApiEndpoints.login,
         data: {'email': email, 'password': password, 'remember_me': rememberMe},
+        // A wrong password is often 401. That must not run the session
+        // interceptor, which logs the user out and clears the email they
+        // already verified on the previous screen.
+        skipAuthInterceptor: true,
       );
       return _parseUserEnvelope(
         response.data,
@@ -75,7 +81,11 @@ class AuthRepository {
         fallbackMessage: 'Login failed. Please try again.',
       );
     } on ApiError catch (e) {
-      return ApiResponse.failure(e.message, statusCode: e.statusCode);
+      return ApiResponse.failure(
+        fieldErrorText(e.fieldErrors?['password']) ?? e.message,
+        statusCode: e.statusCode,
+        fieldErrors: e.fieldErrors,
+      );
     } catch (_) {
       return ApiResponse.failure('Something went wrong. Please try again.');
     }

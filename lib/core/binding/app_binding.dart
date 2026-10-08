@@ -23,6 +23,7 @@ import 'package:obecno/features/more/services/help_feedback_service.dart';
 import 'package:obecno/features/more/data/local/reminder_dao.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/features/more/services/smart_attendance_service.dart';
 import 'package:obecno/features/more/repositories/device_repository.dart';
 import 'package:obecno/features/more/services/device_cache_service.dart';
 import 'package:obecno/features/more/services/device_info_service.dart';
@@ -32,14 +33,9 @@ import 'package:obecno/features/employee_module/attendance/data/local/attendance
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 
-import 'package:obecno/features/clock/location_flags/providers/location_flag_provider.dart';
-import 'package:obecno/features/clock/location_flags/repositories/location_flag_repository.dart';
-import 'package:obecno/features/clock/location_flags/services/location_flag_monitor.dart';
-import 'package:obecno/features/clock/location_flags/services/location_flag_sync_service.dart';
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/clock/services/sync_service.dart';
-import 'package:obecno/shared/location/service/location_service.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
@@ -98,6 +94,7 @@ class AppBindings {
   late final DeviceProvider deviceProvider;
   late final ReminderDao reminderDao;
   late final ReminderSettingsProvider reminderSettingsProvider;
+  late final SmartAttendanceService smartAttendanceService;
 
   late final TermsService termsService;
   late final TermsProvider termsProvider;
@@ -126,10 +123,6 @@ class AppBindings {
   late final ManagerAttendanceProvider managerAttendanceProvider;
   late final AlertsProvider alertsProvider;
   late final JoinInviteProvider joinInviteProvider;
-  late final LocationFlagRepository locationFlagRepository;
-  late final LocationFlagProvider locationFlagProvider;
-  late final LocationFlagMonitorService locationFlagMonitor;
-  late final LocationFlagSyncService locationFlagSyncService;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -164,8 +157,8 @@ class AppBindings {
     // Register callback so AuthProvider refreshes latest permissions/policy
     // from the network on every login and session restore.
     authProvider.registerPolicyRefresh(() async {
-      await companyPolicyService.refreshFromNetwork();
-      await permissionProvider.refresh();
+      await companyPolicyService.refreshFromNetwork(force: true);
+      await permissionProvider.refresh(force: true);
     });
 
     employeeTrustedTime = EmployeeTrustedTime();
@@ -318,6 +311,7 @@ class AppBindings {
       } else if (!isAuthenticatedNow && _wasAuthenticated) {
         // Logged out: drop cached device state so a different user logging
         // in on this device doesn't inherit stale approval/blocked flags.
+        smartAttendanceService.stop();
         unawaited(deviceProvider.clearLocalState());
         unawaited(reminderSettingsProvider.cancelNotifications());
         managerOverviewProvider.reset();
@@ -379,32 +373,24 @@ class AppBindings {
     clockSyncService.startListening();
     unawaited(clockSyncService.syncPendingData());
 
-    locationFlagRepository = LocationFlagRepository();
-    locationFlagProvider = LocationFlagProvider(
-      repository: locationFlagRepository,
-      employeeIdProvider: () => authProvider.user?.id,
-    );
-    locationFlagSyncService = LocationFlagSyncService(
-      repository: locationFlagRepository,
-      apiClient: ApihttpClient,
-      connectivity: connectivityService,
-      employeeIdProvider: () => authProvider.user?.id,
-      sessionEpochProvider: () => authProvider.sessionEpoch,
-    );
-    locationFlagMonitor = LocationFlagMonitorService(
-      repository: locationFlagRepository,
-      locationService: LocationServiceImpl(),
-      employeeIdProvider: () => authProvider.user?.id,
-      officeProvider: () => authProvider.selectedLocation,
-      sessionEpochProvider: () => authProvider.sessionEpoch,
-      isOnline: () => networkChecker.isConnected,
-      onRecordsChanged: () {
-        unawaited(locationFlagProvider.reloadForDay(DateTime.now()));
-        unawaited(locationFlagSyncService.syncPending());
+    smartAttendanceService = SmartAttendanceService(
+      reminders: reminderSettingsProvider,
+      auth: authProvider,
+      repository: clockAttendanceRepository,
+      trustedTime: employeeTrustedTime,
+      networkChecker: networkChecker,
+      deviceDetailsProvider: () async {
+        final info = await deviceInfoService.collect();
+        return info.deviceDetails;
       },
     );
-    locationFlagSyncService.startListening();
-    unawaited(locationFlagSyncService.syncPending());
+    reminderSettingsProvider.onSmartAttendanceTogglesChanged =
+        smartAttendanceService.syncWithToggles;
+    reminderSettingsProvider.onSmartAttendanceEvaluate =
+        () => smartAttendanceService.evaluate(reason: 'toggle_on');
+    if (_wasAuthenticated) {
+      smartAttendanceService.syncWithToggles();
+    }
 
     authProvider.registerLogoutCleanup(() async {
       // Captured before any cleanup step runs -- registerLogoutCleanup's
@@ -426,16 +412,6 @@ class AppBindings {
       await _guardedCleanupStep(
         'syncPendingData',
         clockSyncService.syncPendingData,
-      );
-
-      await _guardedCleanupStep(
-        'syncLocationFlags',
-        locationFlagSyncService.syncPending,
-      );
-
-      await _guardedCleanupStep(
-        'stopLocationFlagMonitor',
-        locationFlagMonitor.stop,
       );
 
       await _guardedCleanupStep('detachSyncCallbacks', () async {
@@ -518,8 +494,7 @@ class AppBindings {
       _locationSyncListener = null;
     }
     clockSyncService.stopListening();
-    locationFlagSyncService.stopListening();
-    locationFlagMonitor.dispose();
+    smartAttendanceService.dispose();
     employeeTrustedTime.dispose();
   }
 

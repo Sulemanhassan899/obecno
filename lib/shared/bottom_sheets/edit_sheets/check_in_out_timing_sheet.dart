@@ -1,5 +1,6 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
+import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
@@ -11,8 +12,10 @@ import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class CheckInOutTimingSheet {
   CheckInOutTimingSheet._();
@@ -31,13 +34,15 @@ class CheckInOutTimingSheet {
       sheet: 'Check In / Out Timing',
       phase: 'open',
       locationId: locationId,
-      api: locationId == null || locationId.trim().isEmpty
-          ? null
-          : 'PUT /manager/locations/$locationId/schedule',
+      api: userId != null
+          ? 'PUT|PATCH /manager/employees/$userId/permissions'
+          : (locationId == null || locationId.trim().isEmpty
+              ? null
+              : 'PUT /manager/locations/$locationId/schedule'),
       apiNeeds: 'check_in, check_out, grace_minutes',
       extra: {'userId': userId, 'employeeName': employeeName},
     );
-    return showModalBottomSheet<LocationSchedule>(
+    return AppSheet.show<LocationSchedule>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -93,6 +98,8 @@ class _CheckInOutTimingSheetBodyState
 
   static const _graceOptions = [0, 5, 10, 15, 30];
 
+  bool get _isEmployeeContext => widget.userId != null;
+
   @override
   void initState() {
     super.initState();
@@ -118,11 +125,14 @@ class _CheckInOutTimingSheetBodyState
   }
 
   Future<void> _load() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
+    // Employee profile → employee permissions. Location setup → location APIs.
+    if (_isEmployeeContext) {
+      final userId = widget.userId!;
       setState(() => _loading = true);
-      final result = await bindings.managerLocationsService
-          .loadLocationSchedule(locationId: locationId);
+      final result =
+          await bindings.managerEmployeesService.loadEmployeeSchedule(
+        userId: userId,
+      );
       if (!mounted) return;
       setState(() {
         if (result.success && result.data != null) {
@@ -133,22 +143,22 @@ class _CheckInOutTimingSheetBodyState
       LocationPolicyLog.dump(
         sheet: 'Check In / Out Timing',
         phase: 'fetched',
-        locationId: locationId,
         schedule: result.data ?? _baseSchedule,
         success: result.success,
         statusCode: result.statusCode,
         message: result.message,
-        api: 'GET /manager/locations/$locationId/schedule',
+        api: 'GET /manager/employees/$userId/permissions',
+        extra: {'userId': userId, 'via': 'employee_permissions'},
       );
       return;
     }
 
-    final userId = widget.userId;
-    if (userId == null) return;
+    final locationId = widget.locationId?.trim();
+    if (locationId == null || locationId.isEmpty) return;
+
     setState(() => _loading = true);
-    final result = await bindings.managerEmployeesService.loadEmployeeSchedule(
-      userId: userId,
-    );
+    final result = await bindings.managerLocationsService
+        .loadLocationSchedule(locationId: locationId);
     if (!mounted) return;
     setState(() {
       if (result.success && result.data != null) {
@@ -156,6 +166,16 @@ class _CheckInOutTimingSheetBodyState
       }
       _loading = false;
     });
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'fetched',
+      locationId: locationId,
+      schedule: result.data ?? _baseSchedule,
+      success: result.success,
+      statusCode: result.statusCode,
+      message: result.message,
+      api: 'GET /manager/locations/$locationId/schedule',
+    );
   }
 
   String _formatTime(TimeOfDay t) {
@@ -206,123 +226,224 @@ class _CheckInOutTimingSheetBodyState
     );
   }
 
-  Future<void> _save() async {
-    final locationId = widget.locationId?.trim();
-    if (locationId != null && locationId.isNotEmpty) {
-      setState(() => _saving = true);
-      final current = _baseSchedule;
-      final next = _currentSchedule;
-      LocationPolicyLog.dump(
-        sheet: 'Check In / Out Timing',
-        phase: 'current',
-        locationId: locationId,
-        schedule: current,
-        apiNeeds: 'check_in, check_out, grace_minutes',
+  bool _sameTiming(LocationSchedule saved) {
+    return _sameTime(saved.checkIn, _checkIn) &&
+        _sameTime(saved.checkOut, _checkOut) &&
+        saved.graceMinutes == _graceMinutes;
+  }
+
+  Future<void> _saveViaEmployee(int userId) async {
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    final checkInLabel = _formatTime(_checkIn);
+    final checkOutLabel = _formatTime(_checkOut);
+    final timesPayload = ManagerEmployeePolicy.timingPermissionPayload(
+      checkInLabel: checkInLabel,
+      checkOutLabel: checkOutLabel,
+      graceMinutes: _graceMinutes,
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'current',
+      schedule: current,
+      apiNeeds: 'check_in, check_out, grace_minutes',
+      extra: {'userId': userId},
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'changed',
+      schedule: next,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      apiNeeds: 'check_in, check_out, grace_minutes',
+      userSending: timesPayload,
+      extra: {'userId': userId, 'grace': _graceMinutes},
+    );
+
+    // Keep check-in / check-out write path unchanged (already works).
+    final timesResult =
+        await bindings.managerEmployeesService.updateEmployeePermissions(
+      userId: userId,
+      payload: timesPayload,
+    );
+    if (!mounted) return;
+
+    // Grace is a separate employee override — try portal wire formats.
+    ApiResponse<String>? graceResult;
+    for (final candidate
+        in ManagerEmployeePolicy.graceWireCandidates(_graceMinutes)) {
+      final payload = ManagerEmployeePolicy.gracePermissionPayload(candidate);
+      graceResult =
+          await bindings.managerEmployeesService.updateEmployeePermissions(
+        userId: userId,
+        payload: payload,
       );
-      LocationPolicyLog.dump(
-        sheet: 'Check In / Out Timing',
-        phase: 'changed',
-        locationId: locationId,
-        schedule: next,
-        api: 'PUT /manager/locations/$locationId/schedule',
-        apiNeeds: 'check_in, check_out, grace_minutes',
+      debugPrint(
+        '[CheckInOut] grace write value=$candidate '
+        'ok=${graceResult.success} code=${graceResult.statusCode} '
+        'msg=${graceResult.message}',
       );
-      final result = await bindings.managerLocationsService
-          .updateLocationSchedule(locationId: locationId, schedule: next);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      LocationPolicyLog.dump(
-        sheet: 'Check In / Out Timing',
-        phase: 'response',
-        locationId: locationId,
-        schedule: result.data ?? next,
-        success: result.success,
-        statusCode: result.statusCode,
-        message: result.message,
-        api: 'PUT /manager/locations/$locationId/schedule',
+      if (!graceResult.success) continue;
+
+      final probe =
+          await bindings.managerEmployeesService.loadEmployeeSchedule(
+        userId: userId,
       );
-      if (!result.success) {
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save timing.',
-        );
-        return;
+      if (probe.success &&
+          probe.data != null &&
+          probe.data!.graceMinutes == _graceMinutes) {
+        break;
       }
-      _checkIn = (result.data ?? next).checkIn;
-      _checkOut = (result.data ?? next).checkOut;
-      _graceMinutes = (result.data ?? next).graceMinutes;
-      _applySchedule(result.data ?? next);
-      final saved = result.data ?? next;
-      final rootContext = Navigator.of(context, rootNavigator: true).context;
-      Navigator.pop(context, saved);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!rootContext.mounted) return;
-        ToastHelper.changesSaved(rootContext);
-      });
+    }
+    if (!mounted) return;
+
+    final verify =
+        await bindings.managerEmployeesService.loadEmployeeSchedule(
+      userId: userId,
+    );
+    if (!mounted) return;
+    final saved = verify.data;
+    final timesOk = saved != null &&
+        _sameTime(saved.checkIn, _checkIn) &&
+        _sameTime(saved.checkOut, _checkOut);
+    final graceOk = saved != null && saved.graceMinutes == _graceMinutes;
+    final persisted = timesResult.success &&
+        (graceResult?.success ?? false) &&
+        verify.success &&
+        timesOk &&
+        graceOk;
+    debugPrint(
+      '[CheckInOut] employee verify in=${saved?.checkIn} out=${saved?.checkOut} '
+      'grace=${saved?.graceMinutes} wantedGrace=$_graceMinutes '
+      'persisted=$persisted userId=$userId',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'response',
+      schedule: saved ?? next,
+      success: persisted,
+      statusCode: verify.statusCode ??
+          graceResult?.statusCode ??
+          timesResult.statusCode,
+      message: verify.message ?? graceResult?.message ?? timesResult.message,
+      api: 'PUT|PATCH /manager/employees/$userId/permissions',
+      extra: {'userId': userId},
+    );
+    if (!persisted) {
+      ToastHelper.error(
+        context,
+        message: timesOk && !graceOk
+            ? 'Grace period did not persist. Please try again.'
+            : (graceResult?.message ??
+                timesResult.message ??
+                'Timing update did not persist. Please try again.'),
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      checkIn: _checkIn,
+      checkOut: _checkOut,
+      graceMinutes: _graceMinutes,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
+  Future<void> _saveViaLocation(String locationId) async {
+    setState(() => _saving = true);
+    final current = _baseSchedule;
+    final next = _currentSchedule;
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'current',
+      locationId: locationId,
+      schedule: current,
+      apiNeeds: 'check_in, check_out, grace_minutes',
+    );
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'changed',
+      locationId: locationId,
+      schedule: next,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+      apiNeeds: 'check_in, check_out, grace_minutes',
+      extra: {'grace': _graceMinutes},
+    );
+    final result = await bindings.managerLocationsService
+        .updateLocationSchedule(locationId: locationId, schedule: next);
+    if (!mounted) return;
+
+    final verify = await bindings.managerLocationsService
+        .loadLocationSchedule(locationId: locationId);
+    if (!mounted) return;
+    final saved = verify.data;
+    final persisted = result.success &&
+        verify.success &&
+        saved != null &&
+        _sameTiming(saved);
+    debugPrint(
+      '[CheckInOut] location verify in=${saved?.checkIn} out=${saved?.checkOut} '
+      'grace=${saved?.graceMinutes} wantedGrace=$_graceMinutes '
+      'persisted=$persisted locationId=$locationId',
+    );
+
+    setState(() => _saving = false);
+    LocationPolicyLog.dump(
+      sheet: 'Check In / Out Timing',
+      phase: 'response',
+      locationId: locationId,
+      schedule: saved ?? next,
+      success: persisted,
+      statusCode: verify.statusCode ?? result.statusCode,
+      message: verify.message ?? result.message,
+      api: 'PUT /manager/locations/$locationId/schedule + /permissions',
+    );
+    if (!persisted) {
+      final timesOk = saved != null &&
+          _sameTime(saved.checkIn, _checkIn) &&
+          _sameTime(saved.checkOut, _checkOut);
+      ToastHelper.error(
+        context,
+        message: timesOk && saved.graceMinutes != _graceMinutes
+            ? 'Grace period did not persist. Please try again.'
+            : (result.message ??
+                'Timing update did not persist. Please try again.'),
+      );
+      return;
+    }
+    final confirmed = saved!.copyWith(
+      checkIn: _checkIn,
+      checkOut: _checkOut,
+      graceMinutes: _graceMinutes,
+    );
+    _applySchedule(confirmed);
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
+  }
+
+  Future<void> _save() async {
+    if (_isEmployeeContext) {
+      await _saveViaEmployee(widget.userId!);
       return;
     }
 
-    if (widget.userId != null) {
-      setState(() => _saving = true);
-      final wantedIn = _checkIn;
-      final wantedOut = _checkOut;
-      final wantedGrace = _graceMinutes;
-      final next = _currentSchedule;
-      final result = await bindings.managerEmployeesService
-          .updateEmployeeSchedule(
-            userId: widget.userId!,
-            payload: {
-              ...ManagerEmployeePolicy.timingPermissionPayload(
-                checkInLabel: _formatTime(wantedIn),
-                checkOutLabel: _formatTime(wantedOut),
-                graceMinutes: wantedGrace,
-              ),
-              ...next.writePayload(),
-            },
-          );
-      if (!mounted) return;
-      if (!result.success) {
-        setState(() => _saving = false);
-        ToastHelper.error(
-          context,
-          message: result.message ?? 'Failed to save timing.',
-        );
-        return;
-      }
-
-      final verify = await bindings.managerEmployeesService
-          .loadEmployeeSchedule(userId: widget.userId!);
-      if (!mounted) return;
-      setState(() => _saving = false);
-      if (!verify.success || verify.data == null) {
-        ToastHelper.error(
-          context,
-          message: verify.message ?? 'Timing update could not be confirmed.',
-        );
-        return;
-      }
-      final saved = verify.data!;
-      if (!_sameTime(saved.checkIn, wantedIn) ||
-          !_sameTime(saved.checkOut, wantedOut) ||
-          saved.graceMinutes != wantedGrace) {
-        ToastHelper.error(
-          context,
-          message: 'Timing update did not persist. Please try again.',
-        );
-        return;
-      }
-      _applySchedule(saved);
+    final locationId = widget.locationId?.trim();
+    if (locationId != null && locationId.isNotEmpty) {
+      await _saveViaLocation(locationId);
+      return;
     }
 
     _initialCheckIn = _checkIn;
     _initialCheckOut = _checkOut;
     _initialGraceMinutes = _graceMinutes;
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    Navigator.pop(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!rootContext.mounted) return;
-      ToastHelper.changesSaved(rootContext);
-    });
+    if (!mounted) return;
+    setState(() {});
+    ToastHelper.changesSaved(context);
   }
 
   @override
@@ -374,17 +495,16 @@ class _CheckInOutTimingSheetBodyState
                           shrinkWrap: true,
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                           children: [
-                            SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: AppText.p1(
+                              child: AppText.p2(
                                 'Check-in allowed from office start time, check-out at end time.',
                                 color: kGreyColor,
                                 weight: FontWeight.w400,
                                 align: TextAlign.left,
                               ),
                             ),
-                            SizedBox(height: 10),
+                            const SizedBox(height: 20),
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -496,13 +616,14 @@ class _CheckInOutTimingSheetBodyState
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            AppText.p1(
+                            const SizedBox(height: 20),
+                            AppText.p2(
                               'Define grace minutes for late check-in or early check-out.',
                               color: kGreyColor,
                               weight: FontWeight.w400,
                               align: TextAlign.left,
                             ),
+                            const SizedBox(height: 20),
                           ],
                         ),
                 ),

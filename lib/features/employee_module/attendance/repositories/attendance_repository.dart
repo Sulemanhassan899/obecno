@@ -89,9 +89,22 @@ class HistoryAttendanceRepository {
     if (weekdays.isNotEmpty) _workingWeekdays = weekdays;
   }
 
-  /// Called when holiday data becomes available.
+  /// Merges holiday data by date so month switches keep previously loaded
+  /// company-calendar holidays for offline rebuilds.
   void updateHolidays(List<HolidayInfo> holidays) {
-    _holidays = holidays;
+    if (holidays.isEmpty) return;
+    final merged = [..._holidays];
+    final seen = {
+      for (final holiday in merged)
+        '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}',
+    };
+    for (final holiday in holidays) {
+      final key =
+          '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}';
+      if (!seen.add(key)) continue;
+      merged.add(holiday);
+    }
+    _holidays = merged;
   }
 
   static const _lateCheckInHour = 9;
@@ -131,13 +144,14 @@ class HistoryAttendanceRepository {
     final firstDay = DateTime(month.year, month.month, 1);
     final lastDay = DateTime(month.year, month.month + 1, 0);
 
+    final monthKey = _yyyyMM(month);
     final attendanceFuture = _service.getAttendance(
       dateFrom: _yyyyMMdd(firstDay),
       dateTo: _yyyyMMdd(lastDay),
       cancelToken: cancelToken,
     );
     final calendarFuture = _service.getCalendar(
-      month: _yyyyMM(month),
+      month: monthKey,
       cancelToken: cancelToken,
     );
     final leavesFuture = _service.getLeaves(
@@ -145,16 +159,26 @@ class HistoryAttendanceRepository {
       dateTo: _yyyyMMdd(lastDay),
       cancelToken: cancelToken,
     );
+    final companyHolidaysFuture = _service.getCompanyHolidays(
+      month: monthKey,
+      cancelToken: cancelToken,
+    );
 
     final attendanceResponse = await attendanceFuture;
     final calendarResponse = await calendarFuture;
     final leavesResponse = await leavesFuture;
+    final companyHolidaysResponse = await companyHolidaysFuture;
 
     if (!attendanceResponse.success || attendanceResponse.data == null) {
       return ApiResponse.failure(
         attendanceResponse.message ?? 'Failed to load attendance.',
         statusCode: attendanceResponse.statusCode,
       );
+    }
+
+    if (companyHolidaysResponse.success &&
+        companyHolidaysResponse.data != null) {
+      updateHolidays(companyHolidaysResponse.data!);
     }
 
     final history = attendanceResponse.data!;
@@ -182,14 +206,20 @@ class HistoryAttendanceRepository {
       today: today,
       joiningDate: joiningDate,
     ).reversed.toList();
+
+    // Stamp company-calendar / calendar holidays onto day rows so SQLite
+    // cache rebuilds still show holiday cards after process restart.
+    final holidayInfos = _holidaysFor(displayDays, calendar);
+    final stampedDays = _stampHolidays(displayDays, holidayInfos);
+
     final records = _recordsFor(
-      displayDays,
+      stampedDays,
       calendar,
       extraLeaveDates: leaveDates,
     );
     final summary = _buildSummary(
       records: records,
-      days: displayDays,
+      days: stampedDays,
     );
 
     final monthLabel = (calendar?.monthLabel.isNotEmpty ?? false)
@@ -201,7 +231,7 @@ class HistoryAttendanceRepository {
         monthLabel: monthLabel,
         summary: summary,
         records: records,
-        rawDays: daysWithLeave,
+        rawDays: stampedDays,
         calendarDates: calendar?.attendanceDates ?? const [],
       ),
     );
@@ -532,6 +562,11 @@ class HistoryAttendanceRepository {
       case DayCardType.holiday:
         status = AttendanceDayStatus.holiday;
         weekendLabel = classification.holidayName ?? 'Public Holiday';
+        // Worked on a holiday: keep holiday status but surface punch times.
+        if (_hasCountablePunch(day)) {
+          checkInLabel = _formatTime12h(day.firstCheckIn);
+          checkOutLabel = _formatTime12h(day.lastCheckOut);
+        }
         break;
       case DayCardType.weekend:
         status = AttendanceDayStatus.weekend;
@@ -563,6 +598,7 @@ class HistoryAttendanceRepository {
       checkOut: checkOutLabel,
       status: status,
       weekendLabel: weekendLabel,
+      hasEditedTime: day.isEdited,
     );
   }
 
@@ -595,6 +631,26 @@ class HistoryAttendanceRepository {
       add(holiday.date, holiday.name);
     }
     return holidays;
+  }
+
+  List<AttendanceDay> _stampHolidays(
+    List<AttendanceDay> days,
+    List<HolidayInfo> holidays,
+  ) {
+    if (holidays.isEmpty) return days;
+    final byDate = <String, HolidayInfo>{
+      for (final holiday in holidays)
+        '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}':
+            holiday,
+    };
+    return days.map((day) {
+      final key = '${day.date.year}-${day.date.month}-${day.date.day}';
+      final holiday = byDate[key];
+      if (holiday == null) return day;
+      final existingName = (day.holidayName ?? '').trim();
+      if (day.isHoliday && existingName == holiday.name) return day;
+      return day.copyWith(isHoliday: true, holidayName: holiday.name);
+    }).toList();
   }
 
   Set<DateTime> _leaveDatesFor(List<AttendanceDay> days) {

@@ -187,7 +187,7 @@ void main() {
       expect(item('attendance', 'check_in_time')['value'], '09:00 AM');
       expect(item('attendance', 'check_in_time')['location_value'], '09:00 AM');
       expect(item('attendance', 'check_out_time')['value'], '06:00 PM');
-      expect(item('attendance', 'grace_period')['value'], '30');
+      expect(item('attendance', 'grace_period')['value'], '30-min');
       expect(item('attendance', 'break_time')['value'], '60:00 mins');
       expect(item('break_timing', 'break_location_tracking')['value'], '1');
       expect(item('working_days', 'working_days')['source_level'], 'location');
@@ -205,6 +205,7 @@ void main() {
 
       final payload = original.permissionsApiPayload(locationId: '12');
       expect(payload['location_id'], 12);
+      expect(payload['id'], 12);
       expect(payload['section'], 'attendance');
       expect(payload['permission_section'], 'attendance');
       expect(payload['field'], 'check_in_time');
@@ -214,6 +215,7 @@ void main() {
       expect(payload['location_setting']['check_out_time'], '18:00');
       expect(payload['location_setting']['grace_period'], '15-min');
       expect(payload['location_setting']['break_time'], '60:00 mins');
+      expect(payload['settings'], isA<Map>());
       expect(payload['permissions']['attendance']['check_in_time'], '09:00');
     });
 
@@ -395,6 +397,61 @@ void main() {
       expect(merged.workingDays, {'Monday', 'Tuesday'});
     });
 
+    test(
+      'profile schedule working days win over company/location permissions',
+      () {
+        final merged = LocationSchedule.fromEmployeeSources(
+          schedule: {
+            'working_days': ['monday', 'tuesday', 'wednesday'],
+          },
+          permissionItems: const [
+            PermissionItemModel(
+              section: 'working_days',
+              sectionLabel: 'Working days',
+              key: 'working_days',
+              label: 'Working days',
+              value: 'Monday, Tuesday, Wednesday, Thursday, Friday',
+              companyValue: 'Monday, Tuesday, Wednesday, Thursday, Friday',
+              locationValue: 'Monday, Tuesday, Wednesday, Thursday, Friday',
+              sourceLevel: 'location',
+            ),
+          ],
+        );
+        expect(merged.workingDays, {
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+        });
+      },
+    );
+
+    test(
+      'employee permission working days still win over profile schedule',
+      () {
+        final merged = LocationSchedule.fromEmployeeSources(
+          schedule: {
+            'working_days': ['monday', 'tuesday'],
+          },
+          permissionItems: const [
+            PermissionItemModel(
+              section: 'working_days',
+              sectionLabel: 'Working days',
+              key: 'working_days',
+              label: 'Working days',
+              value: 'Monday, Wednesday, Friday',
+              employeeValue: 'Monday, Wednesday, Friday',
+              sourceLevel: 'employee',
+            ),
+          ],
+        );
+        expect(merged.workingDays, {
+          'Monday',
+          'Wednesday',
+          'Friday',
+        });
+      },
+    );
+
     test('parses working_days lists from nested permission maps', () {
       final items = PermissionItemModel.listFromEnvelope({
         'working_days': {
@@ -487,6 +544,8 @@ void main() {
       expect(payload['time_zone'], ManagerLocationModel.defaultTimezone);
       expect(payload['timezone_id'], ManagerLocationModel.defaultTimezone);
       expect(payload['timezone_name'], ManagerLocationModel.defaultTimezone);
+      expect(payload['status'], '1');
+      expect(payload['import_company_settings'], isTrue);
 
       final withMap = ManagerLocationModel.createPayload(
         name: 'Warehouse B',

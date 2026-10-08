@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
@@ -26,14 +28,15 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    ManagerAttendanceRecentSearch.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final provider = context.read<ManagerAttendanceProvider>();
-      // Overview already seeded today's live list — don't wipe it with a
-      // second fetch that can miss `is_open` before dashboard merge returns.
-      if (provider.items.isEmpty && !provider.isLoading) {
-        provider.ensureLoaded();
-      }
+      // Always refresh so the list matches the full employee directory
+      // (portal), not a stale/partial overview seed.
+      unawaited(provider.load());
       context.read<ManagerLocationsProvider>().load();
     });
   }
@@ -77,6 +80,8 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: ShimmerRefreshIndicator(
+        instagramStyle: true,
+        triggerFraction: 0.48,
         onRefresh: provider.refresh,
         child: Padding(
           padding: AppSizes.page(
@@ -85,7 +90,7 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
           ),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
+              parent: ClampingScrollPhysics(),
             ),
             slivers: [
               const SliverToBoxAdapter(child: SizedBox(height: 5)),

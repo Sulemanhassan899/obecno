@@ -29,12 +29,14 @@ class ManagerEmployeesService {
     var response = await _repository.getEmployees(
       search: search,
       locationId: locationId,
+      pageSize: 200,
       cancelToken: cancelToken,
     );
     if (!response.success || response.data == null) {
       response = await _repository.getTeamMembers(
         search: search,
         locationId: locationId,
+        pageSize: 200,
         cancelToken: cancelToken,
       );
     }
@@ -320,11 +322,20 @@ class ManagerEmployeesService {
       userId: userId,
       cancelToken: cancelToken,
     );
+    final scheduleFuture = _repository.getEmployeeScheduleEndpoint(
+      userId: userId,
+      cancelToken: cancelToken,
+    );
     final profile = await profileFuture;
     final permissions = await permissionsFuture;
+    final scheduleEndpoint = await scheduleFuture;
 
     Map<String, dynamic>? scheduleJson;
-    if (profile.data?.schedule != null) {
+    if (scheduleEndpoint.success &&
+        scheduleEndpoint.data != null &&
+        scheduleEndpoint.statusCode != 404) {
+      scheduleJson = scheduleEndpoint.data!.toJson();
+    } else if (profile.data?.schedule != null) {
       scheduleJson = profile.data!.schedule;
     }
 
@@ -333,14 +344,17 @@ class ManagerEmployeesService {
       permissionItems: permissions.data,
     );
     final hasSource =
-        (profile.data?.schedule != null) ||
+        scheduleJson != null ||
         (permissions.success && (permissions.data?.isNotEmpty ?? false));
     if (!hasSource) {
       return ApiResponse.failure(
         permissions.message ??
             profile.message ??
+            scheduleEndpoint.message ??
             'Failed to load schedule.',
-        statusCode: permissions.statusCode ?? profile.statusCode,
+        statusCode: permissions.statusCode ??
+            profile.statusCode ??
+            scheduleEndpoint.statusCode,
       );
     }
     return ApiResponse.success(

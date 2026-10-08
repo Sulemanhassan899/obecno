@@ -1,6 +1,7 @@
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
+import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
@@ -37,6 +38,15 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
   String _selectedStatusId = ManagerEmployeeFilters.allStatusId;
   late String _selectedLocationId;
 
+  List<ManagerEmployeeModel>? _cachedMembers;
+  String? _cachedFilterLocationName;
+  String? _cachedStatusId;
+  String? _cachedLocationId;
+  String? _cachedQuery;
+  List<ManagerEmployeeModel>? _cachedLocationEmployees;
+  List<ManagerEmployeeModel>? _cachedEmployees;
+  EmployeeDirectoryCounts? _cachedCounts;
+
   @override
   void initState() {
     super.initState();
@@ -69,18 +79,53 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     );
   }
 
-  List<ManagerEmployeeModel> _filtered(
-    List<ManagerEmployeeModel> source, {
-    String? locationName,
-  }) {
-    return ManagerEmployeeFilters.roleFirst(
+  ({
+    List<ManagerEmployeeModel> locationEmployees,
+    List<ManagerEmployeeModel> employees,
+    EmployeeDirectoryCounts counts,
+  })
+  _directory(List<ManagerEmployeeModel> source, {String? locationName}) {
+    if (identical(source, _cachedMembers) &&
+        locationName == _cachedFilterLocationName &&
+        _selectedStatusId == _cachedStatusId &&
+        _selectedLocationId == _cachedLocationId &&
+        _query == _cachedQuery &&
+        _cachedLocationEmployees != null &&
+        _cachedEmployees != null &&
+        _cachedCounts != null) {
+      return (
+        locationEmployees: _cachedLocationEmployees!,
+        employees: _cachedEmployees!,
+        counts: _cachedCounts!,
+      );
+    }
+
+    final locationEmployees = _locationEmployees(
+      source,
+      locationName: locationName,
+    );
+    final employees = ManagerEmployeeFilters.roleFirst(
       ManagerEmployeeFilters.byQuery(
         source: ManagerEmployeeFilters.byStatus(
-          source: _locationEmployees(source, locationName: locationName),
+          source: locationEmployees,
           selectedStatusId: _selectedStatusId,
         ),
         query: _query,
       ),
+    );
+    final counts = EmployeeDirectoryCounts.from(locationEmployees);
+    _cachedMembers = source;
+    _cachedFilterLocationName = locationName;
+    _cachedStatusId = _selectedStatusId;
+    _cachedLocationId = _selectedLocationId;
+    _cachedQuery = _query;
+    _cachedLocationEmployees = locationEmployees;
+    _cachedEmployees = employees;
+    _cachedCounts = counts;
+    return (
+      locationEmployees: locationEmployees,
+      employees: employees,
+      counts: counts,
     );
   }
 
@@ -164,16 +209,15 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
     final employeesProvider = context.watch<ManagerEmployeesProvider>();
     final locationsProvider = context.watch<ManagerLocationsProvider>();
     final locationName = _locationChipLabel(locationsProvider);
-    final locationEmployees = _locationEmployees(
+    final directory = _directory(
       employeesProvider.members,
       locationName: locationName == 'Locations' ? null : locationName,
     );
-    final employees = _filtered(
-      employeesProvider.members,
-      locationName: locationName == 'Locations' ? null : locationName,
-    );
-    final counts = EmployeeDirectoryCounts.from(locationEmployees);
-    final searchWidth = MediaQuery.sizeOf(context).width - 32;
+    final locationEmployees = directory.locationEmployees;
+    final employees = directory.employees;
+    final counts = directory.counts;
+    final searchWidth =
+        MediaQuery.sizeOf(context).width - (AppSizes.horizontal(context) * 2);
     final isInitialLoad =
         employeesProvider.isLoading && employeesProvider.members.isEmpty;
 

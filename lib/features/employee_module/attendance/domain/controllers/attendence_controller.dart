@@ -6,6 +6,7 @@ import 'package:obecno/features/employee_module/attendance/data/models/attendanc
     hide MonthSummary, AttendanceDayRecord;
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_model.dart';
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 
 import 'package:obecno/main.dart';
@@ -61,6 +62,8 @@ class MonthlyAttendanceController extends ChangeNotifier {
   bool isSyncing = false;
 
   String? error;
+
+  int _editScan = 0;
 
   static DateTime _monthOnly(DateTime d) => DateTime(d.year, d.month);
 
@@ -126,6 +129,57 @@ class MonthlyAttendanceController extends ChangeNotifier {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
+  /// Days already known as edited in memory. Month history responses omit
+  /// change requests, so without this the user-pen icon blinks off on every
+  /// refresh until [_markEditedTimes] re-discovers them.
+  Set<String> _knownEditedKeys() => {
+        for (final day in rawDays)
+          if (day.isEdited) _yyyyMMdd(day.date),
+        for (final record in records)
+          if (record.hasEditedTime) _yyyyMMdd(record.date),
+      };
+
+  List<AttendanceDay> _withEditedDays(
+    List<AttendanceDay> days,
+    Set<String> edited,
+  ) {
+    if (edited.isEmpty) return days;
+    return [
+      for (final day in days)
+        if (edited.contains(_yyyyMMdd(day.date)) && !day.isEdited)
+          day.copyWith(isEdited: true)
+        else
+          day,
+    ];
+  }
+
+  List<AttendanceDayRecord> _withEditedRecords(
+    List<AttendanceDayRecord> list,
+    Set<String> edited,
+  ) {
+    if (edited.isEmpty) return list;
+    return [
+      for (final record in list)
+        if (edited.contains(_yyyyMMdd(record.date)) && !record.hasEditedTime)
+          record.copyWith(hasEditedTime: true)
+        else
+          record,
+    ];
+  }
+
+  /// Apply a month payload while keeping any already-known edit icons stable.
+  AttendanceMonthResult _retainEditedFlags(AttendanceMonthResult result) {
+    final known = _knownEditedKeys();
+    if (known.isEmpty) return result;
+    return AttendanceMonthResult(
+      monthLabel: result.monthLabel,
+      summary: result.summary,
+      records: _withEditedRecords(result.records, known),
+      rawDays: _withEditedDays(result.rawDays, known),
+      calendarDates: result.calendarDates,
+    );
+  }
+
   // -----------------------------------------------------------------------
   // 🔥 NEW: initial load — offline-first
   // -----------------------------------------------------------------------
@@ -160,9 +214,10 @@ class MonthlyAttendanceController extends ChangeNotifier {
   Future<void> _applyLocalMonth(DateTime month) async {
     final fallback = await _repository.localMonthFallback(month);
     if (_disposed) return;
-    summary = fallback.summary;
-    records = fallback.records;
-    rawDays = fallback.rawDays;
+    final retained = _retainEditedFlags(fallback);
+    summary = retained.summary;
+    records = retained.records;
+    rawDays = retained.rawDays;
     isLoading = false;
     error = null;
     notifyListeners();
@@ -182,6 +237,7 @@ class MonthlyAttendanceController extends ChangeNotifier {
     if (_disposed || _staleSession(epochAtStart)) return;
     await _applyLocalMonth(selectedMonth);
     await _mergeTodayFromClock();
+    await _markEditedTimes();
   }
 
   /// Loads working_days from CompanyPolicyService and updates the repository.
@@ -258,9 +314,10 @@ class MonthlyAttendanceController extends ChangeNotifier {
       }
       if (requestedMonth != selectedMonth) return;
 
-      summary = cached.summary;
-      records = cached.records;
-      rawDays = cached.rawDays;
+      final retained = _retainEditedFlags(cached);
+      summary = retained.summary;
+      records = retained.records;
+      rawDays = retained.rawDays;
       isLoading = false;
       isPaginating = false;
       error = null;
@@ -289,13 +346,13 @@ class MonthlyAttendanceController extends ChangeNotifier {
       if (requestedMonth != selectedMonth) return;
 
       if (response.success && response.data != null) {
-        await _repository.cacheMonth(requestedMonth, response.data!);
+        final retained = _retainEditedFlags(response.data!);
+        await _repository.cacheMonth(requestedMonth, retained);
         if (_disposed || _staleSession(epochAtStart)) return;
         if (requestedMonth != selectedMonth) return;
-        final result = response.data!;
-        summary = result.summary;
-        records = result.records;
-        rawDays = result.rawDays;
+        summary = retained.summary;
+        records = retained.records;
+        rawDays = retained.rawDays;
         error = null;
       } else {
         error = response.message ?? 'Failed to load attendance.';
@@ -319,6 +376,7 @@ class MonthlyAttendanceController extends ChangeNotifier {
     isPaginating = false;
     isSyncing = false;
     notifyListeners();
+    await _markEditedTimes();
   }
 
   Future<void> refresh() async {
@@ -338,13 +396,13 @@ class MonthlyAttendanceController extends ChangeNotifier {
     if (_disposed || _staleSession(epochAtStart))
       return; // FIXED (issue #1) + Fix (Issue 2)
     if (response.success && response.data != null) {
-      await _repository.cacheMonth(selectedMonth, response.data!);
+      final retained = _retainEditedFlags(response.data!);
+      await _repository.cacheMonth(selectedMonth, retained);
       if (_disposed || _staleSession(epochAtStart))
         return; // FIXED (issue #1) + Fix (Issue 2)
-      final result = response.data!;
-      summary = result.summary;
-      records = result.records;
-      rawDays = result.rawDays;
+      summary = retained.summary;
+      records = retained.records;
+      rawDays = retained.rawDays;
       error = null;
     } else {
       error = response.message ?? 'Failed to load attendance.';
@@ -356,6 +414,74 @@ class MonthlyAttendanceController extends ChangeNotifier {
     isLoading = false;
     isPaginating = false;
     notifyListeners();
+    await _markEditedTimes();
+  }
+
+  /// The month history payload has no change requests. Day details do, so
+  /// scan punched days and flag any requested, approved, or rejected time.
+  Future<void> _markEditedTimes() async {
+    final scan = ++_editScan;
+    final month = selectedMonth;
+    final service = AttendanceService(apiClient);
+    final targets = rawDays.where((day) {
+      if (day.isEdited) return false;
+      return day.checkIns.isNotEmpty ||
+          day.checkOuts.isNotEmpty ||
+          day.breaks.isNotEmpty;
+    }).toList();
+    if (targets.isEmpty) return;
+
+    final edited = <String>{};
+    const batch = 4;
+    for (var i = 0; i < targets.length; i += batch) {
+      if (_disposed || scan != _editScan || selectedMonth != month) return;
+      final slice = targets.skip(i).take(batch);
+      await Future.wait(slice.map((day) async {
+        try {
+          final response = await service.getAttendanceDetails(
+            date: _yyyyMMdd(day.date),
+          );
+          final details = response.data?.details ?? const [];
+          if (details.any((item) => item.editRequests.isNotEmpty)) {
+            edited.add(_yyyyMMdd(day.date));
+          }
+        } catch (_) {}
+      }));
+    }
+
+    if (edited.isEmpty || _disposed || scan != _editScan) return;
+    if (selectedMonth != month) return;
+
+    rawDays = [
+      for (final day in rawDays)
+        if (edited.contains(_yyyyMMdd(day.date)))
+          day.copyWith(isEdited: true)
+        else
+          day,
+    ];
+    records = [
+      for (final record in records)
+        if (edited.contains(_yyyyMMdd(record.date)))
+          record.copyWith(hasEditedTime: true)
+        else
+          record,
+    ];
+    notifyListeners();
+
+    final current = summary;
+    if (current == null) return;
+    try {
+      await _repository.cacheMonth(
+        month,
+        AttendanceMonthResult(
+          monthLabel: '',
+          summary: current,
+          records: records,
+          rawDays: rawDays,
+          calendarDates: const [],
+        ),
+      );
+    } catch (_) {}
   }
 
   /// Re-reads today's clock punches and the current month from the server.

@@ -47,19 +47,43 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   final MonthlyAttendanceController _controller = MonthlyAttendanceController();
   final AttendanceEditRequestStore _requestStore =
       AttendanceEditRequestStore.instance;
+  AttendanceSummaryFilter? _summaryFilter;
 
   List<AttendanceDayRecord> get processedRecords {
     final store = _requestStore;
     final ascending =
         List<AttendanceDayRecord>.from(_controller.records)
-            .map(
-              (record) => record.overlayPendingAdd(
+            .map((record) {
+              final overlaid = record.overlayPendingAdd(
                 pendingAdd: store.hasPendingAdd(record.date),
-              ),
-            )
+              );
+              if (overlaid.hasEditedTime || store.forDay(record.date).isEmpty) {
+                return overlaid;
+              }
+              return overlaid.copyWith(hasEditedTime: true);
+            })
             .toList()
           ..sort((a, b) => a.date.compareTo(b.date));
+
+    if (_summaryFilter != null) {
+      return AttendanceMonthListFilter.apply(
+        records: ascending,
+        filter: _summaryFilter,
+      );
+    }
+
     return AttendanceListGrouping.groupConsecutiveWeekends(ascending);
+  }
+
+  void _onSummaryFilterTap(AttendanceSummaryFilter filter) {
+    setState(() {
+      _summaryFilter = _summaryFilter == filter ? null : filter;
+    });
+  }
+
+  void _clearSummaryFilter() {
+    if (_summaryFilter == null) return;
+    setState(() => _summaryFilter = null);
   }
 
   String _formatFullWeekdayDate(DateTime date) {
@@ -214,7 +238,10 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   }
 
   Future<void> _onDayTap(AttendanceDayRecord record) async {
-    if (record.status == AttendanceDayStatus.holiday ||
+    final workedOnHoliday =
+        record.status == AttendanceDayStatus.holiday && record.hasVisiblePunch;
+
+    if ((record.status == AttendanceDayStatus.holiday && !workedOnHoliday) ||
         record.status == AttendanceDayStatus.weekend) {
       HolidayBottomSheet.show(
         context,
@@ -327,8 +354,14 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
               ),
               child: AttendanceMonthHeader(
                 month: _controller.selectedMonth,
-                onPrevious: _controller.previousMonth,
-                onNext: _controller.nextMonth,
+                onPrevious: () {
+                  _clearSummaryFilter();
+                  _controller.previousMonth();
+                },
+                onNext: () {
+                  _clearSummaryFilter();
+                  _controller.nextMonth();
+                },
                 isNextEnabled: _controller.canGoNext,
                 isPreviousEnabled: _controller.canGoPrevious,
                 onTapDropdown: () {
@@ -337,6 +370,7 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                     initialDate: _controller.selectedMonth,
                     minDate: _controller.joiningDate,
                     onSelected: (date) {
+                      _clearSummaryFilter();
                       _controller.setMonth(date);
                     },
                   );
@@ -349,6 +383,8 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                 context: context,
                 removeTop: true,
                 child: ShimmerRefreshIndicator(
+                  instagramStyle: true,
+                  triggerFraction: 0.48,
                   onRefresh: () async {
                     await _controller.refresh();
                     await _reconcilePendingAdds();
@@ -362,6 +398,9 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                         ? _buildLoadingShimmer()
                         : _controller.records.isEmpty
                         ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: ClampingScrollPhysics(),
+                            ),
                             children: [
                               SizedBox(
                                 height:
@@ -392,6 +431,9 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                             ],
                           )
                         : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: ClampingScrollPhysics(),
+                            ),
                             itemCount: processedRecords.length + 1,
                             itemBuilder: (context, index) {
                               if (index == 0) {
@@ -407,7 +449,23 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                                             lateCheckIns: 0,
                                             lateCheckOuts: 0,
                                           ),
+                                      selectedFilter: _summaryFilter,
+                                      onFilterTap: _onSummaryFilterTap,
                                     ),
+                                    if (_summaryFilter != null &&
+                                        processedRecords.isEmpty) ...[
+                                      const SizedBox(height: 40),
+                                      AppText.p2(
+                                        "No matching days for this filter",
+                                        color: kGreyColor,
+                                        weight: FontWeight.w500,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      AppText.caption(
+                                        "Tap the filter again to clear",
+                                        color: kGreyColor.withOpacity(0.7),
+                                      ),
+                                    ],
                                     const SizedBox(height: 20),
                                   ],
                                 );
@@ -416,6 +474,17 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                               final record = processedRecords[index - 1];
                               if (record.status ==
                                   AttendanceDayStatus.holiday) {
+                                if (record.hasVisiblePunch) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                    ),
+                                    child: AttendanceDayTile(
+                                      record: record,
+                                      onTap: () => _onDayTap(record),
+                                    ),
+                                  );
+                                }
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 6,
@@ -473,6 +542,9 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
 
   Widget _buildLoadingShimmer() {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: ClampingScrollPhysics(),
+      ),
       children: [
         /// Summary shimmer
         Container(

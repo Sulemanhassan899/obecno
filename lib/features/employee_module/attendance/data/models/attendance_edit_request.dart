@@ -60,9 +60,11 @@ class AttendanceEditRequest {
     return parsed != null && isPlaceholderMint(parsed);
   }
 
-  /// 00:00–00:03 punches used only to mint an attendance id for edit requests.
+  /// Midnight-hour punches used only to mint an attendance-detail id for
+  /// edit requests. Minutes 0–39 are reserved so multiple rows of the same
+  /// action can each get a unique clock time (backends often ignore seconds).
   static bool isPlaceholderMint(DateTime time) {
-    return time.hour == 0 && time.minute <= 3;
+    return time.hour == 0 && time.minute < 40;
   }
 
   /// Parses a clock label onto [date]'s calendar day.
@@ -217,10 +219,10 @@ class AttendanceEditRequest {
       final s = raw.toString().trim();
       if (s.isEmpty) return '--';
 
-      // Already a friendly label — drop seconds for on-screen display.
-      if (s.toLowerCase().contains('am') || s.toLowerCase().contains('pm')) {
-        return _hideSeconds(s);
-      }
+      // Always normalize to one clock label so "01:30 PM" and "1:30 PM"
+      // (or HMS vs label) collapse to the same display string.
+      final fromLabel = parseClockTime(s, date: DateTime(2000, 1, 1));
+      if (fromLabel != null) return _formatClock(fromLabel);
 
       final asDt = parseDt(s);
       if (asDt != null &&
@@ -228,13 +230,6 @@ class AttendanceEditRequest {
         return _formatClock(asDt);
       }
 
-      final parts = s.split(':');
-      if (parts.length >= 2) {
-        final h = int.tryParse(parts[0]) ?? 0;
-        final m = int.tryParse(parts[1]) ?? 0;
-        final sec = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
-        return _formatClock(DateTime(2000, 1, 1, h, m, sec));
-      }
       return s;
     }
 
@@ -323,40 +318,138 @@ class AttendanceEditRequest {
     addAll(changes, defaultStatus: AttendanceEditRequestStatus.approved);
     addAll(changeRequests);
 
-    out.sort((a, b) {
-      final aAt = a.actionedAt ?? a.requestedAt;
-      final bAt = b.actionedAt ?? b.requestedAt;
-      return bAt.compareTo(aAt);
-    });
+    return dedupe(out);
+  }
+
+  /// Collapses the same logical edit when API / local merge produce near-
+  /// identical rows (e.g. `01:30 PM` vs `1:30 PM`, or both arrays).
+  ///
+  /// Pending rows with the same event type + new time collapse to the newest
+  /// request so double-saves and API+local merges do not stack.
+  static List<AttendanceEditRequest> dedupe(List<AttendanceEditRequest> raw) {
+    if (raw.length <= 1) {
+      return List<AttendanceEditRequest>.of(raw);
+    }
+
+    final sorted = List<AttendanceEditRequest>.of(raw)
+      ..sort((a, b) {
+        final aAt = a.actionedAt ?? a.requestedAt;
+        final bAt = b.actionedAt ?? b.requestedAt;
+        return bAt.compareTo(aAt);
+      });
+
+    final out = <AttendanceEditRequest>[];
+    final seen = <String>{};
+    for (final request in sorted) {
+      if (!seen.add(semanticKey(request))) continue;
+      out.add(request);
+    }
     return out;
+  }
+
+  /// Fingerprint that ignores leading-zero / label vs HMS differences.
+  ///
+  /// Pending requests key only on event type + new time so a local `--`
+  /// original and an API `12:00 AM` placeholder original still collapse.
+  static String semanticKey(AttendanceEditRequest request) {
+    final anchor = request.requestedAt;
+    String clockKey(String label) {
+      final parsed = parseClockTime(label, date: anchor);
+      if (parsed == null) {
+        final trimmed = label.trim().toLowerCase();
+        if (trimmed.isEmpty || trimmed == '--') return '--';
+        return trimmed;
+      }
+      if (isPlaceholderMint(parsed)) return '--';
+      return '${parsed.hour}:${parsed.minute}';
+    }
+
+    if (request.isPending) {
+      return [
+        normalizedEventType(request.eventType) ?? '',
+        'pending',
+        clockKey(request.newTime),
+      ].join('|');
+    }
+
+    final atMinute = DateTime(
+      anchor.year,
+      anchor.month,
+      anchor.day,
+      anchor.hour,
+      anchor.minute,
+    );
+    return [
+      normalizedEventType(request.eventType) ?? '',
+      request.status.name,
+      clockKey(request.originalTime),
+      clockKey(request.newTime),
+      atMinute.toIso8601String(),
+    ].join('|');
   }
 
   static List<AttendanceEditRequest> listFromJson(dynamic raw) {
     if (raw is! List) return const [];
-    return raw
-        .whereType<Map>()
-        .map(
-          (e) => AttendanceEditRequest.fromJson(Map<String, dynamic>.from(e)),
-        )
-        .toList(growable: false);
+    return dedupe(
+      raw
+          .whereType<Map>()
+          .map(
+            (e) =>
+                AttendanceEditRequest.fromJson(Map<String, dynamic>.from(e)),
+          )
+          .toList(),
+    );
   }
 
   static String _dedupeKey(Map<String, dynamic> map) {
     final id = map['id'];
     if (id != null) return 'id:$id';
-    return [
-      map['old_value'],
-      map['new_value'],
-      map['status'],
-      map['created_at'],
-    ].join('|');
-  }
 
-  static String _hideSeconds(String raw) {
-    return raw.replaceFirstMapped(
-      RegExp(r'^(\d{1,2}:\d{2}):\d{2}(\s*[AaPp][Mm])?$'),
-      (match) => '${match[1]}${match[2] ?? ''}',
-    );
+    String pick(List<String> keys) {
+      for (final key in keys) {
+        final value = map[key];
+        if (value == null) continue;
+        final s = value.toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      return '';
+    }
+
+    final oldRaw = pick(const [
+      'old_value',
+      'old_value_label',
+      'original_time',
+      'from_time',
+      'previous_time',
+    ]);
+    final newRaw = pick(const [
+      'new_value',
+      'new_value_label',
+      'new_time',
+      'requested_time',
+      'proposed_time',
+      'to_time',
+      'attendance_time',
+    ]);
+    final created = pick(const [
+      'created_at',
+      'requested_at',
+      'createdAt',
+      'requestedAt',
+    ]);
+
+    String normalizeClock(String raw) {
+      final parsed = parseClockTime(raw, date: DateTime(2000, 1, 1));
+      if (parsed != null) return '${parsed.hour}:${parsed.minute}';
+      return raw.toLowerCase();
+    }
+
+    return [
+      map['status'] ?? map['state'] ?? map['request_status'] ?? '',
+      normalizeClock(oldRaw),
+      normalizeClock(newRaw),
+      created,
+    ].join('|');
   }
 
   static String _formatClock(DateTime t) {
@@ -364,5 +457,51 @@ class AttendanceEditRequest {
     final minute = t.minute.toString().padLeft(2, '0');
     final ampm = t.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $ampm';
+  }
+
+  /// True when this history day, or any punch on it, has a time that was
+  /// requested, approved, or rejected.
+  static bool historyItemHasTimeEdit(Map<String, dynamic> item) {
+    if (_mapHasTimeEdit(item)) return true;
+
+    final nested = item['attendance'];
+    if (nested is Map && _mapHasTimeEdit(Map<String, dynamic>.from(nested))) {
+      return true;
+    }
+
+    final details =
+        item['attendance_details'] ??
+        (nested is Map ? nested['attendance_details'] : null);
+    if (details is! List) return false;
+    for (final raw in details) {
+      if (raw is Map && _mapHasTimeEdit(Map<String, dynamic>.from(raw))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool _mapHasTimeEdit(Map<String, dynamic> map) {
+    if (_isEditedFlag(map['is_edited']) || _isEditedFlag(map['edited'])) {
+      return true;
+    }
+    final flags = map['flags'];
+    if (flags is Map) {
+      final flagMap = Map<String, dynamic>.from(flags);
+      if (_isEditedFlag(flagMap['is_edited']) ||
+          _isEditedFlag(flagMap['edited'])) {
+        return true;
+      }
+    }
+
+    return fromDetailArrays(
+      changeRequests: map['change_requests'] ?? map['edit_requests'],
+      changes: map['changes'],
+    ).isNotEmpty;
+  }
+
+  static bool _isEditedFlag(dynamic raw) {
+    if (raw == true || raw == 1 || raw == '1') return true;
+    return raw?.toString().trim().toLowerCase() == 'true';
   }
 }

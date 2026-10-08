@@ -8,7 +8,9 @@ enum ReminderType {
   breakTime,
   breakTimeEnded,
   longerBreak,
-  veryLongAttendance;
+  veryLongAttendance,
+  /// Master toggle: auto check-in on enter; checkout is always manual.
+  smartAttendance;
 
   String get storageKey {
     switch (this) {
@@ -32,6 +34,8 @@ enum ReminderType {
         return 'longer_break';
       case ReminderType.veryLongAttendance:
         return 'very_long_attendance';
+      case ReminderType.smartAttendance:
+        return 'smart_attendance';
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class ReminderTimePickerSheet {
   ReminderTimePickerSheet._();
@@ -13,7 +14,7 @@ class ReminderTimePickerSheet {
     required TimeOfDay initial,
     required TimeOfDay resetTo,
   }) {
-    return showModalBottomSheet<TimeOfDay>(
+    return AppSheet.show<TimeOfDay>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

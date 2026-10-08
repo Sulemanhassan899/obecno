@@ -6,6 +6,7 @@ import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/helpers/dialog.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
 
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/more/data/models/employee_profile_model.dart';
@@ -17,7 +18,11 @@ import 'package:obecno/features/more/presentation/screens/linked_devices.dart';
 import 'package:obecno/features/more/presentation/screens/office_location.dart';
 import 'package:obecno/features/more/presentation/screens/policy.dart';
 import 'package:obecno/features/more/presentation/screens/terms.dart';
+import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
+import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
+import 'package:obecno/features/more/services/profile_image_compressor.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 import 'package:flutter/material.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
@@ -25,6 +30,7 @@ import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/customswitch2.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -41,6 +47,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileProvider>().loadProfile();
+      context.read<ReminderSettingsProvider>().load();
     });
   }
 
@@ -48,10 +55,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   Widget build(BuildContext context) {
     final profileProvider = context.read<ProfileProvider>();
     final authProvider = context.read<AuthProvider>();
+    final reminders = context.watch<ReminderSettingsProvider>();
     return Scaffold(
       backgroundColor: kbackground1,
       body: ShimmerRefreshIndicator(
-        onRefresh: () => profileProvider.loadProfile(),
+        onRefresh: () async {
+          await authProvider.refreshWorkspaceFromNetwork();
+          await Future.wait([
+            profileProvider.loadProfile(),
+            reminders.refresh(),
+          ]);
+        },
         child: ListenableBuilder(
           listenable: Listenable.merge([profileProvider, authProvider]),
           builder: (context, _) {
@@ -146,6 +160,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 const SizedBox(height: 10),
 
                 _groupCard([
+                  _smartAttendanceToggle(reminders),
+                  _divider(),
                   _settingTile("My Reminders", Assets.imagesReminderClock, () {
                     Navigator.pushAndRemoveUntil(
                       context,
@@ -155,6 +171,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       (route) => true,
                     );
                   }),
+
                   _divider(),
                   _settingTile("Linked Devices", Assets.imagesLinkDevices, () {
                     Navigator.pushAndRemoveUntil(
@@ -171,17 +188,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       (route) => true,
                     );
                   }),
-
-                  //   _divider(),
-                  // _settingTile("Permission", Assets.imagesInfo, () {
-                  //   Navigator.pushAndRemoveUntil(
-                  //     context,
-                  //     MaterialPageRoute(
-                  //       builder: (_) => const PermissionScreen(),
-                  //     ),
-                  //     (route) => true,
-                  //   );
-                  // }),
                 ]),
 
                 const SizedBox(height: 14),
@@ -267,23 +273,81 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     );
   }
 
+  Future<ImageSource?> _pickPhotoSource() {
+    return AppSheet.show<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: kWhite,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: AppText.h5(
+                          'Update photo',
+                          weight: FontWeight.w600,
+                          align: TextAlign.left,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close, size: 22),
+                      ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: AppText.p1(
+                    'Choose from gallery',
+                    align: TextAlign.left,
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: AppText.p1('Take a photo', align: TextAlign.left),
+                  onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<File?> pickProfileImage() async {
+    final source = await _pickPhotoSource();
+    if (source == null || !mounted) return null;
+
     try {
-      final ImagePicker picker = ImagePicker();
-
-      // Pick image from gallery
-      final XFile? pickedImage = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-        maxWidth: 1280,
+      final pickedImage = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
       );
-
-      if (pickedImage == null) {
-        return null;
-      }
-
+      if (pickedImage == null) return null;
       return File(pickedImage.path);
-    } catch (e) {
+    } catch (_) {
+      if (mounted) {
+        ToastHelper.error(
+          context,
+          message: 'Unable to open camera or gallery.',
+        );
+      }
       return null;
     }
   }
@@ -295,6 +359,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   ) {
     final localPhoto = profileProvider.localPhotoFile;
     final photoUrl = profileProvider.displayPhotoUrl;
+    final photoVersion = profileProvider.photoCacheBuster;
     final hasPhoto =
         localPhoto != null || (photoUrl != null && photoUrl.isNotEmpty);
     return Column(
@@ -305,6 +370,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             children: [
               hasPhoto
                   ? CommonImageView(
+                      // Force rebuild when the same local path is overwritten.
+                      key: ValueKey('more_profile_photo_$photoVersion'),
                       file: localPhoto,
                       url: localPhoto == null ? photoUrl : null,
                       height: 110,
@@ -327,7 +394,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 bottom: 0,
                 right: 0,
                 child: ButtonAnimations.press(
-                  onTap: () => _onEditProfilePhoto(profileProvider),
+                  onTap: () =>
+                      _onEditProfilePhoto(profileProvider, authProvider),
                   child: CommonImageView(
                     imagePath: Assets.imagesProfileEditPen,
                     height: 40,
@@ -375,23 +443,47 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     return '—';
   }
 
-  Future<void> _onEditProfilePhoto(ProfileProvider profileProvider) async {
+  Future<void> _onEditProfilePhoto(
+    ProfileProvider profileProvider,
+    AuthProvider authProvider,
+  ) async {
     debugPrint('[ProfileSettingsScreen] Edit-photo tapped, opening picker...');
     final File? picked = await pickProfileImage();
-    if (picked == null) {
+    if (picked == null || !mounted) {
       debugPrint('[ProfileSettingsScreen] No image selected, aborting upload.');
       return;
     }
-    final bytes = await picked.readAsBytes();
+    final rawBytes = await picked.readAsBytes();
+    final compressed = await const ProfileImageCompressor().compress(
+      rawBytes,
+      fileName: picked.path.split('/').last,
+    );
     debugPrint(
       '[ProfileSettingsScreen] Image picked (${picked.path}), '
+      'compressed ${rawBytes.length} -> ${compressed.bytes.length} bytes, '
       'calling ProfileProvider.updatePhoto()...',
     );
     final ok = await profileProvider.updatePhoto(
-      photoBytes: bytes,
-      fileName: picked.path.split('/').last,
+      photoBytes: compressed.bytes,
+      fileName: compressed.fileName,
     );
+    if (!mounted) return;
     debugPrint('[ProfileSettingsScreen] updatePhoto() result: $ok');
+
+    if (!ok) {
+      ToastHelper.error(
+        context,
+        message: profileProvider.errorMessage ?? 'Failed to update photo.',
+      );
+      return;
+    }
+
+    final isManager = authProvider.homeTarget == AuthHomeTarget.manager;
+    if (isManager) {
+      ToastHelper.changesSaved(context);
+    } else {
+      ToastHelper.success(context, message: 'Profile picture updated.');
+    }
   }
 
   Widget _errorState(String message, VoidCallback onRetry) {
@@ -455,6 +547,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(children: children),
+    );
+  }
+
+  Widget _smartAttendanceToggle(ReminderSettingsProvider reminders) {
+    return ListTile(
+      leading: CommonImageView(imagePath: Assets.imagesSparkle, height: 24),
+      title: AppText.p1('Smart Attendance', align: TextAlign.left),
+      trailing: CustomSwitch(
+        value: reminders.isEnabled(ReminderType.smartAttendance),
+        onChanged: (value) =>
+            reminders.setEnabled(ReminderType.smartAttendance, value),
+      ),
     );
   }
 

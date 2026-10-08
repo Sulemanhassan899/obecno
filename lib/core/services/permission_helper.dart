@@ -9,21 +9,10 @@ class PermissionService {
   static Permission _map(AppPermission p) {
     switch (p) {
       case AppPermission.location:
-        // FIXED (root cause of "keeps asking for location permission even
-        // though it was given"): this used to return `Permission.location`
-        // ("Always"/background-location scope), but the only place the app
-        // ever actually *requests* location -- `EnablePermissionsScreen.
-        // _handleContinue` -- requests `Permission.locationWhenInUse`
-        // (foreground-only), which is also what `areAllPermissionsAllowed`
-        // below checks. Checking a *different, broader* permission here
-        // than the one that was actually granted meant `status`/`request`
-        // for `AppPermission.location` could report "not granted" forever
-        // -- so `AppGuard._checkAll()` kept re-showing the "Permission
-        // Required" dialog on every 10s tick and app resume even right
-        // after the user tapped "Allow" and the OS granted when-in-use
-        // access. Aligning this mapping with what's actually requested
-        // elsewhere fixes the loop.
-        return Permission.locationWhenInUse;
+        // Require "Allow all the time" (background) for attendance /
+        // geofence while the app is closed. Always request When-In-Use
+        // first (OS requirement), then escalate to Always — see [request].
+        return Permission.locationAlways;
       case AppPermission.notification:
         return Permission.notification;
       case AppPermission.motion:
@@ -43,6 +32,22 @@ class PermissionService {
   }
 
   static Future<PermissionStatus> request(AppPermission p) async {
+    if (p == AppPermission.location) {
+      // Android/iOS require When-In-Use before Always / background.
+      final whenInUse = await Permission.locationWhenInUse.status;
+      if (!isAllowed(whenInUse)) {
+        final whenInUseResult = await Permission.locationWhenInUse.request();
+        debugPrint(
+          '[PermissionService] request(locationWhenInUse) -> $whenInUseResult',
+        );
+        if (!isAllowed(whenInUseResult)) return whenInUseResult;
+      }
+
+      final always = await Permission.locationAlways.request();
+      debugPrint('[PermissionService] request(locationAlways) -> $always');
+      return always;
+    }
+
     final result = await _map(p).request();
     debugPrint('[PermissionService] request($p) -> $result');
     return result;
@@ -51,6 +56,23 @@ class PermissionService {
   static Future<void> openSettings() async {
     await openAppSettings();
   }
+
+  /// Opens the exact **Location permission** screen (Allow all the time /
+  /// While using / …). Call only after When-In-Use is already granted.
+  ///
+  /// Uses the OS background-location request — that is what opens the
+  /// "Location permission" page. Do not use MANAGE_APP_PERMISSION (that
+  /// opens the generic "App permissions" list on many devices).
+  static Future<void> openExactLocationAlwaysPage() async {
+    final result = await Permission.locationAlways.request();
+    debugPrint(
+      '[PermissionService] openExactLocationAlwaysPage -> $result',
+    );
+  }
+
+  /// @deprecated Use [openExactLocationAlwaysPage].
+  static Future<void> openLocationAlwaysSettings() =>
+      openExactLocationAlwaysPage();
 
   static bool isAllowed(PermissionStatus s, [AppPermission? p]) {
     if (s.isGranted || s.isLimited || s.isProvisional) return true;
@@ -79,22 +101,6 @@ class PermissionService {
     return result;
   }
 
-  /// FIXED (bug: "won't let me check in" even though Location shows as
-  /// Allowed in Android's own App permissions screen): `areAllPermissionsAllowed`
-  /// treated notification as just as blocking as location/motion. But
-  /// notification isn't a runtime entry on Android's "Permissions" page at
-  /// all -- it lives under a separate "Notifications" toggle in system
-  /// settings (that's why the OS screen the user screenshotted shows
-  /// Location/Physical activity/Storage as Allowed with nothing about
-  /// notifications). So a user who has location + motion granted but has
-  /// notifications switched off at the OS level had every check-in attempt
-  /// silently blocked by a dialog that (misleadingly) still said "Location
-  /// and notification permissions are required."
-  ///
-  /// Attendance is recorded via GPS, not push notifications, so the actual
-  /// check-in flow should only be gated on the permissions attendance
-  /// depends on. Notification is surfaced separately (see
-  /// [missingPermissions]) as a non-blocking nudge instead.
   static Future<bool> areCriticalPermissionsAllowed() async {
     final loc = await status(AppPermission.location);
     final motion = await status(AppPermission.motion);

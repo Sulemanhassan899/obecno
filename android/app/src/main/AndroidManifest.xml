@@ -15,6 +15,7 @@
         tools:ignore="BatteryLife"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -23,12 +24,21 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
 
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true"
+        android:resizeable="true"/>
+
     <application
         android:label="obecno"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:resizeableActivity="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,6 +47,7 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
@@ -79,6 +90,9 @@
             android:name=".reminders.AttendanceAlarmReceiver"
             android:exported="false"/>
         <receiver
+            android:name=".reminders.LocationFlagAlarmReceiver"
+            android:exported="false"/>
+        <receiver
             android:name=".reminders.AttendanceBootReceiver"
             android:enabled="true"
             android:exported="true">
@@ -98,6 +112,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${GOOGLE_MAPS_API_KEY}" />
     </application>
     <queries>
         <intent>
@@ -128,6 +145,35 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https" android:host="www.google.com"/>
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="sms"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="sms"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="whatsapp"/>
+        </intent>
+        <package android:name="com.whatsapp"/>
         <package android:name="com.google.android.apps.maps"/>
         <package android:name="com.miui.securitycenter"/>
         <package android:name="com.miui.powerkeeper"/>

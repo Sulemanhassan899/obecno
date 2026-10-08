@@ -10,6 +10,7 @@ import 'package:obecno/shared/bottom_sheets/edit_sheets/edit_account_field_sheet
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class AccountInformationSheet {
   AccountInformationSheet._();
@@ -23,7 +24,7 @@ class AccountInformationSheet {
     String companyId = '',
     String address = '',
   }) {
-    return showModalBottomSheet<void>(
+    return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       useRootNavigator: true,
@@ -246,7 +247,7 @@ class _AccountInformationSheetBodyState
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
             width: 110,
@@ -270,8 +271,9 @@ class _AccountInformationSheetBodyState
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: AppSheetSize.constraintsOf(context),
+    return SizedBox(
+      height: AppSheetSize.maxHeight(context),
+      width: AppSheetSize.maxWidth(context),
       child: Container(
         decoration: const BoxDecoration(
           color: kbackground2,
@@ -280,7 +282,6 @@ class _AccountInformationSheetBodyState
         child: SafeArea(
           top: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -307,14 +308,13 @@ class _AccountInformationSheetBodyState
                   ],
                 ),
               ),
-              Flexible(
+              Expanded(
                 child: _loading
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 64),
                         child: ShimmerProgress(),
                       )
                     : ListView(
-                        shrinkWrap: true,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                         children: [
                           _emailCard(),

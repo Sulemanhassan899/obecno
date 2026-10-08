@@ -9,6 +9,7 @@ import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 enum AccountEditField { email, phone, companyId, address }
 
@@ -145,7 +146,7 @@ class EditAccountFieldSheet {
     int? userId,
     Future<String?> Function(String value)? persist,
   }) {
-    return showModalBottomSheet<String>(
+    return AppSheet.show<String>(
       context: context,
       isScrollControlled: true,
       useRootNavigator: true,
@@ -249,8 +250,9 @@ class _EditAccountFieldSheetBodyState
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: ConstrainedBox(
-        constraints: AppSheetSize.constraintsOf(context),
+      child: SizedBox(
+        height: AppSheetSize.maxHeight(context),
+        width: AppSheetSize.maxWidth(context),
         child: Container(
           decoration: const BoxDecoration(
             color: kbackground2,
@@ -259,7 +261,6 @@ class _EditAccountFieldSheetBodyState
           child: SafeArea(
             top: false,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -284,9 +285,8 @@ class _EditAccountFieldSheetBodyState
                   ),
                 ),
                 const Divider(height: 1, color: kDividerColor),
-                Flexible(
+                Expanded(
                   child: ListView(
-                    shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
                     children: [
                       CustomTextField(
@@ -302,6 +302,7 @@ class _EditAccountFieldSheetBodyState
                         keyboardType: widget.field.keyboardType,
                         maxlines: widget.field.maxLines,
                         errorText: _error,
+                        reserveHelperSpace: false,
                         enabled: !_saving,
                         onChanged: (_) {
                           if (_error == null) return;

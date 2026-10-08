@@ -9,6 +9,7 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bott
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class HolidayBottomSheet extends StatefulWidget {
   final DateTime day;
@@ -31,7 +32,7 @@ class HolidayBottomSheet extends StatefulWidget {
     required ApiClient apiClient,
     required String userEmail,
   }) {
-    showModalBottomSheet(
+    AppSheet.show(
       context: context,
       backgroundColor: kWhite,
       isScrollControlled: true,
