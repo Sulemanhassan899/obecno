@@ -101,11 +101,16 @@ class AttendanceDetailItem {
   final List<AttendanceEditRequest> editRequests;
 
   factory AttendanceDetailItem.fromJson(Map<String, dynamic> json) {
-    final type = _typeFromApi(json['type']?.toString());
+    final type = _typeFromApi(
+      json['type']?.toString() ??
+          json['action']?.toString() ??
+          json['event']?.toString(),
+    );
     final time = _parseTime(json);
     if (type == null || time == null) {
       throw FormatException(
-        'Invalid attendance detail: type=${json['type']} time missing',
+        'Invalid attendance detail: type=${json['type'] ?? json['action']} '
+        'time missing',
       );
     }
 
@@ -193,17 +198,25 @@ class AttendanceDetailItem {
         .replaceAll('_', ' ')) {
       case 'check in':
       case 'checkin':
+      case 'clock in':
+      case 'clockin':
+      case 'in':
         return AttendanceHisotryEventType.checkIn;
       case 'check out':
       case 'checkout':
+      case 'clock out':
+      case 'clockout':
+      case 'out':
         return AttendanceHisotryEventType.checkOut;
       case 'break out':
       case 'breakout':
       case 'break start':
+      case 'breakstart':
         return AttendanceHisotryEventType.breakStart;
       case 'break in':
       case 'breakin':
       case 'break end':
+      case 'breakend':
         return AttendanceHisotryEventType.breakEnd;
       default:
         return null;
@@ -212,13 +225,19 @@ class AttendanceDetailItem {
 
   static DateTime? _parseTime(Map<String, dynamic> json) {
     final date = json['attendance_date']?.toString();
-    final time = json['attendance_time']?.toString();
-    if (date != null && time != null) {
-      final day = DateTime.tryParse(date);
-      if (day != null) {
-        final wall = AttendanceEditRequest.parseClockTime(time, date: day);
-        if (wall != null) return wall;
-      }
+    final day = date != null ? DateTime.tryParse(date) : null;
+    final base = day ?? DateTime.now();
+
+    for (final key in const [
+      'attendance_time',
+      'time',
+      'punch_time',
+      'clock_time',
+    ]) {
+      final time = json[key]?.toString();
+      if (time == null || time.trim().isEmpty) continue;
+      final wall = AttendanceEditRequest.parseClockTime(time, date: base);
+      if (wall != null) return wall;
     }
 
     DateTime? asLocalWall(DateTime parsed) {
@@ -233,17 +252,10 @@ class AttendanceDetailItem {
       );
     }
 
-    final iso = json['occurred_at_iso']?.toString();
-    if (iso != null && iso.isNotEmpty) {
-      final parsed = DateTime.tryParse(iso);
-      if (parsed != null) return asLocalWall(parsed);
-    }
-
-    final created = json['created_at']?.toString();
-    if (created != null && created.isNotEmpty) {
-      final normalized = created.contains('T')
-          ? created
-          : created.replaceFirst(' ', 'T');
+    for (final key in const ['occurred_at_iso', 'occurred_at', 'created_at']) {
+      final raw = json[key]?.toString();
+      if (raw == null || raw.isEmpty) continue;
+      final normalized = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
       final parsed = DateTime.tryParse(normalized);
       if (parsed != null) return asLocalWall(parsed);
     }

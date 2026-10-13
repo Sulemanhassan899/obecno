@@ -120,13 +120,12 @@ class ReminderNotificationService {
     Object? lastError;
     try {
       if (NativeReminderScheduler.isAndroid) {
-        await NativeReminderScheduler.show(
+        posted = await NativeReminderScheduler.show(
           id: id,
           title: title,
           message: body,
           payload: payload,
         );
-        posted = true;
       }
     } catch (e, st) {
       lastError = e;
@@ -236,6 +235,7 @@ class ReminderNotificationService {
     required List<ReminderPunch> punches,
     Set<int> workingWeekdays = ReminderNotificationPlan.defaultWorkingWeekdays,
     Set<ReminderType> alreadyFired = const {},
+    Set<String> alreadyFiredKeys = const {},
     String locationName = 'work',
     bool requestPermission = true,
     bool rebuildSchedule = true,
@@ -255,6 +255,7 @@ class ReminderNotificationService {
           ReminderNotificationPlan.typeForId(id)!,
     };
     final seen = {...alreadyFired, ...activeTypes};
+    final seenKeys = {...alreadyFiredKeys};
 
     final planned = ReminderNotificationPlan.build(
       now: now,
@@ -276,16 +277,20 @@ class ReminderNotificationService {
       punches: punches,
       workingWeekdays: workingWeekdays,
       alreadyFired: seen,
+      alreadyFiredKeys: seenKeys,
       locationName: locationName,
     );
 
     final future = <ScheduledReminderNotification>[];
+    final shownNowIds = <int>[];
     for (final item in planned) {
       if (item.deliverImmediately) {
         if (!ReminderNotificationPlan.shouldShowNow(
           type: item.type,
           id: item.id,
           alreadyFired: seen,
+          alreadyFiredKeys: seenKeys,
+          fireAt: item.fireAt,
           activeIds: activeIds,
         )) {
           continue;
@@ -297,10 +302,21 @@ class ReminderNotificationService {
           title: item.title,
           body: item.body,
         );
-        if (shown) seen.add(item.type);
+        if (shown) {
+          seen.add(item.type);
+          seenKeys.add(
+            ReminderNotificationPlan.firedKey(item.type, item.fireAt),
+          );
+          shownNowIds.add(item.id);
+        }
       } else {
         future.add(item);
       }
+    }
+
+    // Drop the AlarmManager entry only — do not clear the banner just posted.
+    if (shownNowIds.isNotEmpty) {
+      await NativeReminderScheduler.cancelAlarmsOnly(shownNowIds);
     }
 
     if (NativeReminderScheduler.isAndroid) {
@@ -322,7 +338,11 @@ class ReminderNotificationService {
         }
       }
     }
-    return ReminderNotificationSyncResult(planned: planned, seenTypes: seen);
+    return ReminderNotificationSyncResult(
+      planned: planned,
+      seenTypes: seen,
+      seenKeys: seenKeys,
+    );
   }
 
   Future<void> _syncAndroidAlarms({
@@ -379,16 +399,18 @@ class ReminderNotificationService {
           checkOutTime: checkOutTime,
         );
     final notificationId = id ?? ReminderNotificationPlan.idFor(type);
+    var posted = false;
     try {
       if (NativeReminderScheduler.isAndroid) {
-        await NativeReminderScheduler.show(
+        posted = await NativeReminderScheduler.show(
           id: notificationId,
           title: resolvedTitle,
           message: resolvedBody,
           payload: type.storageKey,
         );
-        return true;
       }
+      // Also post through the plugin so the shade always gets a banner even
+      // if the native path is filtered on some OEM / emulator builds.
       await _plugin.show(
         id: notificationId,
         title: resolvedTitle,
@@ -396,7 +418,7 @@ class ReminderNotificationService {
         notificationDetails: _details,
         payload: type.storageKey,
       );
-      return true;
+      posted = true;
     } catch (e, st) {
       AppLogger.error(
         'ReminderNotificationService',
@@ -404,8 +426,8 @@ class ReminderNotificationService {
         e,
         stackTrace: st,
       );
-      return false;
     }
+    return posted;
   }
 
   Future<void> _schedule(ScheduledReminderNotification item) async {

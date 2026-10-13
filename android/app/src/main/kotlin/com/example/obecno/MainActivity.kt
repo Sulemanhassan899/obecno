@@ -7,9 +7,12 @@ import android.os.Bundle
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.obecno.reminders.AttendanceAlarmScheduler
+import com.example.obecno.reminders.AttendanceAlarmStore
 import com.example.obecno.reminders.AttendanceNotifier
 import com.example.obecno.reminders.AttendanceReminderChannel
 import com.example.obecno.reminders.LocationFlagBackgroundWorker
+import com.example.obecno.reminders.StoredAlarm
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
@@ -82,18 +85,43 @@ class MainActivity : FlutterActivity() {
         maybePostDebugNotification(intent)
     }
 
-    /** adb: am start -n com.obecno.app/com.example.obecno.MainActivity --ez debug_notify true */
+    /**
+     * adb:
+     *   am start -n com.obecno.app/com.example.obecno.MainActivity --ez debug_notify true
+     *   am start -n com.obecno.app/com.example.obecno.MainActivity --ez debug_alarm true
+     */
     private fun maybePostDebugNotification(intent: android.content.Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_DEBUG_NOTIFY, false) != true) return
-        intent.removeExtra(EXTRA_DEBUG_NOTIFY)
-        Log.i(TAG, "debug_notify — posting test banner")
-        AttendanceNotifier.show(
-            this,
-            88025,
-            "Location flag",
-            "Debug notify from MainActivity. If you see this, native posts work.",
-            "location-flag-test",
-        )
+        if (intent == null) return
+        if (intent.getBooleanExtra(EXTRA_DEBUG_NOTIFY, false)) {
+            intent.removeExtra(EXTRA_DEBUG_NOTIFY)
+            Log.i(TAG, "debug_notify — posting test banner")
+            AttendanceNotifier.show(
+                this,
+                88025,
+                "Location flag",
+                "Debug notify from MainActivity. If you see this, native posts work.",
+                "location-flag-test",
+            )
+        }
+        if (intent.getBooleanExtra(EXTRA_DEBUG_ALARM, false)) {
+            intent.removeExtra(EXTRA_DEBUG_ALARM)
+            val fireAt = System.currentTimeMillis() + 60_000L
+            Log.i(TAG, "debug_alarm — scheduling test for $fireAt")
+            AttendanceAlarmScheduler.upsert(
+                this,
+                listOf(
+                    StoredAlarm(
+                        id = AttendanceAlarmStore.TEST_ID,
+                        type = "test",
+                        title = "Test reminder",
+                        message = "AlarmManager fired. Reminders work.",
+                        fireAt = fireAt,
+                        payload = "test",
+                        isTest = true,
+                    ),
+                ),
+            )
+        }
     }
 
     companion object {
@@ -101,5 +129,6 @@ class MainActivity : FlutterActivity() {
         private const val PERMISSIONS_CHANNEL = "obecno/permissions"
         private const val REQUEST_BACKGROUND_LOCATION = 48121
         const val EXTRA_DEBUG_NOTIFY = "debug_notify"
+        const val EXTRA_DEBUG_ALARM = "debug_alarm"
     }
 }

@@ -40,12 +40,15 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
   final GlobalKey<EmployeeAttendanceScreenState> _attendanceKey =
       GlobalKey<EmployeeAttendanceScreenState>();
+  final GlobalKey<AlertsScreenState> _alertsKey = GlobalKey<AlertsScreenState>();
+  final GlobalKey<ProfileSettingsScreenState> _moreKey =
+      GlobalKey<ProfileSettingsScreenState>();
 
   late final List<Widget> screens = [
     ClockScreen(key: _clockKey),
     EmployeeAttendanceScreen(key: _attendanceKey),
-    const AlertsScreen(),
-    ProfileSettingsScreen(),
+    AlertsScreen(key: _alertsKey),
+    ProfileSettingsScreen(key: _moreKey),
   ];
 
   @override
@@ -181,11 +184,16 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
                     if (index == 2) {
                       context.read<AlertsProvider>().markAlertsSeen();
                     }
-                    if (index == 0 && previousIndex != 0) {
-                      _clockKey.currentState?.notifyTabResumed();
-                    }
-                    if (index == 1 && previousIndex != 1) {
-                      _attendanceKey.currentState?.notifyTabResumed();
+                    if (index == previousIndex) return;
+                    switch (index) {
+                      case 0:
+                        _clockKey.currentState?.notifyTabResumed();
+                      case 1:
+                        _attendanceKey.currentState?.notifyTabResumed();
+                      case 2:
+                        _alertsKey.currentState?.playEntranceAnimation();
+                      case 3:
+                        _moreKey.currentState?.playEntranceAnimation();
                     }
                   },
                 );

@@ -1,4 +1,8 @@
+import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
+    hide AttendanceFormat;
+import 'package:obecno/features/employee_module/attendance/presentation/widgets/history_attendance_engine.dart';
 
 class BreakSession {
   const BreakSession({
@@ -59,9 +63,22 @@ class AttendanceDay {
     return sorted.first;
   }
 
-  /// Latest check-out of the day. Intermediate check-outs are superseded.
+  /// Latest check-out of the day (same overnight pairing as the detail sheet).
+  /// An early-morning overnight CO (e.g. 12:05 AM) that closes an evening
+  /// session beats a same-day intermediate CO (e.g. 10:40 PM).
   String? get lastCheckOut {
     if (checkOuts.isEmpty) return null;
+    final out = _sessionSummary?.lastCheckOut;
+    if (out != null) {
+      for (final raw in checkOuts) {
+        final parsed = AttendanceEditRequest.parseClockTime(raw, date: date);
+        if (parsed != null &&
+            parsed.hour == out.hour &&
+            parsed.minute == out.minute) {
+          return raw;
+        }
+      }
+    }
     final sorted = [...checkOuts]
       ..sort((a, b) => _clockSortKey(a).compareTo(_clockSortKey(b)));
     return sorted.last;
@@ -78,6 +95,13 @@ class AttendanceDay {
 
   String? get lastCheckOutLocation {
     if (checkOuts.isEmpty || checkOutLocations.isEmpty) return null;
+    final target = lastCheckOut;
+    if (target != null) {
+      for (var i = 0; i < checkOuts.length; i++) {
+        if (_clockSortKey(checkOuts[i]) != _clockSortKey(target)) continue;
+        if (i < checkOutLocations.length) return checkOutLocations[i];
+      }
+    }
     final pairs = [
       for (var i = 0; i < checkOuts.length; i++)
         (
@@ -86,6 +110,26 @@ class AttendanceDay {
         ),
     ]..sort((a, b) => _clockSortKey(a.$1).compareTo(_clockSortKey(b.$1)));
     return pairs.last.$2;
+  }
+
+  HistoryAttendanceSummary? get _sessionSummary {
+    if (checkIns.isEmpty && checkOuts.isEmpty) return null;
+    final events = <HistoryAttendanceEvent>[
+      for (final raw in checkIns)
+        if (AttendanceEditRequest.parseClockTime(raw, date: date) != null)
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.checkIn,
+            time: AttendanceEditRequest.parseClockTime(raw, date: date)!,
+          ),
+      for (final raw in checkOuts)
+        if (AttendanceEditRequest.parseClockTime(raw, date: date) != null)
+          HistoryAttendanceEvent(
+            type: AttendanceHisotryEventType.checkOut,
+            time: AttendanceEditRequest.parseClockTime(raw, date: date)!,
+          ),
+    ];
+    if (events.isEmpty) return null;
+    return HistoryAttendanceEngine.compute(events);
   }
 
   bool get hasCheckIn => firstCheckIn != null;
@@ -194,39 +238,47 @@ class AttendanceDay {
       }
     }
 
-    // Fall back to the flattened day fields when details are missing or
-    // used an unrecognized type, so history rows still get check-in/out.
-    if (checkIns.isEmpty && checkOuts.isEmpty && breaks.isEmpty) {
-      final checkin = _normalizedTime(
-        merged['checkin'] ?? merged['check_in'] ?? merged['check_in_time'],
-      );
-      final checkout = _normalizedTime(
-        merged['checkout'] ?? merged['check_out'] ?? merged['check_out_time'],
-      );
-      final breakin = _normalizedTime(merged['breakin'] ?? merged['break_in']);
-      final breakout = _normalizedTime(
-        merged['breakout'] ?? merged['break_out'],
-      );
-      final location = _normalizedLocation(merged['current_location']);
+    // Always fold flattened day fields in as well. Some history payloads only
+    // put the day-span first check-in / last check-out here while details are
+    // partial — without this, the list can miss the true latest check-out.
+    final checkin = _normalizedTime(
+      merged['checkin'] ??
+          merged['check_in'] ??
+          merged['check_in_time'] ??
+          merged['first_check_in'],
+    );
+    final checkout = _normalizedTime(
+      merged['checkout'] ??
+          merged['check_out'] ??
+          merged['check_out_time'] ??
+          merged['last_check_out'],
+    );
+    final breakin = _normalizedTime(merged['breakin'] ?? merged['break_in']);
+    final breakout = _normalizedTime(
+      merged['breakout'] ?? merged['break_out'],
+    );
+    final location = _normalizedLocation(merged['current_location']);
 
-      if (checkin != null) {
-        checkIns.add(checkin);
-        checkInLocations.add(location);
-      }
-      if (checkout != null) {
-        checkOuts.add(checkout);
-        checkOutLocations.add(location);
-      }
-      if (breakin != null && breakout != null) {
-        breaks.add(
-          BreakSession(
-            breakIn: breakin,
-            breakOut: breakout,
-            breakInLocation: location,
-            breakOutLocation: location,
-          ),
-        );
-      }
+    if (checkin != null && !_hasClockTime(checkIns, checkin)) {
+      checkIns.add(checkin);
+      checkInLocations.add(location);
+    }
+    if (checkout != null && !_hasClockTime(checkOuts, checkout)) {
+      checkOuts.add(checkout);
+      checkOutLocations.add(location);
+    }
+    if (breakin != null &&
+        breakout != null &&
+        breaks.isEmpty &&
+        !hasDetails) {
+      breaks.add(
+        BreakSession(
+          breakIn: breakin,
+          breakOut: breakout,
+          breakInLocation: location,
+          breakOutLocation: location,
+        ),
+      );
     }
 
     // Keep lists chronologically ordered so consumers that index `.first` /
@@ -278,13 +330,25 @@ class AttendanceDay {
     final pairs = [
       for (var i = 0; i < times.length; i++)
         (times[i], i < locations.length ? locations[i] : null),
-    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    ]..sort(
+      (a, b) => _clockSortKey(a.$1).compareTo(_clockSortKey(b.$1)),
+    );
     times
       ..clear()
       ..addAll(pairs.map((p) => p.$1));
     locations
       ..clear()
       ..addAll(pairs.map((p) => p.$2));
+  }
+
+  /// True when [times] already contains an equivalent wall-clock stamp
+  /// (handles "22:40:00" vs "10:40 PM").
+  static bool _hasClockTime(List<String> times, String candidate) {
+    final key = _clockSortKey(candidate);
+    for (final time in times) {
+      if (_clockSortKey(time) == key) return true;
+    }
+    return false;
   }
 
   static int? _parseId(dynamic raw) {

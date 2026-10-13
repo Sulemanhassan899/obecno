@@ -58,43 +58,62 @@ class HistoryAttendanceSummary {
 class HistoryAttendanceEngine {
   HistoryAttendanceEngine._();
 
+  /// Portal can store an overnight check-out on the same attendance_date with
+  /// an early morning clock (e.g. 12:05 AM) even though it closes the evening
+  /// open check-in (10:42 PM). Those orphans are rolled forward one day.
   static HistoryAttendanceSummary compute(List<HistoryAttendanceEvent> events) {
     if (events.isEmpty) return HistoryAttendanceSummary.empty;
 
-    final sorted = [...events]..sort((a, b) => a.time.compareTo(b.time));
+    final sorted = sortedOldestFirst(events);
 
-    // Explicit earliest check-in / latest check-out — never overwritten by
-    // later re-check-ins or intermediate check-outs.
     DateTime? firstCheckIn;
     DateTime? lastCheckOut;
-    for (final e in sorted) {
-      if (e.type == AttendanceHisotryEventType.checkIn) {
-        firstCheckIn ??= e.time;
-      } else if (e.type == AttendanceHisotryEventType.checkOut) {
-        lastCheckOut = e.time;
-      }
-    }
-
-    Duration breaks = Duration.zero;
-
     DateTime? openWorkStart;
     DateTime? openBreakStart;
     bool isCheckedIn = false;
     bool isOnBreak = false;
+    Duration breaks = Duration.zero;
+    final orphanEarlyCheckOuts = <DateTime>[];
+
+    void considerCheckOut(DateTime raw, {required DateTime openStart}) {
+      var out = raw;
+      if (!out.isAfter(openStart)) {
+        out = out.add(const Duration(days: 1));
+      }
+      if (lastCheckOut == null || out.isAfter(lastCheckOut!)) {
+        lastCheckOut = out;
+      }
+    }
 
     for (final e in sorted) {
       switch (e.type) {
         case AttendanceHisotryEventType.checkIn:
-          // Do not touch firstCheckIn — already locked to earliest above.
+          if (firstCheckIn == null || e.time.isBefore(firstCheckIn)) {
+            firstCheckIn = e.time;
+          }
           openWorkStart = e.time;
           isCheckedIn = true;
           isOnBreak = false;
+          openBreakStart = null;
           break;
 
         case AttendanceHisotryEventType.checkOut:
-          openWorkStart = null;
-          isCheckedIn = false;
-          isOnBreak = false;
+          if (openWorkStart != null) {
+            considerCheckOut(e.time, openStart: openWorkStart);
+            openWorkStart = null;
+            isCheckedIn = false;
+            isOnBreak = false;
+            openBreakStart = null;
+          } else if (isOnBreak) {
+            if (lastCheckOut == null || e.time.isAfter(lastCheckOut!)) {
+              lastCheckOut = e.time;
+            }
+            openBreakStart = null;
+            isOnBreak = false;
+            isCheckedIn = false;
+          } else {
+            orphanEarlyCheckOuts.add(e.time);
+          }
           break;
 
         case AttendanceHisotryEventType.breakStart:
@@ -108,11 +127,25 @@ class HistoryAttendanceEngine {
             breaks += e.time.difference(openBreakStart);
             openBreakStart = null;
           }
-          // Resume working.
           openWorkStart = e.time;
           isOnBreak = false;
           isCheckedIn = true;
           break;
+      }
+    }
+
+    if (openWorkStart != null && orphanEarlyCheckOuts.isNotEmpty) {
+      final rawOut = orphanEarlyCheckOuts.removeLast();
+      considerCheckOut(rawOut, openStart: openWorkStart);
+      openWorkStart = null;
+      isCheckedIn = false;
+      isOnBreak = false;
+      openBreakStart = null;
+    }
+
+    for (final rawOut in orphanEarlyCheckOuts) {
+      if (lastCheckOut == null || rawOut.isAfter(lastCheckOut!)) {
+        lastCheckOut = rawOut;
       }
     }
 
@@ -150,7 +183,6 @@ class HistoryAttendanceEngine {
       ..sort((a, b) {
         final byTime = b.time.compareTo(a.time);
         if (byTime != 0) return byTime;
-        // Reverse of oldest-first type order.
         return _typeOrder(b.type).compareTo(_typeOrder(a.type));
       });
     return sorted;

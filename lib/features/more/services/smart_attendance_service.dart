@@ -364,6 +364,20 @@ class SmartAttendanceService extends ChangeNotifier {
         return false;
       }
 
+      // Avoid immediate re-check-in after a checkout while still inside
+      // (GPS poll / clock_refresh used to open a phantom session ~2 min later).
+      final lastCheckOut = summary.lastCheckOut;
+      if (lastCheckOut != null) {
+        final sinceOut = _trustedTime.displayNow().difference(lastCheckOut);
+        if (!sinceOut.isNegative && sinceOut < const Duration(minutes: 5)) {
+          debugPrint(
+            '[SmartAttendance] skip check-in: within 5m of last check-out '
+            '($lastCheckOut)',
+          );
+          return false;
+        }
+      }
+
       final online = await _networkChecker.isConnected;
       final issued = await _trustedTime.issuePunch(networkOnline: online);
       final punch = issued.punch;

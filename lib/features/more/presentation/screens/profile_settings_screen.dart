@@ -38,10 +38,18 @@ class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({super.key});
 
   @override
-  State<ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
+  State<ProfileSettingsScreen> createState() => ProfileSettingsScreenState();
 }
 
-class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
+class ProfileSettingsScreenState extends State<ProfileSettingsScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  final List<CurvedAnimation> _entranceAnimations = [];
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +57,58 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       context.read<ProfileProvider>().loadProfile();
       context.read<ReminderSettingsProvider>().load();
     });
+    _entranceController.forward();
+  }
+
+  void playEntranceAnimation() {
+    if (!mounted) return;
+    _entranceController
+      ..reset()
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    for (final animation in _entranceAnimations) {
+      animation.dispose();
+    }
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  CurvedAnimation _curveFor(int index, int total) {
+    final safeTotal = total <= 1 ? 1 : total;
+    final start = (index / safeTotal) * 0.6;
+    final end = (start + 0.4).clamp(0.0, 1.0);
+    return CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
+    );
+  }
+
+  Widget _staggered(int index, int total, Widget child) {
+    if (_entranceAnimations.length != total) {
+      for (final animation in _entranceAnimations) {
+        animation.dispose();
+      }
+      _entranceAnimations
+        ..clear()
+        ..addAll(List.generate(total, (i) => _curveFor(i, total)));
+    }
+    final animation = _entranceAnimations[index];
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animation.value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - animation.value) * 18),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -59,6 +119,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     return Scaffold(
       backgroundColor: kbackground1,
       body: ShimmerRefreshIndicator(
+        instagramStyle: true,
+        triggerFraction: 0.40,
+        showOrb: false,
         onRefresh: () async {
           await authProvider.refreshWorkspaceFromNetwork();
           await Future.wait([
@@ -72,199 +135,204 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             final profile = profileProvider.profile;
             final isInitialLoad = profileProvider.isLoading && profile == null;
 
+            final List<Widget> items = [
+              /// ================= HEADER =================
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ButtonAnimations.press(
+                  onTap: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AccountSetting(),
+                      ),
+                      (route) => true,
+                    );
+                  },
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: kBorderColor),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Row(
+                          children: [
+                            AppText.p2("Account Info", color: kBlack),
+                            const SizedBox(width: 8),
+                            CommonImageView(
+                              imagePath: Assets.imagesSetting,
+                              height: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (isInitialLoad)
+                const Padding(padding: EdgeInsets.only(top: 80))
+              else if (profileProvider.hasError && profile == null)
+                _errorState(
+                  profileProvider.errorMessage ?? 'Failed to load profile.',
+                  () => context.read<ProfileProvider>().loadProfile(),
+                )
+              else
+                _profileHeader(profile, profileProvider, authProvider),
+
+              const SizedBox(height: 18),
+
+              /// ================= OFFICE CARD =================
+              ListenableBuilder(
+                listenable: authProvider,
+                builder: (context, _) {
+                  final count = authProvider.locations.length;
+                  return _tile(
+                    title: "Offices & Locations",
+                    count: count.toString().padLeft(2, '0'),
+                    icon: Assets.imagesOfficeLocationIcon,
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const OfficeLocation(),
+                        ),
+                        (route) => true,
+                      );
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+
+              /// ================= SETTINGS =================
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AppText.h6("Settings", weight: FontWeight.w600),
+              ),
+
+              const SizedBox(height: 10),
+
+              _groupCard([
+                _smartAttendanceToggle(reminders),
+                _divider(),
+                _settingTile("My Reminders", Assets.imagesReminderClock, () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AttendanceRemindersScreen(),
+                    ),
+                    (route) => true,
+                  );
+                }),
+
+                _divider(),
+                _settingTile("Linked Devices", Assets.imagesLinkDevices, () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LinkedDevices()),
+                    (route) => true,
+                  );
+                }),
+                _divider(),
+                _settingTile("Change password", Assets.imagesKey, () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ChangePassword()),
+                    (route) => true,
+                  );
+                }),
+              ]),
+
+              const SizedBox(height: 14),
+
+              _groupCard([
+                _settingTile("Terms of use", Assets.imagesTerms, () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TermsScreen()),
+                    (route) => true,
+                  );
+                }),
+                _divider(),
+                _settingTile("Privacy policy", Assets.imagesPrivacy, () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PolicyScreen()),
+                    (route) => true,
+                  );
+                }),
+                _divider(),
+                _settingTile("Help & Feedback", Assets.imagesInfo, () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const HelpFeedbackScreen(),
+                    ),
+                  );
+                }),
+              ]),
+
+              const SizedBox(height: 14),
+
+              /// LOGOUT
+              ButtonAnimations.press(
+                onTap: () async {
+                  DialogHelper.show(
+                    context: context,
+                    imagePath: Assets.imagesRedBgTriangleExclamation,
+                    heightImage: 100,
+                    subtitle: "Are you sure you want to logout?",
+
+                    cancelButtonText: "No",
+                    buttonText: "Yes",
+                    ButtonBg: kredColor,
+                    onButtonTap: () async {
+                      await context.read<AuthProvider>().logout();
+
+                      if (!context.mounted) return;
+
+                      context.go('/onboarding');
+                    },
+
+                    barrierDismissible: true,
+                  );
+                },
+
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: kWhite,
+                    border: Border.all(color: kBorderColor),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ListTile(
+                    leading: CommonImageView(
+                      imagePath: Assets.imagesLogout,
+                      height: 24,
+                    ),
+                    title: AppText.p1(
+                      "Logout",
+                      color: kredColor,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40),
+            ];
+
             return ListView(
               padding: AppSizes.page(
                 context,
                 const EdgeInsets.fromLTRB(20, 40, 20, 0),
               ),
               children: [
-                /// ================= HEADER =================
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: ButtonAnimations.press(
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AccountSetting(),
-                        ),
-                        (route) => true,
-                      );
-                    },
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: kBorderColor),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Row(
-                            children: [
-                              AppText.p2("Account Info", color: kBlack),
-                              const SizedBox(width: 8),
-                              CommonImageView(
-                                imagePath: Assets.imagesSetting,
-                                height: 14,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                if (isInitialLoad)
-                  const Padding(padding: EdgeInsets.only(top: 80))
-                else if (profileProvider.hasError && profile == null)
-                  _errorState(
-                    profileProvider.errorMessage ?? 'Failed to load profile.',
-                    () => context.read<ProfileProvider>().loadProfile(),
-                  )
-                else
-                  _profileHeader(profile, profileProvider, authProvider),
-
-                const SizedBox(height: 18),
-
-                /// ================= OFFICE CARD =================
-                ListenableBuilder(
-                  listenable: authProvider,
-                  builder: (context, _) {
-                    final count = authProvider.locations.length;
-                    return _tile(
-                      title: "Offices & Locations",
-                      count: count.toString().padLeft(2, '0'),
-                      icon: Assets.imagesOfficeLocationIcon,
-                      onTap: () {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const OfficeLocation(),
-                          ),
-                          (route) => true,
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                /// ================= SETTINGS =================
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppText.h6("Settings", weight: FontWeight.w600),
-                ),
-
-                const SizedBox(height: 10),
-
-                _groupCard([
-                  _smartAttendanceToggle(reminders),
-                  _divider(),
-                  _settingTile("My Reminders", Assets.imagesReminderClock, () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AttendanceRemindersScreen(),
-                      ),
-                      (route) => true,
-                    );
-                  }),
-
-                  _divider(),
-                  _settingTile("Linked Devices", Assets.imagesLinkDevices, () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LinkedDevices()),
-                      (route) => true,
-                    );
-                  }),
-                  _divider(),
-                  _settingTile("Change password", Assets.imagesKey, () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ChangePassword()),
-                      (route) => true,
-                    );
-                  }),
-                ]),
-
-                const SizedBox(height: 14),
-
-                _groupCard([
-                  _settingTile("Terms of use", Assets.imagesTerms, () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TermsScreen()),
-                      (route) => true,
-                    );
-                  }),
-                  _divider(),
-                  _settingTile("Privacy policy", Assets.imagesPrivacy, () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const PolicyScreen()),
-                      (route) => true,
-                    );
-                  }),
-                  _divider(),
-                  _settingTile("Help & Feedback", Assets.imagesInfo, () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const HelpFeedbackScreen(),
-                      ),
-                    );
-                  }),
-                ]),
-
-                const SizedBox(height: 14),
-
-                /// LOGOUT
-                ButtonAnimations.press(
-                  onTap: () async {
-                    DialogHelper.show(
-                      context: context,
-                      imagePath: Assets.imagesRedBgTriangleExclamation,
-                      heightImage: 100,
-                      subtitle: "Are you sure you want to logout?",
-
-                      cancelButtonText: "No",
-                      buttonText: "Yes",
-                      ButtonBg: kredColor,
-                      onButtonTap: () async {
-                        await context.read<AuthProvider>().logout();
-
-                        if (!context.mounted) return;
-
-                        context.go('/onboarding');
-                      },
-
-                      barrierDismissible: true,
-                    );
-                  },
-
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: kWhite,
-                      border: Border.all(color: kBorderColor),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: ListTile(
-                      leading: CommonImageView(
-                        imagePath: Assets.imagesLogout,
-                        height: 24,
-                      ),
-                      title: AppText.p1(
-                        "Logout",
-                        color: kredColor,
-                        align: TextAlign.left,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 40),
+                for (int i = 0; i < items.length; i++)
+                  _staggered(i, items.length, items[i]),
               ],
             );
           },
@@ -352,6 +420,84 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     }
   }
 
+  void _showProfilePhotoPreview({
+    File? localPhoto,
+    String? photoUrl,
+    required bool hasPhoto,
+  }) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) {
+        final size = MediaQuery.sizeOf(dialogContext);
+        final side = (size.width - 48).clamp(240.0, 360.0);
+
+        return Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(dialogContext),
+                  behavior: HitTestBehavior.opaque,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => Navigator.pop(dialogContext),
+                        child: const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Icon(Icons.close, color: Colors.white, size: 22),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Center(
+                child: GestureDetector(
+                  onTap: () {},
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: side,
+                      height: side,
+                      child: hasPhoto
+                          ? CommonImageView(
+                              file: localPhoto,
+                              url: localPhoto == null ? photoUrl : null,
+                              height: side,
+                              width: side,
+                              fit: BoxFit.cover,
+                              errorImage: Assets.imagesUserimage,
+                            )
+                          : CommonImageView(
+                              imagePath: Assets.imagesUserimage,
+                              height: side,
+                              width: side,
+                              fit: BoxFit.contain,
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _profileHeader(
     EmployeeProfileModel? profile,
     ProfileProvider profileProvider,
@@ -368,26 +514,33 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              hasPhoto
-                  ? CommonImageView(
-                      // Force rebuild when the same local path is overwritten.
-                      key: ValueKey('more_profile_photo_$photoVersion'),
-                      file: localPhoto,
-                      url: localPhoto == null ? photoUrl : null,
-                      height: 110,
-                      width: 110,
-                      radius: 500,
-                      fit: BoxFit.cover,
+              ButtonAnimations.press(
+                onTap: () => _showProfilePhotoPreview(
+                  localPhoto: localPhoto,
+                  photoUrl: photoUrl,
+                  hasPhoto: hasPhoto,
+                ),
+                child: hasPhoto
+                    ? CommonImageView(
+                        // Force rebuild when the same local path is overwritten.
+                        key: ValueKey('more_profile_photo_$photoVersion'),
+                        file: localPhoto,
+                        url: localPhoto == null ? photoUrl : null,
+                        height: 110,
+                        width: 110,
+                        radius: 500,
+                        fit: BoxFit.cover,
 
-                      /// Optional custom error image
-                      errorImage: Assets.imagesUserimage,
-                    )
-                  : CommonImageView(
-                      imagePath: Assets.imagesUserimage,
-                      height: 110,
-                      width: 110,
-                      fit: BoxFit.contain,
-                    ),
+                        /// Optional custom error image
+                        errorImage: Assets.imagesUserimage,
+                      )
+                    : CommonImageView(
+                        imagePath: Assets.imagesUserimage,
+                        height: 110,
+                        width: 110,
+                        fit: BoxFit.contain,
+                      ),
+              ),
 
               // ADDED (Task 6): edit overlay, bottom-right of the avatar.
               Positioned(

@@ -18,8 +18,8 @@ import 'package:obecno/features/clock/domain/controllers/synced_clock_screen_con
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:obecno/demo/location_flags/presentation/location_flag_demo_entry.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_leaves_card.dart';
 
 import 'package:obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
 import 'package:obecno/shared/location/service/attendance_permission_service.dart';
@@ -127,9 +127,19 @@ class ClockScreenState extends State<ClockScreen>
     _startMonitoring();
     _entranceController.forward();
     if (!AppGuard.permissionOnboardingPending) {
-      unawaited(bindings.reminderSettingsProvider.activateFromClock());
+      unawaited(_armRemindersFromLiveClock());
     }
     if (mounted) setState(() {});
+  }
+
+  /// Arms OS alarms and clears stale reminder punches to match the Clock
+  /// button (Check In / Check Out), so check-in banners are not skipped.
+  Future<void> _armRemindersFromLiveClock() async {
+    await bindings.reminderSettingsProvider.activateFromClock();
+    final controller = _controller;
+    if (controller is SyncedClockScreenController) {
+      await controller.syncRemindersFromLiveClock();
+    }
   }
 
   void _maybeShowLocationAlert() {
@@ -205,7 +215,7 @@ class ClockScreenState extends State<ClockScreen>
     _isActive = true;
     _checkPermissions();
     if (!AppGuard.permissionOnboardingPending) {
-      unawaited(bindings.reminderSettingsProvider.activateFromClock());
+      unawaited(_armRemindersFromLiveClock());
     }
     final controller = _controller;
     if (controller is SyncedClockScreenController) {
@@ -214,6 +224,14 @@ class ClockScreenState extends State<ClockScreen>
       }
       unawaited(controller.refreshGeofenceStatus());
     }
+    playEntranceAnimation();
+  }
+
+  void playEntranceAnimation() {
+    if (!mounted || !_clockStarted) return;
+    _entranceController
+      ..reset()
+      ..forward();
   }
 
   @override
@@ -436,9 +454,9 @@ class ClockScreenState extends State<ClockScreen>
 
       // Fresh /auth/me so assign/deactivate shows up without app restart.
       try {
-        await bindings.authProvider
-            .refreshWorkspaceFromNetwork()
-            .timeout(const Duration(seconds: 8));
+        await bindings.authProvider.refreshWorkspaceFromNetwork().timeout(
+          const Duration(seconds: 8),
+        );
       } catch (_) {
         if (bindings.authProvider.locations.isEmpty) {
           await bindings.authProvider.restoreCompanyAndLocationsFromCache();
@@ -662,8 +680,6 @@ class ClockScreenState extends State<ClockScreen>
 
     return Scaffold(
       backgroundColor: kbackground1,
-      floatingActionButton: const LocationFlagDemoButton(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Padding(
         padding: AppSizes.page(context),
         child: ListenableBuilder(
@@ -801,17 +817,20 @@ class ClockScreenState extends State<ClockScreen>
                 ),
               ],
               const SizedBox(height: 30),
-              (!isOnBreak && _controller.hasAnyEventToday)
-                  ? AttendanceCard(
-                      day: syncedController.phoneNow,
-                      events: _controller.events,
-                      apiClient: bindings.apiClient,
-                      userEmail: bindings.userEmail,
-                      clockNow: () => syncedController.phoneNow,
-                      onEditAttendance: () {},
-                      onTodayEventsLoaded: _controller.mergeTodayEvents,
-                    )
-                  : const SizedBox.shrink(),
+              if (!isOnBreak && _controller.hasAnyEventToday) ...[
+                AttendanceCard(
+                  day: syncedController.phoneNow,
+                  events: _controller.events,
+                  apiClient: bindings.apiClient,
+                  userEmail: bindings.userEmail,
+                  clockNow: () => syncedController.phoneNow,
+                  onEditAttendance: () {},
+                  onTodayEventsLoaded: _controller.mergeTodayEvents,
+                ),
+              
+              ],
+              const SizedBox(height: 20),
+              if (!isOnBreak) const ClockLeavesCard(),
               const SizedBox(height: 30),
             ];
 

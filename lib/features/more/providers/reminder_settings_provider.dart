@@ -33,6 +33,14 @@ class ReminderSettingsProvider extends ChangeNotifier {
   void Function()? onSmartAttendanceTogglesChanged;
   Future<void> Function()? onSmartAttendanceEvaluate;
 
+  /// AppBindings flags the Alerts tab badge when a reminder is written.
+  void Function()? onReminderAlertWritten;
+
+  void _notifyReminderAlertWritten() {
+    onReminderAlertWritten?.call();
+    notifyListeners();
+  }
+
   void _syncSmartAttendance() {
     onSmartAttendanceTogglesChanged?.call();
   }
@@ -132,6 +140,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
+      await importFiredNotifications();
       if (forcePolicyRefresh) {
         await _policyService.refreshFromNetwork(force: true);
       }
@@ -161,6 +170,36 @@ class ReminderSettingsProvider extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// Writes phone notifications that fired while Flutter was not running
+  /// into SQLite so Alerts can show them with no network.
+  Future<void> importFiredNotifications() async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    final fired = await NativeReminderScheduler.consumeFired();
+    if (fired.isEmpty) return;
+    for (final notice in fired) {
+      final type = ReminderType.fromStorageKey(notice.type);
+      if (type == null) continue;
+      final at = DateTime.fromMillisecondsSinceEpoch(notice.fireAtMillis);
+      final log = ReminderLog(
+        type: type,
+        firedAt: at,
+        title: notice.title,
+        message: notice.message,
+        deliveredAt: at,
+      );
+      await _dao.saveShownNotification(userId: userId, date: at, log: log);
+      await _dao.insertLogIfAbsent(userId: userId, date: at, log: log);
+      await _dao.markDelivered(
+        userId: userId,
+        date: at,
+        log: log,
+        deliveredAt: at,
+      );
+    }
+    _notifyReminderAlertWritten();
   }
 
   /// Pull-to-refresh: fetch latest permission clocks and reschedule.
@@ -421,12 +460,22 @@ class ReminderSettingsProvider extends ChangeNotifier {
     // is silent when that notify toggle is off.
     if (!isEnabled(ReminderType.enterLocation)) return;
     final place = _locationName(locationName);
-    await ReminderNotificationService.instance.showCustom(
+    final title = ReminderCopy.smartAttendanceTitle;
+    final body = ReminderCopy.enterCheckedIn(place);
+    final posted = await ReminderNotificationService.instance.showCustom(
       id: _smartEnterNotifId,
-      title: ReminderCopy.smartAttendanceTitle,
-      body: ReminderCopy.enterCheckedIn(place),
+      title: title,
+      body: body,
       payload: 'smart-enter',
     );
+    if (posted) {
+      await _archiveSmartReminder(
+        type: ReminderType.enterLocation,
+        title: title,
+        message: body,
+        at: now,
+      );
+    }
   }
 
   /// Enter/Leave reminder toggles — notifications only (no punch).
@@ -436,40 +485,92 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required String locationName,
   }) async {
     final place = _locationName(locationName);
+    final now = DateTime.now();
     if (inside) {
       if (!isEnabled(ReminderType.enterLocation)) return;
-      await ReminderNotificationService.instance.showCustom(
+      final title = ReminderCopy.smartAttendanceTitle;
+      final body = checkedIn
+          ? ReminderCopy.enterCheckedIn(place)
+          : ReminderCopy.enterPleaseCheckIn(place);
+      final posted = await ReminderNotificationService.instance.showCustom(
         id: _smartEnterNotifId,
-        title: ReminderCopy.smartAttendanceTitle,
-        body: checkedIn
-            ? ReminderCopy.enterCheckedIn(place)
-            : ReminderCopy.enterPleaseCheckIn(place),
+        title: title,
+        body: body,
         payload: checkedIn ? 'smart-enter-checked-in' : 'smart-enter-please',
       );
+      if (posted) {
+        await _archiveSmartReminder(
+          type: ReminderType.enterLocation,
+          title: title,
+          message: body,
+          at: now,
+        );
+      }
       return;
     }
 
     if (!isEnabled(ReminderType.leaveLocation)) return;
-    await ReminderNotificationService.instance.showCustom(
+    final title = ReminderCopy.smartAttendanceTitle;
+    final body = checkedIn
+        ? ReminderCopy.leavePleaseCheckOut(place)
+        : ReminderCopy.leaveCheckedOut(place);
+    final posted = await ReminderNotificationService.instance.showCustom(
       id: _smartLeaveNotifId,
-      title: ReminderCopy.smartAttendanceTitle,
-      body: checkedIn
-          ? ReminderCopy.leavePleaseCheckOut(place)
-          : ReminderCopy.leaveCheckedOut(place),
+      title: title,
+      body: body,
       payload: checkedIn ? 'smart-leave-please' : 'smart-leave-checked-out',
     );
+    if (posted) {
+      await _archiveSmartReminder(
+        type: ReminderType.leaveLocation,
+        title: title,
+        message: body,
+        at: now,
+      );
+    }
   }
 
   /// Smart Attendance: nag to manually check out while outside, every 5 min.
   Future<void> notifySmartCheckoutNag({required String locationName}) async {
     if (!isEnabled(ReminderType.smartAttendance)) return;
     final place = _locationName(locationName);
-    await ReminderNotificationService.instance.showCustom(
+    final title = ReminderCopy.smartAttendanceTitle;
+    final body = ReminderCopy.leavePleaseCheckOut(place);
+    final now = DateTime.now();
+    final posted = await ReminderNotificationService.instance.showCustom(
       id: _smartCheckoutNagNotifId,
-      title: ReminderCopy.smartAttendanceTitle,
-      body: ReminderCopy.leavePleaseCheckOut(place),
+      title: title,
+      body: body,
       payload: 'smart-checkout-nag',
     );
+    if (posted) {
+      await _archiveSmartReminder(
+        type: ReminderType.smartAttendance,
+        title: title,
+        message: body,
+        at: now,
+      );
+    }
+  }
+
+  Future<void> _archiveSmartReminder({
+    required ReminderType type,
+    required String title,
+    required String message,
+    required DateTime at,
+  }) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return;
+    final log = ReminderLog(
+      type: type,
+      firedAt: at,
+      title: title,
+      message: message,
+      deliveredAt: at,
+    );
+    await _dao.saveShownNotification(userId: userId, date: at, log: log);
+    await _dao.insertLogIfAbsent(userId: userId, date: at, log: log);
+    _notifyReminderAlertWritten();
   }
 
   Future<void> _maybeSmartAlreadyCheckedInAlert(
@@ -493,14 +594,22 @@ class ReminderSettingsProvider extends ChangeNotifier {
     if (prefs.getBool(key) == true) return;
 
     final place = _locationName(null);
+    final title = ReminderCopy.smartAttendanceTitle;
+    final body = ReminderCopy.enterCheckedIn(place);
     final shown = await ReminderNotificationService.instance.showCustom(
       id: _smartAlreadyNotifId,
-      title: ReminderCopy.smartAttendanceTitle,
-      body: ReminderCopy.enterCheckedIn(place),
+      title: title,
+      body: body,
       payload: 'smart-already-checked-in',
     );
     if (!shown) return;
     await prefs.setBool(key, true);
+    await _archiveSmartReminder(
+      type: ReminderType.enterLocation,
+      title: title,
+      message: body,
+      at: when,
+    );
   }
 
   static const _smartEnterNotifId = 88031;
@@ -517,7 +626,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
     _punches = List.of(punches);
     await Future.wait([_loadSettings(), _loadPolicyTimes()]);
     _applyCustomTimes();
-    await _persistClockState(day, punches);
+    // Clock is the source of truth — including an empty list after check-out
+    // or a reset Check In button. Stale day_state must not keep "checked_in".
+    await _persistClockState(day, punches, allowClear: true);
     final logs = await ReminderEngine.syncDay(
       dao: _dao,
       userId: _userIdProvider(),
@@ -554,19 +665,26 @@ class ReminderSettingsProvider extends ChangeNotifier {
   }
 
   String? _lastReminderSignature;
+  DateTime? _lastWatchMinute;
 
   Future<void> _onWatchTick() async {
     final now = DateTime.now();
     final gap = now.difference(_lastWall);
     _lastWall = now;
+    final minute = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    final minuteChanged = _lastWatchMinute != minute;
     if (gap.abs() > const Duration(seconds: 45)) {
+      _lastWatchMinute = minute;
       await _rescheduleNotifications(now: now);
       return;
     }
     final punches = await _loadTodayPunches(now);
     final fired = await _loadOsFired(now);
     final signature = _reminderSignature(punches, fired: fired);
-    if (signature == _lastReminderSignature) return;
+    // Punch/settings signature does not include the clock. Without this, an
+    // open app never posts check-out or break banners on their minute.
+    if (!minuteChanged && signature == _lastReminderSignature) return;
+    _lastWatchMinute = minute;
     _punches = punches;
     await _rescheduleNotifications(
       now: now,
@@ -626,6 +744,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     if (generation != _rescheduleGeneration) return;
     await _persistClockState(when, _punches);
     final alreadyFired = await _loadOsFired(when);
+    final alreadyFiredKeys = await _loadOsFiredKeys(when);
     final place = _locationName(null);
     final status = ReminderClockStatus.fromPunches(_punches);
     _lastReminderSignature = _reminderSignature(_punches, fired: alreadyFired);
@@ -669,18 +788,19 @@ class ReminderSettingsProvider extends ChangeNotifier {
       punches: punches,
       workingWeekdays: weekdays,
       alreadyFired: alreadyFired,
+      alreadyFiredKeys: alreadyFiredKeys,
       locationName: place,
       rebuildSchedule: rebuildSchedule,
       requestPermission: rebuildSchedule,
     );
     if (generation != _rescheduleGeneration) return;
-    for (final type in result.seenTypes) {
-      await _markOsFired(when, type);
-    }
+    var wroteAlert = false;
     for (final item in result.planned) {
       if (!item.deliverImmediately) continue;
-      if (!result.seenTypes.contains(item.type)) continue;
+      final key = ReminderNotificationPlan.firedKey(item.type, item.fireAt);
+      if (!result.seenKeys.contains(key)) continue;
       await _persistFiredLog(item: item, when: when, status: status);
+      wroteAlert = true;
     }
     // A zoned break alarm can show without being in [planned] (already
     // delivered / leftover). Still write the timeline row.
@@ -703,34 +823,43 @@ class ReminderSettingsProvider extends ChangeNotifier {
       longAttendanceHours: longMins,
       status: status,
     );
-    await _persistLeftoverIfShown(
-      type: ReminderType.breakTimeEnded,
-      result: result,
-      when: when,
-      status: status,
-      fireAt: schedule.breakEndedAt ?? when,
-    );
-    await _persistLeftoverIfShown(
-      type: ReminderType.breakTime,
-      result: result,
-      when: when,
-      status: status,
-      fireAt: schedule.breakAt,
-    );
+    wroteAlert =
+        await _persistLeftoverIfShown(
+          type: ReminderType.breakTimeEnded,
+          result: result,
+          when: when,
+          status: status,
+          fireAt: schedule.breakEndedAt ?? when,
+        ) ||
+        wroteAlert;
+    wroteAlert =
+        await _persistLeftoverIfShown(
+          type: ReminderType.breakTime,
+          result: result,
+          when: when,
+          status: status,
+          fireAt: schedule.breakAt,
+        ) ||
+        wroteAlert;
     final longAt = schedule.veryLongAttendanceAt;
     if (longAt != null) {
-      await _persistLeftoverIfShown(
-        type: ReminderType.veryLongAttendance,
-        result: result,
-        when: when,
-        status: status,
-        fireAt: longAt,
-      );
+      wroteAlert =
+          await _persistLeftoverIfShown(
+            type: ReminderType.veryLongAttendance,
+            result: result,
+            when: when,
+            status: status,
+            fireAt: longAt,
+          ) ||
+          wroteAlert;
     }
     await _maybeSmartAlreadyCheckedInAlert(when, punches);
+    // Alerts screen listens for this so new banners appear immediately;
+    // also flags the Alerts tab nav badge (same as device alerts).
+    if (wroteAlert) _notifyReminderAlertWritten();
   }
 
-  Future<void> _persistLeftoverIfShown({
+  Future<bool> _persistLeftoverIfShown({
     required ReminderType type,
     required ReminderNotificationSyncResult result,
     required DateTime when,
@@ -740,11 +869,14 @@ class ReminderSettingsProvider extends ChangeNotifier {
     final plannedNow = result.planned.any(
       (item) => item.type == type && item.deliverImmediately,
     );
-    if (!result.seenTypes.contains(type) || plannedNow) return;
-    if (fireAt.isAfter(when)) return;
+    if (!result.seenTypes.contains(type) || plannedNow) return false;
+    if (fireAt.isAfter(when)) return false;
     await _persistFiredLog(
       item: ScheduledReminderNotification(
-        id: ReminderNotificationPlan.idFor(type),
+        id: ReminderNotificationPlan.idFor(
+          type,
+          slot: ReminderNotificationPlan.slotFor(fireAt),
+        ),
         type: type,
         fireAt: fireAt,
         title: ReminderCopy.title(type),
@@ -754,6 +886,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       when: when,
       status: status,
     );
+    return true;
   }
 
   Future<void> _persistFiredLog({
@@ -808,6 +941,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
     }
   }
 
+  Future<Set<String>> _loadOsFiredKeys(DateTime date) async {
+    final userId = _userIdProvider();
+    if (userId.isEmpty) return {};
+    return _dao.loadDeliveredKeys(userId: userId, date: date);
+  }
+
   Future<void> _markOsFired(DateTime date, ReminderType type) async {
     final userId = _userIdProvider();
     if (userId.isEmpty) return;
@@ -846,50 +985,105 @@ class ReminderSettingsProvider extends ChangeNotifier {
     final userId = _userIdProvider();
     if (userId.isEmpty) return const [];
     final saved = await _dao.loadSavedPunches(userId: userId, date: now);
-    if (saved != null) return saved;
     final fromClock = await _loadClockPunches(userId, now);
-    if (fromClock != null) {
-      await _persistClockState(now, fromClock);
-      return fromClock;
+    final resolved = resolveLivePunches(fromClock: fromClock, saved: saved);
+    if (fromClock != null &&
+        (saved == null || !_samePunchTimeline(saved, fromClock))) {
+      await _persistClockState(now, fromClock, allowClear: true);
     }
+    return resolved;
+  }
+
+  /// Live clock prefs win — including an empty list (Check In showing).
+  /// Only fall back to SQLite when the clock has never written a session key.
+  @visibleForTesting
+  static List<ReminderPunch> resolveLivePunches({
+    required List<ReminderPunch>? fromClock,
+    required List<ReminderPunch>? saved,
+  }) {
+    if (fromClock != null) return fromClock;
+    if (saved != null) return saved;
     return const [];
   }
 
-  /// `null` means the clock has not stored today yet. An empty list means
-  /// the Check In button is showing — do not fall back to attendance cache.
+  static bool _samePunchTimeline(
+    List<ReminderPunch> a,
+    List<ReminderPunch> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].kind != b[i].kind) return false;
+      if (a[i].time.millisecondsSinceEpoch !=
+          b[i].time.millisecondsSinceEpoch) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// `null` means the clock has not stored a session yet. An empty list means
+  /// the Check In button is showing — do not fall back to yesterday's punches.
   Future<List<ReminderPunch>?> _loadClockPunches(
     String userId,
     DateTime now,
   ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = 'clock_events_${userId}_${now.year}-${now.month}-${now.day}';
-      if (!prefs.containsKey(key)) return null;
-      final raw = prefs.getString(key);
-      if (raw == null || raw.isEmpty) return const [];
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
-      final punches = <ReminderPunch>[];
-      for (final item in decoded) {
-        if (item is! Map) continue;
-        final kind = ReminderPunchKind.fromName(item['type']?.toString() ?? '');
-        if (kind == null) continue;
-        final time = DateTime.tryParse(item['time']?.toString() ?? '');
-        if (time == null) continue;
-        punches.add(ReminderPunch(kind: kind, time: time));
+      final activeKey = 'clock_events_${userId}_active';
+      // Active key is authoritative. An empty `[]` means checked out / reset —
+      // never walk yesterday's calendar mirror and revive a phantom session.
+      if (prefs.containsKey(activeKey)) {
+        return _decodeClockPunches(prefs.getString(activeKey)) ?? const [];
       }
-      return punches;
+
+      final yesterday = now.subtract(const Duration(days: 1));
+      for (final key in <String>[
+        'clock_events_${userId}_${now.year}-${now.month}-${now.day}',
+        'clock_events_${userId}_${yesterday.year}-${yesterday.month}-${yesterday.day}',
+      ]) {
+        if (!prefs.containsKey(key)) continue;
+        final punches = _decodeClockPunches(prefs.getString(key));
+        if (punches == null) continue;
+        if (punches.isNotEmpty) return punches;
+      }
+      return null;
     } catch (_) {
       return null;
     }
   }
 
+  static List<ReminderPunch>? _decodeClockPunches(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return null;
+    final punches = <ReminderPunch>[];
+    for (final item in decoded) {
+      if (item is! Map) continue;
+      final kind = ReminderPunchKind.fromName(item['type']?.toString() ?? '');
+      if (kind == null) continue;
+      final time = DateTime.tryParse(item['time']?.toString() ?? '');
+      if (time == null) continue;
+      punches.add(ReminderPunch(kind: kind, time: time));
+    }
+    return punches;
+  }
+
   Future<void> _persistClockState(
     DateTime day,
-    List<ReminderPunch> punches,
-  ) async {
+    List<ReminderPunch> punches, {
+    bool allowClear = false,
+  }) async {
     final userId = _userIdProvider();
     if (userId.isEmpty) return;
+    // Guard only the ambiguous watch-tick path: an empty snapshot must not
+    // wipe punches while clock prefs are still restoring. Explicit clock sync
+    // ([allowClear]) may clear after check-out / session reset.
+    if (punches.isEmpty && !allowClear) {
+      final existing = await _dao.loadSavedPunches(userId: userId, date: day);
+      if (existing != null && existing.isNotEmpty) return;
+      final fromClock = await _loadClockPunches(userId, day);
+      if (fromClock != null && fromClock.isNotEmpty) return;
+    }
     final status = ReminderClockStatus.fromPunches(punches);
     await _dao.replacePunches(userId: userId, date: day, punches: punches);
     await _dao.saveDayState(

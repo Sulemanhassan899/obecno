@@ -21,6 +21,20 @@ enum AttendanceActionResult {
   none,
 }
 
+class _ClockPunchSession {
+  const _ClockPunchSession({
+    required this.checkInTime,
+    required this.events,
+    this.checkOutTime,
+  });
+
+  final DateTime checkInTime;
+  final DateTime? checkOutTime;
+  final List<AttendanceEvent> events;
+
+  bool get isClosed => checkOutTime != null;
+}
+
 class _ParsedTime {
   const _ParsedTime(this.hour, this.minute);
   final int hour;
@@ -29,8 +43,8 @@ class _ParsedTime {
 
 class ClockTicker extends ValueNotifier<DateTime> {
   ClockTicker({DateTime Function()? now})
-      : _now = now,
-        super((now ?? DateTime.now)());
+    : _now = now,
+      super((now ?? DateTime.now)());
 
   DateTime Function()? _now;
   Timer? _timer;
@@ -63,6 +77,11 @@ class ClockScreenController extends ChangeNotifier {
   static const Duration actionCooldown = Duration(seconds: 5);
   static const Duration tapProcessingDelay = Duration(milliseconds: 700);
 
+  /// Open session stays active across midnight until check-out, or until this
+  /// elapses from the session's check-in — then an automatic check-out is
+  /// punched (time + location) and the button resets to Check In.
+  static const Duration maxOpenSessionDuration = Duration(hours: 24);
+
   /// Owning user for this controller instance. All persisted state
   /// (SharedPreferences keys) is namespaced by this id so that data from one
   /// user is never visible to, or overwritten by, another user on the same
@@ -85,15 +104,14 @@ class ClockScreenController extends ChangeNotifier {
 
   bool get rebootDetected => trustedTime?.rebootDetected ?? false;
 
-  bool get sessionEndedByReboot =>
-      trustedTime?.sessionEndedByReboot ?? false;
+  bool get sessionEndedByReboot => trustedTime?.sessionEndedByReboot ?? false;
 
-  bool get canIssueTrustedPunch =>
-      trustedTime != null && trustedTime!.canPunch;
+  bool get canIssueTrustedPunch => trustedTime != null && trustedTime!.canPunch;
 
   final List<AttendanceEvent> _events = [];
-  List<AttendanceEvent> get events => List.unmodifiable(_eventsOn(clockNow));
-  bool get hasAnyEventToday => _eventsOn(clockNow).isNotEmpty;
+  List<AttendanceEvent> get events =>
+      List.unmodifiable(_activeEvents(clockNow));
+  bool get hasAnyEventToday => _activeEvents(clockNow).isNotEmpty;
 
   bool isInRange = true;
   bool isCompanyValid = true;
@@ -406,6 +424,12 @@ class ClockScreenController extends ChangeNotifier {
   Timer? _cooldownTimer;
 
   bool _disposed = false;
+  bool _maxSessionAutoCheckoutInFlight = false;
+
+  /// Bumped on server-driven [replaceLiveEvents] so a late prefs restore
+  /// cannot resurrect a phantom open session after reconcile cleared it.
+  int _liveEventsEpoch = 0;
+  Future<void>? _eventsRestoreFuture;
 
   // NOTE: these are intentionally instance getters (not `static const`).
   // Every key is namespaced with [userId] so SharedPreferences state can
@@ -421,57 +445,259 @@ class ClockScreenController extends ChangeNotifier {
   String get _prefsKeyLocationName => 'clock_selected_location_name_$userId';
 
   ClockScreenController({required this.userId, this.trustedTime}) {
-    unawaited(_restorePersistedEvents());
+    _eventsRestoreFuture = _restorePersistedEvents();
     unawaited(_restoreWorkingHoursPolicy());
     unawaited(_restoreGeofenceState());
   }
 
-  String get _todayPrefsKey {
-    final now = clockNow;
-    return '$_prefsKeyPrefixBase${userId}_${now.year}-${now.month}-${now.day}';
-  }
+  /// Wait until local prefs have been loaded (Call before first reconcile).
+  Future<void> ensureEventsRestored() =>
+      _eventsRestoreFuture ?? Future<void>.value();
+
+  String get _activePrefsKey => '${_prefsKeyPrefixBase}${userId}_active';
+
+  String _prefsKeyForCalendarDay(DateTime day) =>
+      '$_prefsKeyPrefixBase${userId}_${day.year}-${day.month}-${day.day}';
 
   Future<void> _restorePersistedEvents() async {
+    final epochAtStart = _liveEventsEpoch;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_todayPrefsKey);
-      if (raw == null || _disposed) return;
+      final now = clockNow;
+      // Active key is the live session. When it exists (even as `[]` after
+      // check-out / 24h reset), do not merge yesterday's calendar mirror or
+      // the Check In button comes back as still checked in.
+      final keys = prefs.containsKey(_activePrefsKey)
+          ? <String>[_activePrefsKey]
+          : <String>{
+              _prefsKeyForCalendarDay(now),
+              _prefsKeyForCalendarDay(now.subtract(const Duration(days: 1))),
+            }.toList();
 
-      final decoded = jsonDecode(raw) as List;
-      final restored = decoded
-          .map((e) => AttendanceEvent.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final restored = <AttendanceEvent>[];
+      for (final key in keys) {
+        final raw = prefs.getString(key);
+        if (raw == null || raw.isEmpty) continue;
+        final decoded = jsonDecode(raw);
+        if (decoded is! List) continue;
+        for (final item in decoded) {
+          if (item is Map<String, dynamic>) {
+            restored.add(AttendanceEvent.fromJson(item));
+          } else if (item is Map) {
+            restored.add(
+              AttendanceEvent.fromJson(Map<String, dynamic>.from(item)),
+            );
+          }
+        }
+      }
+      if (_disposed) return;
+      // Server reconcile already won — do not revive a ghost check-in.
+      if (epochAtStart != _liveEventsEpoch) return;
+      if (restored.isEmpty) {
+        // Still persist `[]` under the active key so reminders / relaunches
+        // see an authoritative empty session instead of stale day mirrors.
+        if (prefs.containsKey(_activePrefsKey)) {
+          unawaited(_persistEvents());
+        }
+        return;
+      }
 
-      // Union-merge (never clear+replace). A late prefs restore must not
-      // clobber a fresher server reconcile that already landed in _events.
       restoreEvents(restored);
     } catch (_) {}
   }
 
   Future<void> _persistEvents() async {
     try {
-      final today = clockNow;
-      final todayEvents = _eventsOn(today);
-      final encoded = jsonEncode(todayEvents.map((e) => e.toJson()).toList());
-      if (encoded == _lastPersistedEventsJson) return;
+      final now = clockNow;
+      final active = _activeEvents(now);
+      final encoded = jsonEncode(active.map((e) => e.toJson()).toList());
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_todayPrefsKey, encoded);
-      _lastPersistedEventsJson = encoded;
+
+      // Active key may stay unchanged (e.g. empty both before and after a
+      // 24h auto check-out on the next calendar day) while the check-in-day
+      // mirror still needs the new check-out punch written.
+      if (encoded != _lastPersistedEventsJson) {
+        await prefs.setString(_activePrefsKey, encoded);
+        _lastPersistedEventsJson = encoded;
+      }
+
+      // Also mirror each session under its check-in calendar day so attendance
+      // history can attribute overnight punches to the session-start date.
+      final bySessionDay = <String, List<AttendanceEvent>>{};
+      for (final session in _sessionsFrom(_events)) {
+        final start = session.checkInTime;
+        if (!_isSameCalendarDay(start, now) &&
+            !_isSameCalendarDay(start, now.subtract(const Duration(days: 1))) &&
+            !_sessionIsOpenWithinLimit(session, now) &&
+            !_isOpenSessionPastLimit(session, now)) {
+          continue;
+        }
+        final key = _prefsKeyForCalendarDay(start);
+        bySessionDay
+            .putIfAbsent(key, () => <AttendanceEvent>[])
+            .addAll(session.events);
+      }
+      for (final entry in bySessionDay.entries) {
+        await prefs.setString(
+          entry.key,
+          jsonEncode(entry.value.map((e) => e.toJson()).toList()),
+        );
+      }
     } catch (_) {}
   }
 
   static bool _isSameCalendarDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  static bool _eventOnDay(AttendanceEvent event, DateTime day) =>
-      _isSameCalendarDay(event.effectiveTime, day) ||
-      _isSameCalendarDay(event.time, day);
+  /// Sessions that drive the clock button/card at [now]:
+  /// - an open session whose check-in is still within 24h, or
+  /// - completed sessions whose check-in falls on [now]'s calendar day.
+  ///
+  /// Open sessions past 24h are excluded here so the button resets, but they
+  /// stay in [_events] until [ensureMaxSessionAutoCheckout] punches check-out.
+  List<AttendanceEvent> _activeEvents(DateTime now) {
+    final kept = <AttendanceEvent>[];
+    for (final session in _sessionsFrom(_events)) {
+      if (_sessionIsOpenWithinLimit(session, now) ||
+          (session.isClosed && _isSameCalendarDay(session.checkInTime, now))) {
+        kept.addAll(session.events);
+      }
+    }
+    return kept;
+  }
 
-  List<AttendanceEvent> _eventsOn(DateTime day) =>
-      _events.where((e) => _eventOnDay(e, day)).toList();
+  bool _sessionIsOpenWithinLimit(_ClockPunchSession session, DateTime now) {
+    if (session.isClosed) return false;
+    final age = now.difference(session.checkInTime);
+    return !age.isNegative && age < maxOpenSessionDuration;
+  }
 
-  void _dropEventsNotOn(DateTime day) {
-    _events.removeWhere((e) => !_eventOnDay(e, day));
+  bool _isOpenSessionPastLimit(_ClockPunchSession session, DateTime now) {
+    if (session.isClosed) return false;
+    final age = now.difference(session.checkInTime);
+    return !age.isNegative && age >= maxOpenSessionDuration;
+  }
+
+  /// Punches check-out (trusted time + selected location) when an open
+  /// session has reached [maxOpenSessionDuration], then prunes so the
+  /// button resets to Check In. History stays on the check-in calendar day.
+  Future<AttendanceActionResult> ensureMaxSessionAutoCheckout() async {
+    if (_disposed || _maxSessionAutoCheckoutInFlight) {
+      return AttendanceActionResult.none;
+    }
+
+    final now = clockNow;
+    final expired = _sessionsFrom(
+      _events,
+    ).any((session) => _isOpenSessionPastLimit(session, now));
+    if (!expired) return AttendanceActionResult.none;
+
+    if (!canIssueTrustedPunch) {
+      return AttendanceActionResult.timeUnavailable;
+    }
+
+    _maxSessionAutoCheckoutInFlight = true;
+    try {
+      // Direct check-out even if on break — one punch closes the session.
+      if (!await _addEvent(AttendanceEventType.checkOut)) {
+        return AttendanceActionResult.timeUnavailable;
+      }
+      // _addEvent persists async; await so the check-in-day mirror includes
+      // this auto check-out before prune drops the closed overnight session.
+      await _persistEvents();
+      _pruneInactiveEvents(clockNow);
+      if (!_disposed) notifyListeners();
+      return AttendanceActionResult.checkedOut;
+    } finally {
+      _maxSessionAutoCheckoutInFlight = false;
+    }
+  }
+
+  void _pruneInactiveEvents(DateTime now) {
+    // Keep open-past-24h sessions in memory until auto check-out punches them;
+    // do not silently drop an unclosed session.
+    final kept = <AttendanceEvent>[];
+    for (final session in _sessionsFrom(_events)) {
+      if (_sessionIsOpenWithinLimit(session, now) ||
+          (session.isClosed && _isSameCalendarDay(session.checkInTime, now)) ||
+          _isOpenSessionPastLimit(session, now)) {
+        kept.addAll(session.events);
+      }
+    }
+    if (kept.length == _events.length && kept.every(_events.contains)) {
+      return;
+    }
+    _events
+      ..clear()
+      ..addAll(kept);
+  }
+
+  static List<_ClockPunchSession> _sessionsFrom(List<AttendanceEvent> events) {
+    if (events.isEmpty) return const [];
+    final sorted = [...events]
+      ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+
+    final sessions = <_ClockPunchSession>[];
+    var current = <AttendanceEvent>[];
+    DateTime? checkInTime;
+    // Portal may store overnight check-out on the same attendance_date with
+    // an early morning clock (e.g. 12:05 AM) before the day's first check-in
+    // chronologically — hold it to close a later evening open session.
+    final orphanEarlyCheckOuts = <AttendanceEvent>[];
+
+    DateTime _effectiveOut(DateTime raw, DateTime openStart) {
+      if (raw.isAfter(openStart)) return raw;
+      return raw.add(const Duration(days: 1));
+    }
+
+    for (final event in sorted) {
+      if (event.type == AttendanceEventType.checkIn && current.isEmpty) {
+        current = [event];
+        checkInTime = event.effectiveTime;
+        continue;
+      }
+      if (current.isEmpty || checkInTime == null) {
+        if (event.type == AttendanceEventType.checkOut) {
+          orphanEarlyCheckOuts.add(event);
+        }
+        continue;
+      }
+
+      current.add(event);
+      if (event.type == AttendanceEventType.checkOut) {
+        sessions.add(
+          _ClockPunchSession(
+            checkInTime: checkInTime,
+            events: List<AttendanceEvent>.unmodifiable(current),
+            checkOutTime: _effectiveOut(event.effectiveTime, checkInTime),
+          ),
+        );
+        current = <AttendanceEvent>[];
+        checkInTime = null;
+      }
+    }
+
+    if (current.isNotEmpty && checkInTime != null) {
+      if (orphanEarlyCheckOuts.isNotEmpty) {
+        final orphan = orphanEarlyCheckOuts.removeLast();
+        current = [...current, orphan];
+        sessions.add(
+          _ClockPunchSession(
+            checkInTime: checkInTime,
+            events: List<AttendanceEvent>.unmodifiable(current),
+            checkOutTime: _effectiveOut(orphan.effectiveTime, checkInTime),
+          ),
+        );
+      } else {
+        sessions.add(
+          _ClockPunchSession(
+            checkInTime: checkInTime,
+            events: List<AttendanceEvent>.unmodifiable(current),
+          ),
+        );
+      }
+    }
+    return sessions;
   }
 
   void selectLocation(String name, {required bool inRange}) {
@@ -505,12 +731,12 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   AttendanceDayStatus get _statusFromEvents {
-    final todayEvents = _eventsOn(clockNow);
-    if (todayEvents.isEmpty) return AttendanceDayStatus.checkedOut;
-    final summary = AttendanceEngine.compute(todayEvents);
+    final active = _activeEvents(clockNow);
+    if (active.isEmpty) return AttendanceDayStatus.checkedOut;
+    final summary = AttendanceEngine.compute(active);
     if (summary.isOnBreak) return AttendanceDayStatus.onBreak;
     if (summary.isCheckedIn) {
-      final sorted = [...todayEvents]
+      final sorted = [...active]
         ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
       final everHadBreak = sorted.any(
         (e) => e.type == AttendanceEventType.breakEnd,
@@ -531,9 +757,9 @@ class ClockScreenController extends ChangeNotifier {
   bool get isTodayWorkingDay => workingWeekdays.contains(clockNow.weekday);
 
   bool get isBreakLimitReached =>
-      AttendanceEngine.compute(_eventsOn(clockNow)).liveBreakDuration(
-        now: clockNow,
-      ) >=
+      AttendanceEngine.compute(
+        _activeEvents(clockNow),
+      ).liveBreakDuration(now: clockNow) >=
       maxBreakDuration;
 
   bool get isButtonEnabled => !isCoolingDown && canIssueTrustedPunch;
@@ -547,7 +773,12 @@ class ClockScreenController extends ChangeNotifier {
       return AttendanceActionResult.none;
     }
 
-    _dropEventsNotOn(clockNow);
+    final autoClosed = await ensureMaxSessionAutoCheckout();
+    if (autoClosed == AttendanceActionResult.checkedOut) {
+      return autoClosed;
+    }
+
+    _pruneInactiveEvents(clockNow);
     final status = _statusFromEvents;
 
     if (checkIn) {
@@ -596,9 +827,7 @@ class ClockScreenController extends ChangeNotifier {
       return false;
     }
 
-    final result = await source.issuePunch(
-      networkOnline: trustedNetworkOnline,
-    );
+    final result = await source.issuePunch(networkOnline: trustedNetworkOnline);
     final punch = result.punch;
     if (!result.isOk || punch == null) {
       lastTrustedTimeError = result.error ?? 'Cannot issue authoritative time.';
@@ -646,8 +875,8 @@ class ClockScreenController extends ChangeNotifier {
   }
 
   bool get lastEventFlaggedInvalidLocation {
-    final todayEvents = _eventsOn(clockNow);
-    return todayEvents.isNotEmpty && !todayEvents.last.isValidLocation;
+    final active = _activeEvents(clockNow);
+    return active.isNotEmpty && !active.last.isValidLocation;
   }
 
   void _startActionCooldown() {
@@ -672,12 +901,8 @@ class ClockScreenController extends ChangeNotifier {
   void restoreEvents(List<AttendanceEvent> snapshot) {
     if (_disposed) return;
 
-    final today = clockNow;
-    _dropEventsNotOn(today);
-
     final merged = <AttendanceEvent>[..._events];
     for (final incoming in snapshot) {
-      if (!_eventOnDay(incoming, today)) continue;
       final index = merged.indexWhere(
         (existing) => existing.isSamePunchAs(incoming),
       );
@@ -696,8 +921,50 @@ class ClockScreenController extends ChangeNotifier {
     _events
       ..clear()
       ..addAll(collapsed);
+    _pruneInactiveEvents(clockNow);
     unawaited(_persistEvents());
     notifyListeners();
+  }
+
+  /// Replace live events (no union). Used when local open state must yield
+  /// to the server after a rejected punch.
+  @protected
+  void replaceLiveEvents(List<AttendanceEvent> next) {
+    if (_disposed) return;
+    _liveEventsEpoch++;
+    final collapsed = AttendanceEngine.collapseDuplicatePunches([...next])
+      ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+    _events
+      ..clear()
+      ..addAll(collapsed);
+    // Mirror CLOSED sessions to check-in day prefs BEFORE prune, so a
+    // yesterday closed day overwrites any ghost open check-in still stored.
+    unawaited(_forceMirrorClosedSessions(List.of(_events)));
+    _pruneInactiveEvents(clockNow);
+    unawaited(_persistEvents());
+    notifyListeners();
+  }
+
+  /// Writes closed sessions under their check-in calendar day even when the
+  /// live clock has already moved to the next day (prune would skip them).
+  Future<void> _forceMirrorClosedSessions(List<AttendanceEvent> source) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final bySessionDay = <String, List<AttendanceEvent>>{};
+      for (final session in _sessionsFrom(source)) {
+        if (!session.isClosed) continue;
+        final key = _prefsKeyForCalendarDay(session.checkInTime);
+        bySessionDay
+            .putIfAbsent(key, () => <AttendanceEvent>[])
+            .addAll(session.events);
+      }
+      for (final entry in bySessionDay.entries) {
+        await prefs.setString(
+          entry.key,
+          jsonEncode(entry.value.map((e) => e.toJson()).toList()),
+        );
+      }
+    } catch (_) {}
   }
 
   /// Public entry-point used by the Clock details sheet after it fetches the
@@ -709,7 +976,12 @@ class ClockScreenController extends ChangeNotifier {
   Future<AttendanceActionResult> handleMainTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
 
-    _dropEventsNotOn(clockNow);
+    final autoClosed = await ensureMaxSessionAutoCheckout();
+    if (autoClosed == AttendanceActionResult.checkedOut) {
+      return autoClosed;
+    }
+
+    _pruneInactiveEvents(clockNow);
 
     final status = _statusFromEvents;
 
@@ -770,7 +1042,12 @@ class ClockScreenController extends ChangeNotifier {
   Future<AttendanceActionResult> handleBreakTap() async {
     if (isProcessing || isCoolingDown) return AttendanceActionResult.none;
 
-    _dropEventsNotOn(clockNow);
+    final autoClosed = await ensureMaxSessionAutoCheckout();
+    if (autoClosed == AttendanceActionResult.checkedOut) {
+      return autoClosed;
+    }
+
+    _pruneInactiveEvents(clockNow);
 
     final status = _statusFromEvents;
     if (status != AttendanceDayStatus.checkedIn &&

@@ -37,6 +37,9 @@ class _PolicyScreenState extends State<PolicyScreen> {
               !isInitialLoad && privacy == null && privacyProvider.hasError;
 
           return ShimmerRefreshIndicator(
+            instagramStyle: true,
+            triggerFraction: 0.40,
+            showOrb: false,
             onRefresh: () => privacyProvider.load(),
             child: ListView(
               padding: AppSizes.page(context, AppSizes.DEFAULT),

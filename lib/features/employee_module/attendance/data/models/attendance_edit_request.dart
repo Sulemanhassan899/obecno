@@ -67,6 +67,28 @@ class AttendanceEditRequest {
     return time.hour == 0 && time.minute < 40;
   }
 
+  /// Timeline/edit UI: hide mint-window rows that only back a pending add.
+  ///
+  /// Do **not** use this in clock fetch/reconcile — that path must keep real
+  /// early-morning punches (e.g. portal check-in at 12:12 AM) even when the
+  /// API attaches pending-style change_requests.
+  static bool shouldOmitFromLiveClock(
+    DateTime time, {
+    List<AttendanceEditRequest> editRequests = const [],
+    List<AttendanceEditRequest> stored = const [],
+    String? eventType,
+  }) {
+    if (!isPlaceholderMint(time)) return false;
+    if (editRequests.any((r) => r.isPendingAdd)) return true;
+    if (stored.isEmpty) return false;
+    return stored.any((r) {
+      if (!r.isPendingAdd) return false;
+      final type = normalizedEventType(r.eventType);
+      if (eventType == null || type == null) return true;
+      return type == eventType;
+    });
+  }
+
   /// Parses a clock label onto [date]'s calendar day.
   ///
   /// 12:25 AM → 00:25, 12:00 PM → 12:00, 8:00 PM → 20:00.

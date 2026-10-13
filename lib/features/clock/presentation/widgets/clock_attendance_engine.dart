@@ -75,42 +75,57 @@ class AttendanceEngine {
   static AttendanceSummary compute(List<AttendanceEvent> events) {
     if (events.isEmpty) return AttendanceSummary.empty;
 
-    final sorted = collapseDuplicatePunches(events)
-      ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+    final sorted = sortedOldestFirst(collapseDuplicatePunches(events));
 
-    // Explicit earliest check-in / latest check-out — never overwritten by
-    // later re-check-ins or intermediate check-outs.
     DateTime? firstCheckIn;
     DateTime? lastCheckOut;
-    for (final e in sorted) {
-      if (e.type == AttendanceEventType.checkIn) {
-        firstCheckIn ??= e.effectiveTime;
-      } else if (e.type == AttendanceEventType.checkOut) {
-        lastCheckOut = e.effectiveTime;
-      }
-    }
-
-    Duration breaks = Duration.zero;
-
     DateTime? openWorkStart;
     DateTime? openBreakStart;
     bool isCheckedIn = false;
     bool isOnBreak = false;
+    Duration breaks = Duration.zero;
+    final orphanEarlyCheckOuts = <DateTime>[];
+
+    void considerCheckOut(DateTime raw, {required DateTime openStart}) {
+      var out = raw;
+      if (!out.isAfter(openStart)) {
+        out = out.add(const Duration(days: 1));
+      }
+      if (lastCheckOut == null || out.isAfter(lastCheckOut!)) {
+        lastCheckOut = out;
+      }
+    }
 
     for (final e in sorted) {
       final at = e.effectiveTime;
       switch (e.type) {
         case AttendanceEventType.checkIn:
-          // Do not touch firstCheckIn — already locked to earliest above.
+          if (firstCheckIn == null || at.isBefore(firstCheckIn)) {
+            firstCheckIn = at;
+          }
           openWorkStart = at;
           isCheckedIn = true;
           isOnBreak = false;
+          openBreakStart = null;
           break;
 
         case AttendanceEventType.checkOut:
-          openWorkStart = null;
-          isCheckedIn = false;
-          isOnBreak = false;
+          if (openWorkStart != null) {
+            considerCheckOut(at, openStart: openWorkStart);
+            openWorkStart = null;
+            isCheckedIn = false;
+            isOnBreak = false;
+            openBreakStart = null;
+          } else if (isOnBreak) {
+            if (lastCheckOut == null || at.isAfter(lastCheckOut!)) {
+              lastCheckOut = at;
+            }
+            openBreakStart = null;
+            isOnBreak = false;
+            isCheckedIn = false;
+          } else {
+            orphanEarlyCheckOuts.add(at);
+          }
           break;
 
         case AttendanceEventType.breakStart:
@@ -124,11 +139,25 @@ class AttendanceEngine {
             breaks += at.difference(openBreakStart);
             openBreakStart = null;
           }
-          // Resume working.
           openWorkStart = at;
           isOnBreak = false;
           isCheckedIn = true;
           break;
+      }
+    }
+
+    if (openWorkStart != null && orphanEarlyCheckOuts.isNotEmpty) {
+      final rawOut = orphanEarlyCheckOuts.removeLast();
+      considerCheckOut(rawOut, openStart: openWorkStart);
+      openWorkStart = null;
+      isCheckedIn = false;
+      isOnBreak = false;
+      openBreakStart = null;
+    }
+
+    for (final rawOut in orphanEarlyCheckOuts) {
+      if (lastCheckOut == null || rawOut.isAfter(lastCheckOut!)) {
+        lastCheckOut = rawOut;
       }
     }
 

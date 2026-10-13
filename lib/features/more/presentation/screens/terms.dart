@@ -37,6 +37,9 @@ class _TermsScreenState extends State<TermsScreen> {
               !isInitialLoad && terms == null && termsProvider.hasError;
 
           return ShimmerRefreshIndicator(
+            instagramStyle: true,
+            triggerFraction: 0.40,
+            showOrb: false,
             onRefresh: () => termsProvider.load(),
             child: ListView(
               padding: AppSizes.page(context, AppSizes.DEFAULT),

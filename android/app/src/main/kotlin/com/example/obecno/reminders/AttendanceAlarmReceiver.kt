@@ -24,20 +24,28 @@ class AttendanceAlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        internal fun deliver(context: Context, alarm: StoredAlarm) {
+        /** @return true when the banner was posted (alarm can be dropped). */
+        internal fun deliver(context: Context, alarm: StoredAlarm): Boolean {
             val app = context.applicationContext
             val title =
                 if (alarm.isTest) "Test successful" else alarm.title
             val message =
                 if (alarm.isTest) "Your reminders are ready." else alarm.message
-            AttendanceNotifier.show(
-                app,
-                alarm.id,
-                title,
-                message,
-                alarm.payload.ifBlank { alarm.type },
-            )
-            AttendanceAlarmStore(app).remove(alarm.id)
+            val posted =
+                AttendanceNotifier.show(
+                    app,
+                    alarm.id,
+                    title,
+                    message,
+                    alarm.payload.ifBlank { alarm.type },
+                )
+            // Keep the alarm if permission blocked the banner so a later
+            // reschedule can try again instead of silently consuming it.
+            if (!posted) return false
+            val store = AttendanceAlarmStore(app)
+            store.appendFired(alarm)
+            store.remove(alarm.id)
+            return true
         }
     }
 }

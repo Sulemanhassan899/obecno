@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import java.util.Calendar
+import java.util.TimeZone
 
 internal object AttendanceAlarmScheduler {
     const val ACTION = "com.obecno.ATTENDANCE_ALARM"
@@ -18,11 +20,31 @@ internal object AttendanceAlarmScheduler {
     const val EXTRA_IS_TEST = "isTest"
 
     fun replaceAll(context: Context, alarms: List<StoredAlarm>) {
-        val store = AttendanceAlarmStore(context)
+        val app = context.applicationContext
+        val store = AttendanceAlarmStore(app)
+        val now = System.currentTimeMillis()
         val previous = store.load().filter { !it.isTest }
-        previous.forEach { cancel(context, it.id) }
-        val kept = store.replaceNonTest(alarms)
-        kept.filter { !it.isTest }.forEach { schedule(context, it) }
+        val nextIds = alarms.map { it.id }.toSet()
+        val retry = mutableListOf<StoredAlarm>()
+        previous.forEach { alarm ->
+            if (nextIds.contains(alarm.id)) {
+                cancelAlarmOnly(app, alarm.id)
+                return@forEach
+            }
+            // The Dart plan will not invent a late reminder. An alarm that was
+            // already armed and missed (Doze, emulator, process restart) still
+            // has to post, or the banner never appears.
+            val lateBy = now - alarm.fireAt
+            if (lateBy >= -1_000L && isSameLocalDay(alarm.fireAt, now)) {
+                if (!AttendanceAlarmReceiver.deliver(app, alarm)) {
+                    retry.add(alarm)
+                }
+            } else {
+                cancelAlarmOnly(app, alarm.id)
+            }
+        }
+        val kept = store.replaceNonTest(alarms + retry)
+        kept.filter { !it.isTest }.forEach { schedule(app, it) }
     }
 
     fun upsert(context: Context, alarms: List<StoredAlarm>) {
@@ -54,22 +76,36 @@ internal object AttendanceAlarmScheduler {
             AttendanceAlarmReceiver.deliver(app, alarm)
             return
         }
+        // setAlarmClock is the reliable reminder path on Android 12+ and does
+        // not need SCHEDULE_EXACT_ALARM. Always prefer it so Doze / emulators
+        // still fire on time even when "Alarms & reminders" is off.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                val show =
+                    PendingIntent.getActivity(
+                        app,
+                        alarm.id,
+                        Intent(app, com.example.obecno.MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        },
+                        AttendanceNotifier.pendingFlags(),
+                    )
+                manager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, show), pending)
+                return
+            } catch (_: Exception) {
+                // Fall through to inexact / allow-while-idle below.
+            }
+        }
         val canExact =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
-        if (canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            val show =
-                PendingIntent.getActivity(
-                    app,
-                    alarm.id,
-                    Intent(app, com.example.obecno.MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    },
-                    AttendanceNotifier.pendingFlags(),
-                )
-            manager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, show), pending)
-            return
-        }
         when {
+            canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                manager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt,
+                    pending,
+                )
+            }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
                 manager.setAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
@@ -89,10 +125,24 @@ internal object AttendanceAlarmScheduler {
     }
 
     fun cancel(context: Context, id: Int) {
+        cancelAlarmOnly(context, id)
+        val app = context.applicationContext
+        NotificationManagerCompat.from(app).cancel(id)
+    }
+
+    /**
+     * Drops pending AlarmManager entries without swiping away a banner that
+     * is already on screen (same notification id).
+     */
+    fun cancelAlarmOnly(context: Context, id: Int) {
         val app = context.applicationContext
         val manager = app.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         manager.cancel(pendingIntent(app, id = id))
-        NotificationManagerCompat.from(app).cancel(id)
+    }
+
+    fun cancelAlarmsOnly(context: Context, ids: Collection<Int>) {
+        ids.forEach { cancelAlarmOnly(context, it) }
+        AttendanceAlarmStore(context).removeIds(ids)
     }
 
     fun reschedulePersisted(context: Context) {
@@ -102,11 +152,13 @@ internal object AttendanceAlarmScheduler {
         store.load().forEach { alarm ->
             val lateBy = now - alarm.fireAt
             when {
-                lateBy > 2 * 60 * 1000L -> {
-                    cancel(context, alarm.id)
+                lateBy >= -1_000L && isSameLocalDay(alarm.fireAt, now) -> {
+                    if (!AttendanceAlarmReceiver.deliver(context, alarm)) {
+                        remaining.add(alarm)
+                    }
                 }
                 lateBy >= -1_000L -> {
-                    AttendanceAlarmReceiver.deliver(context, alarm)
+                    cancelAlarmOnly(context, alarm.id)
                 }
                 else -> {
                     remaining.add(alarm)
@@ -115,6 +167,14 @@ internal object AttendanceAlarmScheduler {
             }
         }
         store.save(remaining)
+    }
+
+    private fun isSameLocalDay(fireAt: Long, now: Long): Boolean {
+        val zone = TimeZone.getDefault()
+        val fired = Calendar.getInstance(zone).apply { timeInMillis = fireAt }
+        val current = Calendar.getInstance(zone).apply { timeInMillis = now }
+        return fired.get(Calendar.YEAR) == current.get(Calendar.YEAR) &&
+            fired.get(Calendar.DAY_OF_YEAR) == current.get(Calendar.DAY_OF_YEAR)
     }
 
     fun health(context: Context): Map<String, Any?> {

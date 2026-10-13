@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission;
 import 'package:permission_handler/permission_handler.dart';
 
 enum AppPermission { location, notification, motion }
@@ -9,9 +10,8 @@ class PermissionService {
   static Permission _map(AppPermission p) {
     switch (p) {
       case AppPermission.location:
-        // Require "Allow all the time" (background) for attendance /
-        // geofence while the app is closed. Always request When-In-Use
-        // first (OS requirement), then escalate to Always — see [request].
+        // Prefer Always for mapping/request escalation. Status reads are
+        // handled by [_locationStatus] so When-In-Use is not reported as OFF.
         return Permission.locationAlways;
       case AppPermission.notification:
         return Permission.notification;
@@ -26,9 +26,53 @@ class PermissionService {
   }
 
   static Future<PermissionStatus> status(AppPermission p) async {
+    if (p == AppPermission.location) {
+      // AppGuard / UI "is location OFF?" — When-In-Use counts as ON.
+      // (Always often lags as denied right after grant until process restart.)
+      final result = await _locationStatus(requireAlways: false);
+      debugPrint('[PermissionService] status(location) -> $result');
+      return result;
+    }
     final result = await _map(p).status;
     debugPrint('[PermissionService] status($p) -> $result');
     return result;
+  }
+
+  /// Background / geofence gate used by [areAllPermissionsAllowed].
+  static Future<PermissionStatus> locationAlwaysStatus() async {
+    return _locationStatus(requireAlways: true);
+  }
+
+  static Future<PermissionStatus> _locationStatus({
+    required bool requireAlways,
+  }) async {
+    final always = await Permission.locationAlways.status;
+    if (isAllowed(always)) return always;
+
+    // Cross-check OS via Geolocator — permission_handler Always status is
+    // frequently stale after Settings / the system location page.
+    try {
+      final geo = await Geolocator.checkPermission();
+      if (geo == LocationPermission.always) {
+        return PermissionStatus.granted;
+      }
+      if (!requireAlways && geo == LocationPermission.whileInUse) {
+        return PermissionStatus.granted;
+      }
+    } catch (e) {
+      debugPrint('[PermissionService] Geolocator.checkPermission failed: $e');
+    }
+
+    final location = await Permission.location.status;
+    if (isAllowed(location)) {
+      if (!requireAlways) return location;
+      // Permission.location can mean when-in-use on some Android versions.
+    }
+
+    final whenInUse = await Permission.locationWhenInUse.status;
+    if (!requireAlways && isAllowed(whenInUse)) return whenInUse;
+
+    return always;
   }
 
   static Future<PermissionStatus> request(AppPermission p) async {
@@ -87,7 +131,9 @@ class PermissionService {
   }
 
   static Future<bool> areAllPermissionsAllowed() async {
-    final loc = await status(AppPermission.location);
+    // Full onboarding: prefer Always, but accept a Geolocator "always" read
+    // when permission_handler status is stale.
+    final loc = await locationAlwaysStatus();
     final notif = await status(AppPermission.notification);
     final motion = await status(AppPermission.motion);
     final result =
@@ -95,14 +141,18 @@ class PermissionService {
         isAllowed(notif) &&
         isAllowed(motion, AppPermission.motion);
     debugPrint(
-      '[PermissionService] areAllPermissionsAllowed() -> location: $loc, '
+      '[PermissionService] areAllPermissionsAllowed() -> locationAlways: $loc, '
       'notification: $notif, motion: $motion => $result',
     );
     return result;
   }
 
+  /// Splash / cold-start gate: When-In-Use location is enough to enter the app.
+  /// (Always is preferred for background geofence but is often still reported
+  /// as denied after grant, and Enable Permissions already lets users through
+  /// with When-In-Use — requiring Always here caused a restart loop.)
   static Future<bool> areCriticalPermissionsAllowed() async {
-    final loc = await status(AppPermission.location);
+    final loc = await _locationStatus(requireAlways: false);
     final motion = await status(AppPermission.motion);
     final result = isAllowed(loc) && isAllowed(motion, AppPermission.motion);
     debugPrint(

@@ -49,6 +49,9 @@ class _OfficeLocationState extends State<OfficeLocation> {
       body: Padding(
         padding: AppSizes.horizontalOnly(context),
         child: ShimmerRefreshIndicator(
+          instagramStyle: true,
+          triggerFraction: 0.40,
+          showOrb: false,
           onRefresh: _refresh,
           child: ListenableBuilder(
             listenable: Listenable.merge([authProvider, locationProvider]),

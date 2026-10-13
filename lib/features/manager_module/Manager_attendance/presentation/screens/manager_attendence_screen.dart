@@ -18,10 +18,10 @@ class ManagerAttendanceScreen extends StatefulWidget {
 
   @override
   State<ManagerAttendanceScreen> createState() =>
-      _ManagerAttendanceScreenState();
+      ManagerAttendanceScreenState();
 }
 
-class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
+class ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
   bool _isSearching = false;
   String _searchQuery = "";
 
@@ -40,6 +40,9 @@ class _ManagerAttendanceScreenState extends State<ManagerAttendanceScreen> {
       context.read<ManagerLocationsProvider>().load();
     });
   }
+
+  /// Hook for bottom-nav tab reselection (mirrors other tab screens).
+  void playEntranceAnimation() {}
 
   List<ManagerAttendanceModel> get _searchResults {
     return context.read<ManagerAttendanceProvider>().searchResults(

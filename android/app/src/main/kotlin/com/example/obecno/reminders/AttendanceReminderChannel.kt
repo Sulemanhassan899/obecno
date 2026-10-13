@@ -47,6 +47,11 @@ class AttendanceReminderChannel(
                     AttendanceAlarmScheduler.cancelIds(activity, ids)
                     result.success(true)
                 }
+                "cancelAlarmsOnly" -> {
+                    val ids = call.argument<List<Int>>("ids") ?: emptyList()
+                    AttendanceAlarmScheduler.cancelAlarmsOnly(activity, ids)
+                    result.success(true)
+                }
                 "cancelAll" -> {
                     AttendanceAlarmScheduler.cancelAll(activity)
                     result.success(true)
@@ -56,8 +61,9 @@ class AttendanceReminderChannel(
                     val title = call.argument<String>("title") ?: "Attendance reminder"
                     val message = call.argument<String>("message") ?: ""
                     val payload = call.argument<String>("payload")
-                    AttendanceNotifier.show(activity, id, title, message, payload)
-                    result.success(true)
+                    val posted =
+                        AttendanceNotifier.show(activity, id, title, message, payload)
+                    result.success(posted)
                 }
                 "scheduleTest" -> {
                     val fireAt =
@@ -100,6 +106,19 @@ class AttendanceReminderChannel(
                     result.success(true)
                 }
                 "getLaunchPayload" -> result.success(store.consumeLaunchPayload())
+                "consumeFired" -> {
+                    result.success(
+                        store.consumeFired().map { alarm ->
+                            mapOf(
+                                "type" to alarm.type,
+                                "title" to alarm.title,
+                                "message" to alarm.message,
+                                "fireAt" to alarm.fireAt,
+                                "payload" to alarm.payload,
+                            )
+                        },
+                    )
+                }
                 else -> result.notImplemented()
             }
         } catch (error: Exception) {

@@ -73,8 +73,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
 
     await context.read<JoinInviteProvider>().ensureLoaded();
     final join = context.read<JoinInviteProvider>();
-    final isLocalInvite =
-        join.hasLocalAccount(email) || join.hasOpenLinkInvite;
+    final isLocalInvite = join.hasLocalAccount(email) || join.hasOpenLinkInvite;
 
     if (isLocalInvite) {
       // Seed pending email for the password step without hitting the API.

@@ -94,6 +94,9 @@ class AlertsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reminder / smart-attendance banners — same red nav-dot as device alerts.
+  void flagUnseenFromReminder() => _flagNotification();
+
   void start() {
     if (_started) return;
     _started = true;
