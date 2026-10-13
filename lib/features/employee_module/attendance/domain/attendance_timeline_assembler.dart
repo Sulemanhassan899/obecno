@@ -23,6 +23,21 @@ class AttendanceTimelineAssembler {
   static bool isHiddenPlaceholder(DateTime time) =>
       AttendanceEditRequest.isPlaceholderMint(time);
 
+  /// Timeline cards only: hide mint rows that back a pending add.
+  /// Clock sync must not use this — see AttendanceEditRequest.shouldOmitFromLiveClock.
+  static bool isOmittedLivePunch(
+    DateTime time, {
+    List<AttendanceEditRequest> editRequests = const [],
+    List<AttendanceEditRequest> stored = const [],
+    String? eventType,
+  }) =>
+      AttendanceEditRequest.shouldOmitFromLiveClock(
+        time,
+        editRequests: editRequests,
+        stored: stored,
+        eventType: eventType,
+      );
+
   static String _pendingAddId(String eventType, DateTime time) =>
       '$pendingAddIdPrefix${eventType}_${time.hour}_${time.minute}';
 
@@ -32,15 +47,22 @@ class AttendanceTimelineAssembler {
     List<AttendanceEditRequest> stored = const [],
   }) {
     final location = _firstClockLocation(events);
+    bool omit(AttendanceEvent event) => isOmittedLivePunch(
+      event.time,
+      editRequests: event.editRequests,
+      stored: stored,
+      eventType: event.type.name,
+    );
+
     final bound = _bind(
       punches: [
         for (final event in events)
-          if (!isHiddenPlaceholder(event.time))
+          if (!omit(event))
             (type: event.type.name, time: event.time, requests: event.editRequests),
       ],
       hiddenRequests: [
         for (final event in events)
-          if (isHiddenPlaceholder(event.time))
+          if (omit(event))
             for (final request in event.editRequests)
               request.copyWith(
                 eventType:
@@ -55,7 +77,7 @@ class AttendanceTimelineAssembler {
     final punches = <AttendanceEvent>[];
     var punchIndex = 0;
     for (final event in events) {
-      if (isHiddenPlaceholder(event.time)) continue;
+      if (omit(event)) continue;
       punches.add(event.copyWith(editRequests: bound.forPunch[punchIndex]));
       punchIndex++;
     }
@@ -80,15 +102,22 @@ class AttendanceTimelineAssembler {
     List<AttendanceEditRequest> stored = const [],
   }) {
     final location = _firstHistoryLocation(events);
+    bool omit(HistoryAttendanceEvent event) => isOmittedLivePunch(
+      event.time,
+      editRequests: event.editRequests,
+      stored: stored,
+      eventType: event.type.name,
+    );
+
     final bound = _bind(
       punches: [
         for (final event in events)
-          if (!isHiddenPlaceholder(event.time))
+          if (!omit(event))
             (type: event.type.name, time: event.time, requests: event.editRequests),
       ],
       hiddenRequests: [
         for (final event in events)
-          if (isHiddenPlaceholder(event.time))
+          if (omit(event))
             for (final request in event.editRequests)
               request.copyWith(
                 eventType:
@@ -103,7 +132,7 @@ class AttendanceTimelineAssembler {
     final punches = <HistoryAttendanceEvent>[];
     var punchIndex = 0;
     for (final event in events) {
-      if (isHiddenPlaceholder(event.time)) continue;
+      if (omit(event)) continue;
       punches.add(event.copyWith(editRequests: bound.forPunch[punchIndex]));
       punchIndex++;
     }
@@ -127,7 +156,8 @@ class AttendanceTimelineAssembler {
   ) {
     final punches = <ReminderPunch>[];
     for (final event in events) {
-      if (isHiddenPlaceholder(event.time) || isPendingAddId(event.id)) {
+      if (isOmittedLivePunch(event.time, editRequests: event.editRequests) ||
+          isPendingAddId(event.id)) {
         continue;
       }
       final kind = ReminderPunchKind.fromName(event.type.name);
@@ -142,7 +172,8 @@ class AttendanceTimelineAssembler {
   ) {
     final punches = <ReminderPunch>[];
     for (final event in events) {
-      if (isHiddenPlaceholder(event.time) || isPendingAddId(event.id)) {
+      if (isOmittedLivePunch(event.time, editRequests: event.editRequests) ||
+          isPendingAddId(event.id)) {
         continue;
       }
       final kind = ReminderPunchKind.fromName(event.type.name);

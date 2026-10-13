@@ -29,7 +29,11 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<ReminderSettingsProvider>().load();
+      // Arm + schedule from this screen so toggles actually set alarms
+      // even before the user opens Clock again.
+      context.read<ReminderSettingsProvider>().load(
+        resumeExistingSession: true,
+      );
     });
   }
 
@@ -49,6 +53,9 @@ class _AttendanceRemindersScreenState extends State<AttendanceRemindersScreen> {
               const SizedBox(height: 20),
               Expanded(
                 child: ShimmerRefreshIndicator(
+                  instagramStyle: true,
+                  triggerFraction: 0.40,
+                  showOrb: false,
                   onRefresh: () =>
                       context.read<ReminderSettingsProvider>().refresh(),
                   child: ListView(

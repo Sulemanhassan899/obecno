@@ -317,16 +317,30 @@ class _ClockAttendanceDetailsSheetBodyState
   }
 
   String? get _firstCheckInLocation {
+    final target = _summary.firstCheckIn;
     for (final e in AttendanceEngine.sortedOldestFirst(_events)) {
-      if (e.type == AttendanceEventType.checkIn) return e.location;
+      if (e.type != AttendanceEventType.checkIn) continue;
+      if (target != null &&
+          (e.effectiveTime.hour != target.hour ||
+              e.effectiveTime.minute != target.minute)) {
+        continue;
+      }
+      return e.location;
     }
     return null;
   }
 
   String? get _lastCheckOutLocation {
+    final target = _summary.lastCheckOut;
     String? location;
     for (final e in AttendanceEngine.sortedOldestFirst(_events)) {
-      if (e.type == AttendanceEventType.checkOut) location = e.location;
+      if (e.type != AttendanceEventType.checkOut) continue;
+      if (target != null &&
+          e.effectiveTime.hour == target.hour &&
+          e.effectiveTime.minute == target.minute) {
+        return e.location;
+      }
+      location = e.location;
     }
     return location;
   }

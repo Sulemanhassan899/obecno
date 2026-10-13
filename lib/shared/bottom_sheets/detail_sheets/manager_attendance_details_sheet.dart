@@ -1300,12 +1300,12 @@ class _AttendanceLocationLine extends StatelessWidget {
     }
 
     final row = Row(
+      mainAxisAlignment:
+          isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
       children: [
-        if (!isRight) ...[
-          CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
-          const SizedBox(width: 6),
-        ],
-        Expanded(
+        CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
+        const SizedBox(width: 6),
+        Flexible(
           child: hasName
               ? AppText.caption(
                   label,
@@ -1317,10 +1317,6 @@ class _AttendanceLocationLine extends StatelessWidget {
                 )
               : const SizedBox.shrink(),
         ),
-        if (isRight) ...[
-          const SizedBox(width: 6),
-          CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
-        ],
       ],
     );
 

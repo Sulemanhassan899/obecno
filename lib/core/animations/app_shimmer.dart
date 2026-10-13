@@ -200,6 +200,7 @@ class ShimmerRefreshIndicator extends StatefulWidget {
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.instagramStyle = false,
     this.triggerFraction = 0.48,
+    this.showOrb = true,
     this.refreshIconColor = kPrimaryColor,
     this.orbSize = 200,
     this.revealShimmerDuration = const Duration(milliseconds: 520),
@@ -222,6 +223,10 @@ class ShimmerRefreshIndicator extends StatefulWidget {
   /// Screen-height fraction required to arm refresh when [instagramStyle] is on.
   /// Default ~48% (in the 45–50% range).
   final double triggerFraction;
+
+  /// When false, deep pull still works but the OrbConverge ball is hidden.
+  /// Defaults to true so attendance keeps the orb without any call-site change.
+  final bool showOrb;
 
   /// Particle orb color (Originkit OrbConverge).
   final Color refreshIconColor;
@@ -390,6 +395,7 @@ class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator>
   }
 
   Widget _buildRefreshIcon(double trigger) {
+    if (!widget.showOrb) return const SizedBox.shrink();
     final progress = trigger <= 0
         ? 0.0
         : (_pullOffset / trigger).clamp(0.0, 1.0);
@@ -447,10 +453,12 @@ class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator>
   Widget build(BuildContext context) {
     final trigger = _triggerDistance(context);
 
-    // Instagram: shimmer only AFTER data is ready.
+    // Instagram + orb: shimmer only AFTER data is ready (list hidden under orb).
+    // Instagram without orb: shimmer while the request is in flight.
     // Legacy: shimmer while the request is in flight.
-    final shimmerLoading =
-        widget.instagramStyle ? _revealing : _refreshing;
+    final shimmerLoading = widget.instagramStyle
+        ? (widget.showOrb ? _revealing : _refreshing || _revealing)
+        : _refreshing;
 
     final content = AppShimmerOverlay(
       isLoading: shimmerLoading,
@@ -460,17 +468,18 @@ class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator>
       child: KeyedSubtree(key: _childKey, child: widget.child),
     );
 
+    final hideListForOrb = widget.showOrb && _refreshing;
     final body = widget.instagramStyle
         ? Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              // Hide all list data while the orb is loading.
+              // Hide list only while the orb is loading.
               Opacity(
-                opacity: _refreshing ? 0.0 : 1.0,
+                opacity: hideListForOrb ? 0.0 : 1.0,
                 child: IgnorePointer(
                   ignoring: _refreshing,
                   child: Transform.translate(
-                    offset: Offset(0, _refreshing ? 0 : _pullOffset),
+                    offset: Offset(0, hideListForOrb ? 0 : _pullOffset),
                     child: content,
                   ),
                 ),

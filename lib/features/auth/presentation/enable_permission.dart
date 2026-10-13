@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator, LocationPermission;
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -18,15 +20,15 @@ import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 
-/// Which Settings screen we opened (resume continues the chain).
-enum _Awaiting {
-  none,
-  /// In-app prompt was blocked → generic app settings for that permission.
-  blockedInApp,
-  /// After all in-app grants → exact Location “Allow all the time” page.
-  locationAlways,
-}
-
+/// Enable OS permissions for first login.
+///
+/// Strategy (fixes "must restart app for next dialogs"):
+/// 1. Ask Location / Notifications / Motion in **one batch** `.request()` so
+///    the plugin sequences OS dialogs — sequential awaits after location were
+///    swallowed until process restart on many Android OEMs.
+/// 2. Ask "Allow all the time" only after When-In-Use is granted.
+/// 3. On return from Settings, re-read statuses and batch-request whatever is
+///    still missing (post-frame + delay so the activity is fully resumed).
 class EnablePermissionsScreen extends StatefulWidget {
   const EnablePermissionsScreen({super.key});
 
@@ -37,9 +39,37 @@ class EnablePermissionsScreen extends StatefulWidget {
 
 class _EnablePermissionsScreenState extends State<EnablePermissionsScreen>
     with WidgetsBindingObserver {
-  bool _flowRunning = false;
+  bool _busy = false;
   bool _navigatingAway = false;
-  _Awaiting _awaiting = _Awaiting.none;
+
+  /// We sent the user to Settings — next real resume continues the chain.
+  bool _waitingOnSettings = false;
+  bool _sawBackground = false;
+
+  /// Prevents overlapping resume handlers.
+  bool _resumeScheduled = false;
+
+  /// Resume arrived while a request was still in flight.
+  bool _runAgainWhenIdle = false;
+
+  /// Some OEMs skip lifecycle `resumed` after Settings — poll as backup.
+  Timer? _settingsPoll;
+
+  /// User finished the Always location UI (dialog or Settings). Status from
+  /// permission_handler often lags until process restart even when granted.
+  bool _alwaysPromptCompleted = false;
+
+  Permission get _motionPermission =>
+      defaultTargetPlatform == TargetPlatform.iOS
+      ? Permission.sensors
+      : Permission.activityRecognition;
+
+  /// Dialog order matches the screen tiles: Location → Notifications → Motion.
+  List<Permission> get _coreBatch => [
+    Permission.locationWhenInUse,
+    Permission.notification,
+    _motionPermission,
+  ];
 
   @override
   void initState() {
@@ -54,171 +84,333 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen>
 
   @override
   void dispose() {
+    _settingsPoll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    if (_awaiting == _Awaiting.none || _navigatingAway) return;
-    unawaited(_handleResume());
+    if (_navigatingAway) return;
+
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        if (_waitingOnSettings) _sawBackground = true;
+        return;
+      case AppLifecycleState.resumed:
+        if (!_waitingOnSettings || !_sawBackground) return;
+        _sawBackground = false;
+        _scheduleResumeContinue();
+        return;
+      case AppLifecycleState.detached:
+        return;
+    }
   }
 
-  Future<void> _handleResume() async {
-    if (_navigatingAway || !mounted) return;
+  void _scheduleResumeContinue() {
+    if (_resumeScheduled || _navigatingAway) return;
+    _resumeScheduled = true;
+    _settingsPoll?.cancel();
 
-    if (_awaiting == _Awaiting.locationAlways) {
-      final always = await Permission.locationAlways.status;
-      debugPrint('[EnablePermissionsScreen] resume always -> $always');
-      if (PermissionService.isAllowed(always)) {
-        _goHome();
+    // Never call permission.request() directly inside the lifecycle
+    // callback — the activity is not ready and OEMs swallow the dialog
+    // until a cold start.
+    SchedulerBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (!mounted || _navigatingAway) {
+        _resumeScheduled = false;
+        return;
       }
+      _waitingOnSettings = false;
+      _resumeScheduled = false;
+      debugPrint('[EnablePermissionsScreen] resume → continue permissions');
+      await _runPermissionPass(fromResume: true);
+    });
+  }
+
+  Future<void> _handleContinue() async {
+    if (_busy || _navigatingAway) return;
+    unawaited(_runPermissionPass(fromResume: false));
+  }
+
+  Future<void> _runPermissionPass({required bool fromResume}) async {
+    if (_navigatingAway) return;
+    if (_busy) {
+      _runAgainWhenIdle = true;
       return;
     }
-
-    if (_awaiting == _Awaiting.blockedInApp) {
-      unawaited(_runFlow());
-    }
-  }
-
-  /// Must NOT await the flow — MyButton keeps its spinner until onTap's
-  /// Future completes, which made Continue feel stuck for the whole chain.
-  Future<void> _handleContinue() async {
-    if (_flowRunning || _navigatingAway) return;
-    unawaited(_runFlow());
-  }
-
-  /// Order: Notifications → Motion → Location while using → Allow all the time.
-  /// No button loader during OS dialogs — prompts are the feedback.
-  Future<void> _runFlow() async {
-    if (_flowRunning || _navigatingAway) return;
-    _flowRunning = true;
-    _awaiting = _Awaiting.none;
+    _busy = true;
 
     try {
-      // Fast path: everything already granted → leave immediately.
-      if (await PermissionService.areAllPermissionsAllowed()) {
-        _goHome();
-        return;
-      }
-      if (!mounted || _navigatingAway) return;
-
-      // 1) Notifications
-      if (!await _requestInApp(
-        Permission.notification,
-        appPermission: AppPermission.notification,
-        blockedHint: 'Turn on Notifications for this app, then return here.',
-      )) {
-        return;
-      }
-      if (!mounted || _navigatingAway) return;
-
-      // 2) Motion & Fitness
-      final motion = defaultTargetPlatform == TargetPlatform.iOS
-          ? Permission.sensors
-          : Permission.activityRecognition;
-      if (!await _requestInApp(
-        motion,
-        appPermission: AppPermission.motion,
-        blockedHint:
-            'Allow Motion & Fitness / Physical activity, then return here.',
-      )) {
-        return;
-      }
-      if (!mounted || _navigatingAway) return;
-
-      // 3) Location — while using the app
-      if (!await _requestInApp(
-        Permission.locationWhenInUse,
-        appPermission: null,
-        blockedHint: 'Allow Location “While using the app”, then return here.',
-      )) {
-        return;
-      }
-      if (!mounted || _navigatingAway) return;
-
-      // 4) Allow all the time — never await; completion + resume finish.
-      final always = await Permission.locationAlways.status;
-      if (PermissionService.isAllowed(always)) {
+      if (await _everythingAllowed()) {
         _goHome();
         return;
       }
 
-      _awaiting = _Awaiting.locationAlways;
-      unawaited(_promptLocationAlways());
+      // ---- Core batch: Location → Notifications → Motion (one native call)
+      final toRequest = <Permission>[];
+      for (final p in _coreBatch) {
+        final status = await p.status;
+        debugPrint('[EnablePermissionsScreen] core $p -> $status');
+        if (_isAllowed(p, status)) continue;
+        // Permanently denied cannot show an in-app dialog — Settings only.
+        if (status.isPermanentlyDenied || status.isRestricted) continue;
+        toRequest.add(p);
+      }
+
+      if (toRequest.isNotEmpty) {
+        debugPrint(
+          '[EnablePermissionsScreen] batch request → $toRequest '
+          '(fromResume=$fromResume)',
+        );
+        final results = await toRequest.request();
+        results.forEach((p, s) {
+          debugPrint('[EnablePermissionsScreen] batch $p -> $s');
+        });
+      }
+
+      if (!mounted || _navigatingAway) return;
+
+      // If Location was granted but Notifications / Motion never appeared
+      // (OEM swallowed follow-up dialogs), force another batch for whatever
+      // is still requestable — this is the restart workaround, in-session.
+      await _requestRemainingCore(label: 'post-location');
+
+      if (!mounted || _navigatingAway) return;
+
+      // ---- Background location ONLY after core dialogs are done.
+      // Requesting Always earlier opens a system page that aborts / hides
+      // Notifications & Motion until a cold start.
+      if (await _coreAllowed()) {
+        await _promptLocationAlwaysIfNeeded();
+      }
+
+      if (!mounted || _navigatingAway) return;
+
+      // Leave onboarding as soon as core is done and Always was handled.
+      // Do not trap on stale locationAlways status (common until cold start).
+      if (await _shouldGoHome()) {
+        _goHome();
+        return;
+      }
+
+      // Still missing core permissions that need Settings.
+      if (!await _coreAllowed()) {
+        final needsSettings = await _needsSettings();
+        if (needsSettings) {
+          await _openSettingsAndWait(
+            'Turn on Location, Notifications, and Motion for this app, '
+            'then return here.',
+          );
+          return;
+        }
+        await _requestRemainingCore(label: 'final');
+        if (await _shouldGoHome()) {
+          _goHome();
+        }
+        return;
+      }
+
+      // Core ok but Always still missing after prompt — open location Settings.
+      // Mark Always UI complete so the next resume navigates even if status lags.
+      if (!_alwaysPromptCompleted || !await _isAlwaysAllowedSettled()) {
+        _alwaysPromptCompleted = true;
+        await _openSettingsAndWait(
+          'Set Location to “Allow all the time”, then return here.',
+        );
+      }
     } catch (e, st) {
       debugPrint('[EnablePermissionsScreen] flow error: $e\n$st');
       if (!mounted || _navigatingAway) return;
       ToastHelper.permissionRequestError(context);
     } finally {
-      _flowRunning = false;
+      _busy = false;
+      if (_runAgainWhenIdle && mounted && !_navigatingAway) {
+        _runAgainWhenIdle = false;
+        unawaited(_runPermissionPass(fromResume: true));
+      }
     }
   }
 
-  Future<void> _promptLocationAlways() async {
-    try {
-      final result = await Permission.locationAlways.request();
-      debugPrint(
-        '[EnablePermissionsScreen] locationAlways request -> $result',
-      );
-      if (!mounted || _navigatingAway) return;
-      if (PermissionService.isAllowed(result)) {
-        _goHome();
-        return;
-      }
-      final status = await Permission.locationAlways.status;
-      if (PermissionService.isAllowed(status)) {
-        _goHome();
-      }
-    } catch (e) {
-      debugPrint('[EnablePermissionsScreen] locationAlways error: $e');
+  Future<bool> _coreAllowed() async {
+    for (final p in _coreBatch) {
+      final status = await p.status;
+      if (!_isAllowed(p, status)) return false;
     }
+    return true;
   }
 
-  Future<bool> _requestInApp(
-    Permission permission, {
-    required AppPermission? appPermission,
-    required String blockedHint,
-  }) async {
-    var status = await permission.status;
-    debugPrint('[EnablePermissionsScreen] in-app $permission -> $status');
-    if (_allowed(status, appPermission)) return true;
-
-    if (!status.isPermanentlyDenied && !status.isRestricted) {
-      try {
-        status = await permission.request();
-      } catch (_) {
-        status = PermissionStatus.denied;
-      }
-      debugPrint(
-        '[EnablePermissionsScreen] in-app $permission after request -> $status',
-      );
-      if (_allowed(status, appPermission)) return true;
+  Future<void> _promptLocationAlwaysIfNeeded() async {
+    if (await _isAlwaysAllowedSettled()) {
+      _alwaysPromptCompleted = true;
+      return;
     }
 
-    if (!mounted || _navigatingAway) return false;
-    _awaiting = _Awaiting.blockedInApp;
-    ToastHelper.show(
-      context,
-      message: blockedHint,
-      backgroundColor: kWhite,
+    final always = await Permission.locationAlways.status;
+    debugPrint('[EnablePermissionsScreen] locationAlways -> $always');
+    if (always.isPermanentlyDenied || always.isRestricted) {
+      _alwaysPromptCompleted = true;
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted || _navigatingAway) return;
+
+    _waitingOnSettings = true;
+    _sawBackground = false;
+    final alwaysResult = await Permission.locationAlways.request();
+    _alwaysPromptCompleted = true;
+    debugPrint(
+      '[EnablePermissionsScreen] locationAlways request -> $alwaysResult',
     );
-    unawaited(PermissionService.openSettings());
+    if (SchedulerBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      _waitingOnSettings = false;
+    }
+  }
+
+  /// True when we should leave Enable Permissions for the dashboard.
+  Future<bool> _shouldGoHome() async {
+    if (!await _coreAllowed()) return false;
+    if (await _isAlwaysAllowedSettled()) return true;
+    // permission_handler often still reports Always as denied right after
+    // the user granted it. If we already showed the Always UI, enter the app
+    // — AppGuard will re-check on the home screens if it is truly missing.
+    if (_alwaysPromptCompleted) {
+      debugPrint(
+        '[EnablePermissionsScreen] core ok + Always UI done '
+        '(status may lag) → go home',
+      );
+      return true;
+    }
     return false;
   }
 
-  bool _allowed(PermissionStatus status, AppPermission? appPermission) {
-    if (appPermission != null) {
-      return PermissionService.isAllowed(status, appPermission);
+  Future<bool> _isAlwaysAllowedSettled() async {
+    for (var i = 0; i < 6; i++) {
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+      if (!mounted || _navigatingAway) return false;
+
+      final always = await Permission.locationAlways.status;
+      if (_isAllowed(Permission.locationAlways, always)) return true;
+
+      final location = await Permission.location.status;
+      if (_isAllowed(Permission.location, location)) return true;
+
+      try {
+        final geo = await Geolocator.checkPermission();
+        if (geo == LocationPermission.always) return true;
+      } catch (e) {
+        debugPrint('[EnablePermissionsScreen] Geolocator check failed: $e');
+      }
+
+      debugPrint(
+        '[EnablePermissionsScreen] Always settle poll=$i '
+        'always=$always location=$location',
+      );
     }
-    return status.isGranted || status.isLimited || status.isProvisional;
+    return false;
+  }
+
+  Future<bool> _everythingAllowed() async {
+    if (await PermissionService.areAllPermissionsAllowed()) return true;
+    return _shouldGoHome();
+  }
+
+  /// Re-request any core permission that is still denied but can show a dialog.
+  Future<void> _requestRemainingCore({required String label}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted || _navigatingAway) return;
+
+    final retry = <Permission>[];
+    for (final p in _coreBatch) {
+      final status = await p.status;
+      if (_isAllowed(p, status)) continue;
+      if (status.isPermanentlyDenied || status.isRestricted) continue;
+      retry.add(p);
+    }
+    if (retry.isEmpty) return;
+
+    debugPrint('[EnablePermissionsScreen] $label retry → $retry');
+    final results = await retry.request();
+    results.forEach((p, s) {
+      debugPrint('[EnablePermissionsScreen] $label $p -> $s');
+    });
+  }
+
+  Future<bool> _needsSettings() async {
+    for (final p in [
+      ..._coreBatch,
+      Permission.locationAlways,
+    ]) {
+      final status = await p.status;
+      if (_isAllowed(p, status)) continue;
+      if (status.isPermanentlyDenied || status.isRestricted) return true;
+    }
+    // When-In-Use still missing after dialogs → Settings (Android won't
+    // re-prompt When-In-Use in the same session once denied).
+    final whenInUse = await Permission.locationWhenInUse.status;
+    if (!_isAllowed(Permission.locationWhenInUse, whenInUse)) return true;
+    return false;
+  }
+
+  Future<void> _openSettingsAndWait(String hint) async {
+    if (!mounted || _navigatingAway) return;
+    _waitingOnSettings = true;
+    _sawBackground = false;
+    ToastHelper.show(context, message: hint, backgroundColor: kWhite);
+    _startSettingsPoll();
+    await PermissionService.openSettings();
+  }
+
+  void _startSettingsPoll() {
+    _settingsPoll?.cancel();
+    var ticks = 0;
+    _settingsPoll = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      ticks++;
+      if (!mounted || _navigatingAway || !_waitingOnSettings) {
+        timer.cancel();
+        return;
+      }
+      // Cap at ~45s so we don't poll forever in background.
+      if (ticks > 45) {
+        timer.cancel();
+        return;
+      }
+      // Only continue once the app is back and something changed / core can
+      // be requested again.
+      if (SchedulerBinding.instance.lifecycleState !=
+          AppLifecycleState.resumed) {
+        return;
+      }
+      debugPrint(
+        '[EnablePermissionsScreen] settings poll tick=$ticks → continue',
+      );
+      timer.cancel();
+      _sawBackground = false;
+      _scheduleResumeContinue();
+    });
+  }
+
+  bool _isAllowed(Permission permission, PermissionStatus status) {
+    if (status.isGranted || status.isLimited || status.isProvisional) {
+      return true;
+    }
+    if (permission == _motionPermission &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        status.isRestricted) {
+      return true;
+    }
+    return false;
   }
 
   void _goHome() {
     if (!mounted || _navigatingAway) return;
     _navigatingAway = true;
-    _awaiting = _Awaiting.none;
+    _waitingOnSettings = false;
     ToastHelper.allPermissionsGranted(context);
     AppGuard.permissionOnboardingPending = false;
 
@@ -340,8 +532,6 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen>
                 radius: 30,
                 backgroundColor: kBlack,
                 fontColor: kWhite,
-                // MyButton spins until onTap completes; we fire-and-forget
-                // the permission chain so this must stay false.
                 showLoadingSpinner: false,
                 onTap: _handleContinue,
               ),

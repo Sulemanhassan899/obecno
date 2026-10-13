@@ -25,10 +25,14 @@ class ReminderNotificationSyncResult {
   const ReminderNotificationSyncResult({
     required this.planned,
     required this.seenTypes,
+    this.seenKeys = const {},
   });
 
   final List<ScheduledReminderNotification> planned;
   final Set<ReminderType> seenTypes;
+
+  /// `type|millis` keys for each firing that was posted this sync.
+  final Set<String> seenKeys;
 }
 
 /// When each reminder should actually notify — never the policy/permission time
@@ -109,13 +113,29 @@ class ReminderFireSchedule {
       return dt;
     }
 
+    // Already punched in: anchor check-out / break to the punch. Overnight
+    // policy alone was pushing today's afternoon break/check-out to tomorrow
+    // (e.g. check-in 23:00 → break 17:38 became next-day 17:38).
+    final punched = status.firstCheckIn;
+    if (punched != null) {
+      checkOutAt = ReminderNotificationPlan.clockOnOrAfter(
+        punched,
+        checkOutTime,
+      );
+    }
+
     DateTime? breakEndedAt;
     DateTime? longerBreakAt;
     if (status.breakStart != null) {
       final breakDue = status.breakStart!.add(Duration(minutes: minutes));
       var endedAt = breakDue;
       if (breakEndedReminderTime != null) {
-        var selected = place(breakEndedReminderTime);
+        var selected = punched == null
+            ? place(breakEndedReminderTime)
+            : ReminderNotificationPlan.clockOnOrAfter(
+                status.breakStart!,
+                breakEndedReminderTime,
+              );
         if (overnight && selected.isBefore(status.breakStart!)) {
           selected = selected.add(const Duration(days: 1));
         }
@@ -126,6 +146,10 @@ class ReminderFireSchedule {
       breakEndedAt = endedAt;
       longerBreakAt = endedAt.add(longerAfter);
     }
+
+    final breakAt = punched == null
+        ? place(breakReminderTime)
+        : ReminderNotificationPlan.clockOnOrAfter(punched, breakReminderTime);
 
     return ReminderFireSchedule(
       checkInAt: checkInAt,
@@ -142,7 +166,7 @@ class ReminderFireSchedule {
               checkOutAt,
               checkOutMissedTime,
             ),
-      breakAt: place(breakReminderTime),
+      breakAt: breakAt,
       breakEndedAt: breakEndedAt,
       longerBreakAt: longerBreakAt,
       veryLongAttendanceAt: status.firstCheckIn?.add(
@@ -184,14 +208,30 @@ class ReminderNotificationPlan {
     return {for (final type in alreadyFired) idFor(type), ...activeIds};
   }
 
+  static String firedKey(ReminderType type, DateTime fireAt) =>
+      '${type.storageKey}|${fireAt.millisecondsSinceEpoch}';
+
+  /// Slot keeps same-type firings (e.g. two breaks) on distinct notification ids.
+  static int slotFor(DateTime fireAt) =>
+      (fireAt.hour * 60 + fireAt.minute) % 86;
+
   static bool shouldShowNow({
     required ReminderType type,
     required int id,
     required Set<ReminderType> alreadyFired,
     required Iterable<int> activeIds,
+    Set<String> alreadyFiredKeys = const {},
+    DateTime? fireAt,
   }) {
     if (activeIds.contains(id)) return false;
-    if (alreadyFired.contains(type) && id == idFor(type)) return false;
+    if (fireAt != null && alreadyFiredKeys.contains(firedKey(type, fireAt))) {
+      return false;
+    }
+    if (alreadyFiredKeys.isEmpty &&
+        alreadyFired.contains(type) &&
+        id == idFor(type)) {
+      return false;
+    }
     return true;
   }
 
@@ -285,6 +325,7 @@ class ReminderNotificationPlan {
     required List<ReminderPunch> punches,
     Set<int> workingWeekdays = defaultWorkingWeekdays,
     Set<ReminderType> alreadyFired = const {},
+    Set<String> alreadyFiredKeys = const {},
     String locationName = 'work',
     bool allowCatchUp = false,
   }) {
@@ -322,10 +363,19 @@ class ReminderNotificationPlan {
         return;
       }
       final dueNow = onMinute || !fireAt.isAfter(now);
-      if (dayOffset == 0 && alreadyFired.contains(type) && dueNow) return;
+      final key = firedKey(type, fireAt);
+      if (dayOffset == 0 && dueNow) {
+        if (alreadyFiredKeys.contains(key)) return;
+        // Legacy tests / callers that only pass type-level alreadyFired.
+        if (alreadyFiredKeys.isEmpty && alreadyFired.contains(type)) return;
+      }
       items.add(
         ScheduledReminderNotification(
-          id: idFor(type, dayOffset: dayOffset),
+          id: idFor(
+            type,
+            dayOffset: dayOffset,
+            slot: dayOffset == 0 ? slotFor(fireAt) : 0,
+          ),
           type: type,
           fireAt: fireAt,
           title: ReminderCopy.title(type, locationName: place),
@@ -375,12 +425,15 @@ class ReminderNotificationPlan {
         daySchedule.checkInAt,
         applicable: notStartedToday,
         dayOffset: i,
+        // Same-day catch-up when still not checked in past the clock.
+        catchUp: i == 0,
       );
       add(
         ReminderType.checkInMissed,
         daySchedule.checkInMissedAt,
         applicable: notStartedToday,
         dayOffset: i,
+        catchUp: i == 0,
       );
     }
 
@@ -390,6 +443,8 @@ class ReminderNotificationPlan {
       applicable:
           status.isCheckedIn &&
           !todaySchedule.checkOutAt.isBefore(status.firstCheckIn!),
+      // Still checked in past check-out → show the banner when the app runs.
+      catchUp: true,
     );
     add(
       ReminderType.checkOutMissed,
@@ -397,6 +452,7 @@ class ReminderNotificationPlan {
       applicable:
           status.isCheckedIn &&
           !todaySchedule.checkOutMissedAt.isBefore(status.firstCheckIn!),
+      catchUp: true,
     );
 
     final longAt = todaySchedule.veryLongAttendanceAt;
@@ -414,6 +470,7 @@ class ReminderNotificationPlan {
           status.isCheckedIn &&
           !status.isOnBreak &&
           !todaySchedule.breakAt.isBefore(status.firstCheckIn!),
+      catchUp: true,
     );
 
     final endedAt = todaySchedule.breakEndedAt;
@@ -422,11 +479,13 @@ class ReminderNotificationPlan {
       ReminderType.breakTimeEnded,
       endedAt ?? now,
       applicable: status.isOnBreak && endedAt != null,
+      catchUp: true,
     );
     add(
       ReminderType.longerBreak,
       longerAt ?? now,
       applicable: status.isOnBreak && longerAt != null,
+      catchUp: true,
     );
 
     return items;

@@ -143,6 +143,9 @@ class _LinkedDevicesState extends State<LinkedDevices> {
             final showEmpty = !isInitialLoad && !showError && devices.isEmpty;
 
             return ShimmerRefreshIndicator(
+              instagramStyle: true,
+              triggerFraction: 0.40,
+              showOrb: false,
               onRefresh: () => deviceProvider.loadLinkedDevices(),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),

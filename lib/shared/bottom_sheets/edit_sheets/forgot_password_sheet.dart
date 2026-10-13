@@ -1,13 +1,13 @@
 import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/features/launch/onboarding/onboarding.dart';
 import 'package:obecno/core/generated/assets.dart';
 
 import 'package:obecno/widgets/bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class ForgotPasswordSheet extends StatelessWidget {
   const ForgotPasswordSheet({super.key, required this.email});
@@ -77,12 +77,10 @@ class _ForgotPasswordContent extends StatelessWidget {
           buttonText: "Sign in",
           backgroundColor: kBlack,
           fontColor: kWhite,
-          onTap: () async {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-              (route) => false,
-            );
+          onTap: () async{
+            Navigator.pop(context);
+            context.go('/login');
+            return;
           },
         ),
 

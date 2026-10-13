@@ -46,6 +46,20 @@ class ReminderHealth {
   );
 }
 
+class FiredReminderNotice {
+  const FiredReminderNotice({
+    required this.type,
+    required this.title,
+    required this.message,
+    required this.fireAtMillis,
+  });
+
+  final String type;
+  final String title;
+  final String message;
+  final int fireAtMillis;
+}
+
 class NativeReminderScheduler {
   NativeReminderScheduler._();
 
@@ -103,24 +117,32 @@ class NativeReminderScheduler {
     await channel.invokeMethod<void>('cancelIds', {'ids': ids});
   }
 
+  /// Cancels AlarmManager entries without clearing an on-screen banner.
+  static Future<void> cancelAlarmsOnly(List<int> ids) async {
+    if (!isAndroid || ids.isEmpty) return;
+    await channel.invokeMethod<void>('cancelAlarmsOnly', {'ids': ids});
+  }
+
   static Future<void> cancelAll() async {
     if (!isAndroid) return;
     await channel.invokeMethod<void>('cancelAll');
   }
 
-  static Future<void> show({
+  /// Returns false when the OS rejected the banner (permission / OEM block).
+  static Future<bool> show({
     required int id,
     required String title,
     required String message,
     String? payload,
   }) async {
-    if (!isAndroid) return;
-    await channel.invokeMethod<void>('show', {
+    if (!isAndroid) return false;
+    final posted = await channel.invokeMethod<bool>('show', {
       'id': id,
       'title': title,
       'message': message,
       'payload': payload,
     });
+    return posted == true;
   }
 
   static Future<DateTime> scheduleTest({
@@ -169,6 +191,29 @@ class NativeReminderScheduler {
   static Future<void> openAppDetails() async {
     if (!isAndroid) return;
     await channel.invokeMethod<void>('openAppDetails');
+  }
+
+  static Future<List<FiredReminderNotice>> consumeFired() async {
+    if (!isAndroid) return const [];
+    final raw = await channel.invokeMethod<List<dynamic>>('consumeFired');
+    if (raw == null) return const [];
+    final notices = <FiredReminderNotice>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final fireAt = item['fireAt'];
+      if (fireAt is! num) continue;
+      final type = (item['type'] ?? item['payload'])?.toString() ?? '';
+      if (type.isEmpty) continue;
+      notices.add(
+        FiredReminderNotice(
+          type: type,
+          title: item['title']?.toString() ?? '',
+          message: item['message']?.toString() ?? '',
+          fireAtMillis: fireAt.toInt(),
+        ),
+      );
+    }
+    return notices;
   }
 
   static Future<String?> consumeLaunchPayload() async {

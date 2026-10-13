@@ -11,8 +11,10 @@ import 'package:obecno/features/auth/providers/permission_provider.dart';
 import 'package:obecno/features/more/data/models/employee_profile_model.dart';
 import 'package:obecno/features/more/providers/profile_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/demo/location_flags/presentation/location_flag_demo_screen.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 
 class AccountSetting extends StatefulWidget {
   const AccountSetting({super.key});
@@ -53,6 +55,9 @@ class _AccountSettingState extends State<AccountSetting> {
       body: Padding(
         padding: AppSizes.horizontalOnly(context),
         child: ShimmerRefreshIndicator(
+          instagramStyle: true,
+          triggerFraction: 0.40,
+          showOrb: false,
           onRefresh: () async {
             await authProvider.refreshWorkspaceFromNetwork();
             await profileProvider.loadProfile();
@@ -119,6 +124,20 @@ class _AccountSettingState extends State<AccountSetting> {
                     )
                   else
                     _content(profile),
+
+                  const SizedBox(height: 24),
+                  MyButton(
+                    buttonText: 'Demo Attendance',
+                    backgroundColor: kBlack,
+                    fontColor: kWhite,
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LocationFlagDemoScreen(),
+                        ),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 30),
                   const Divider(color: kBorderColor, height: 1),

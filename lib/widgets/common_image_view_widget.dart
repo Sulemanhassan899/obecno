@@ -82,8 +82,8 @@ class CommonImageView extends StatelessWidget {
       return (width: null, height: null);
     }
     final ratio = MediaQuery.devicePixelRatioOf(context);
-    final pxWidth = hasWidth ? (logicalWidth! * ratio).round() : 0;
-    final pxHeight = hasHeight ? (logicalHeight! * ratio).round() : 0;
+    final pxWidth = hasWidth ? (logicalWidth * ratio).round() : 0;
+    final pxHeight = hasHeight ? (logicalHeight * ratio).round() : 0;
     final maxSide = pxWidth >= pxHeight ? pxWidth : pxHeight;
     if (maxSide <= 0) {
       return (width: null, height: null);

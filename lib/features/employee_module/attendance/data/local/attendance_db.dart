@@ -14,6 +14,8 @@ class AttendanceDb {
   static const String reminderPunchesTable = 'reminder_punches';
   static const String reminderDayStateTable = 'reminder_day_state';
   static const String reminderDeliveriesTable = 'reminder_deliveries';
+  static const String reminderNotificationHistoryTable =
+      'reminder_notification_history';
 
   Database? _db;
 
@@ -32,7 +34,9 @@ class AttendanceDb {
   // v6: persist leave/holiday flags so On Leave rows survive cache restore.
   // v7: reminder punches, clock status, and delivery rows for later API sync.
   // v12: drop location-flag, premises-alert, and smart-attendance tables.
-  static const int _dbVersion = 12;
+  // v13: keep shown reminder notifications (date + time) for offline alerts.
+  // v14: multiple deliveries of the same reminder type per day (no overwrite).
+  static const int _dbVersion = 14;
 
   Future<Database> _open() async {
     final dbDir = await getDatabasesPath();
@@ -47,6 +51,7 @@ class AttendanceDb {
         await _createReminderTables(db);
         await _addLeaveColumns(db);
         await _createReminderSyncTables(db);
+        await _createReminderHistoryTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -81,8 +86,47 @@ class AttendanceDb {
           await db.execute('DROP TABLE IF EXISTS premises_alerts');
           await db.execute('DROP TABLE IF EXISTS smart_attendance_alerts');
         }
+        if (oldVersion < 13) {
+          await _createReminderHistoryTable(db);
+        }
+        if (oldVersion < 14) {
+          await _migrateDeliveriesAllowMultiple(db);
+        }
       },
     );
+  }
+
+  /// Old PK was (user_id, date, reminder_type) so a second break/check-in
+  /// same day replaced the first. Re-key on scheduled_at as well.
+  Future<void> _migrateDeliveriesAllowMultiple(Database db) async {
+    await db.execute(
+      'ALTER TABLE $reminderDeliveriesTable RENAME TO reminder_deliveries_old',
+    );
+    await db.execute('''
+      CREATE TABLE $reminderDeliveriesTable (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        reminder_type TEXT NOT NULL,
+        scheduled_at TEXT NOT NULL,
+        delivered_at TEXT NOT NULL,
+        clock_status TEXT,
+        title TEXT,
+        message TEXT,
+        synced INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, date, reminder_type, scheduled_at)
+      )
+    ''');
+    await db.execute('''
+      INSERT OR IGNORE INTO $reminderDeliveriesTable (
+        user_id, date, reminder_type, scheduled_at, delivered_at,
+        clock_status, title, message, synced
+      )
+      SELECT
+        user_id, date, reminder_type, scheduled_at, delivered_at,
+        clock_status, title, message, synced
+      FROM reminder_deliveries_old
+    ''');
+    await db.execute('DROP TABLE IF EXISTS reminder_deliveries_old');
   }
 
   Future<void> _createReminderTables(Database db) async {
@@ -181,7 +225,7 @@ class AttendanceDb {
         title TEXT,
         message TEXT,
         synced INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (user_id, date, reminder_type)
+        PRIMARY KEY (user_id, date, reminder_type, scheduled_at)
       )
     ''');
 
@@ -256,6 +300,46 @@ class AttendanceDb {
         synced_at TEXT,
         PRIMARY KEY (month, user_id)
       )
+    ''');
+  }
+
+  Future<void> _createReminderHistoryTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $reminderNotificationHistoryTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        fired_at TEXT NOT NULL,
+        reminder_type TEXT NOT NULL,
+        title TEXT,
+        message TEXT
+      )
+    ''');
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reminder_history_identity '
+      'ON $reminderNotificationHistoryTable(user_id, reminder_type, fired_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_reminder_history_user_date '
+      'ON $reminderNotificationHistoryTable(user_id, date)',
+    );
+    await db.execute('''
+      INSERT OR IGNORE INTO $reminderNotificationHistoryTable (
+        user_id, date, fired_at, reminder_type, title, message
+      )
+      SELECT user_id, date, fired_at, reminder_type, title, message
+      FROM $reminderLogsTable
+      WHERE fired_at IS NOT NULL AND fired_at != ''
+    ''');
+    await db.execute('''
+      INSERT OR IGNORE INTO $reminderNotificationHistoryTable (
+        user_id, date, fired_at, reminder_type, title, message
+      )
+      SELECT user_id, date,
+        COALESCE(NULLIF(scheduled_at, ''), delivered_at),
+        reminder_type, title, message
+      FROM $reminderDeliveriesTable
+      WHERE COALESCE(NULLIF(scheduled_at, ''), delivered_at) IS NOT NULL
     ''');
   }
 

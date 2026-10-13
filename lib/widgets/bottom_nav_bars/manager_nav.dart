@@ -56,13 +56,18 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   int selectedIndex = 0;
   String? _attendanceStatusFilter;
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
+  final GlobalKey<ManagerAttendanceScreenState> _attendanceKey =
+      GlobalKey<ManagerAttendanceScreenState>();
+  final GlobalKey<AlertsScreenState> _alertsKey = GlobalKey<AlertsScreenState>();
+  final GlobalKey<ProfileSettingsScreenState> _moreKey =
+      GlobalKey<ProfileSettingsScreenState>();
 
   late final List<Widget> screens = [
     const OverviewScreen(),
     ClockScreen(key: _clockKey),
-    const ManagerAttendanceScreen(),
-    const AlertsScreen(),
-    const ProfileSettingsScreen(),
+    ManagerAttendanceScreen(key: _attendanceKey),
+    AlertsScreen(key: _alertsKey),
+    ProfileSettingsScreen(key: _moreKey),
   ];
 
   @override
@@ -122,15 +127,23 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     if (index == 3) {
       context.read<AlertsProvider>().markAlertsSeen();
     }
-    if (index == 2 && previousIndex != 2) {
+    if (index == previousIndex) return;
+    if (index == 2) {
       unawaited(context.read<ManagerAttendanceProvider>().load());
     }
-    if (index == 1 && previousIndex != 1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _clockKey.currentState?.notifyTabResumed();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (index) {
+        case 1:
+          _clockKey.currentState?.notifyTabResumed();
+        case 2:
+          _attendanceKey.currentState?.playEntranceAnimation();
+        case 3:
+          _alertsKey.currentState?.playEntranceAnimation();
+        case 4:
+          _moreKey.currentState?.playEntranceAnimation();
+      }
+    });
   }
 
   final List<Map<String, dynamic>> items = [

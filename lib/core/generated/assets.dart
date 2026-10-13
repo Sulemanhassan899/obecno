@@ -171,6 +171,10 @@ class Assets {
   /// assets/images/info.png
   static const String imagesInfo = "assets/images/info.png";
 
+  /// Assets for imagesInfoCircle
+  /// assets/images/info_circle.png
+  static const String imagesInfoCircle = "assets/images/info_circle.png";
+
   /// Assets for imagesKey
   /// assets/images/key.png
   static const String imagesKey = "assets/images/key.png";
@@ -214,6 +218,19 @@ class Assets {
   /// Assets for imagesJoinLeaves
   /// assets/images/join_leaves.png
   static const String imagesJoinLeaves = "assets/images/join_leaves.png";
+
+  /// Assets for imagesLeaveIcon
+  /// assets/images/leave_icon.png
+  static const String imagesLeaveIcon = "assets/images/leave_icon.png";
+
+  /// Assets for imagesLeavesBgIcon
+  /// assets/images/leaves_bg_icon.png
+  static const String imagesLeavesBgIcon = "assets/images/leaves_bg_icon.png";
+
+  /// Assets for imagesLeavesFilledIcon
+  /// assets/images/leaves_filled_icon.png
+  static const String imagesLeavesFilledIcon =
+      "assets/images/leaves_filled_icon.png";
 
   /// Assets for imagesLogout
   /// assets/images/logout.png

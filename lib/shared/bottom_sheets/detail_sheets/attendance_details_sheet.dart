@@ -32,6 +32,9 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart'
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
+import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_timeline_cards.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 
 class AttendanceDetailsSheet {
@@ -166,7 +169,12 @@ class _AttendanceDetailsSheetBodyState
           setState(() {
             _events = assembled.punches;
             _pendingAddEvents = assembled.pendingAdds;
-            _summary = HistoryAttendanceEngine.compute(assembled.punches);
+            // Header = earliest check-in / latest check-out across real
+            // punches and pending add cards (e.g. 12:12 AM – 11:00 PM).
+            _summary = HistoryAttendanceEngine.compute([
+              ...assembled.punches,
+              ...assembled.pendingAdds,
+            ]);
             _attendanceId = data.attendanceId;
             _loadingDetails = false;
           });
@@ -187,7 +195,10 @@ class _AttendanceDetailsSheetBodyState
     setState(() {
       _events = withLocal.punches;
       _pendingAddEvents = withLocal.pendingAdds;
-      _summary = HistoryAttendanceEngine.compute(withLocal.punches);
+      _summary = HistoryAttendanceEngine.compute([
+        ...withLocal.punches,
+        ...withLocal.pendingAdds,
+      ]);
       _loadingDetails = false;
     });
     await _syncReminders();
@@ -284,45 +295,35 @@ class _AttendanceDetailsSheetBodyState
       TimeOfDay(hour: dt.hour, minute: dt.minute);
 
   String? get _firstCheckInLocation {
+    final target = _summary.firstCheckIn;
     for (final e in HistoryAttendanceEngine.sortedOldestFirst(_events)) {
-      if (e.type == AttendanceHisotryEventType.checkIn) return e.location;
+      if (e.type != AttendanceHisotryEventType.checkIn) continue;
+      if (target != null &&
+          (e.time.hour != target.hour || e.time.minute != target.minute)) {
+        continue;
+      }
+      return e.location;
     }
     return null;
   }
 
   String? get _lastCheckOutLocation {
+    final target = _summary.lastCheckOut;
     String? location;
     for (final e in HistoryAttendanceEngine.sortedOldestFirst(_events)) {
-      if (e.type == AttendanceHisotryEventType.checkOut) location = e.location;
+      if (e.type != AttendanceHisotryEventType.checkOut) continue;
+      if (target != null &&
+          e.time.hour == target.hour &&
+          e.time.minute == target.minute) {
+        return e.location;
+      }
+      location = e.location;
     }
     return location;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Chronological pass so edit-sheet IDs map to earliest in / latest out.
-    HistoryAttendanceEvent? checkIn;
-    HistoryAttendanceEvent? checkOut;
-    HistoryAttendanceEvent? breakIn;
-    HistoryAttendanceEvent? breakOut;
-
-    for (final e in HistoryAttendanceEngine.sortedOldestFirst(_events)) {
-      switch (e.type) {
-        case AttendanceHisotryEventType.checkIn:
-          checkIn ??= e;
-          break;
-        case AttendanceHisotryEventType.checkOut:
-          checkOut = e;
-          break;
-        case AttendanceHisotryEventType.breakStart:
-          breakOut ??= e;
-          break;
-        case AttendanceHisotryEventType.breakEnd:
-          breakIn ??= e;
-          break;
-      }
-    }
-
     // Base list is newest-first; Sort by → Oldest first reverses into sequence.
     final timeline = HistoryAttendanceEngine.sortedNewestFirst([
       ..._events,
@@ -344,6 +345,8 @@ class _AttendanceDetailsSheetBodyState
     final knownLocations = bindings.authProvider.locations
         .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
         .toList();
+    final leaveEvents =
+        LeavesMockStore.instance.timelineEventsForDay(widget.day);
 
     return ConstrainedBox(
       constraints: AppSheetSize.constraintsOf(context),
@@ -386,7 +389,9 @@ class _AttendanceDetailsSheetBodyState
                         padding: EdgeInsets.symmetric(vertical: 80),
                         child: Center(child: ShimmerProgress()),
                       )
-                    : timeline.isEmpty && _reminderLogs.isEmpty
+                    : timeline.isEmpty &&
+                          _reminderLogs.isEmpty &&
+                          leaveEvents.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 32,
@@ -552,6 +557,23 @@ class _AttendanceDetailsSheetBodyState
                           const SizedBox(height: 14),
 
                           ..._timelineChildren(timeline),
+                          if (leaveEvents.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: LeaveTimelineCards(
+                                events: leaveEvents,
+                                onTapRequested: (event) {
+                                  final request = LeavesMockStore.instance
+                                      .requestForTimelineEvent(event.id);
+                                  if (request == null) return;
+                                  LeaveDetailSheet.show(
+                                    context,
+                                    requestId: request.id,
+                                    headerDate: widget.day,
+                                  );
+                                },
+                              ),
+                            ),
                         ],
                       ),
               ),
@@ -589,10 +611,12 @@ class _AttendanceDetailsSheetBodyState
                       for (final e in allEvents) {
                         switch (e.type) {
                           case AttendanceHisotryEventType.checkIn:
+                            // Earliest check-in of the day.
                             editCheckIn ??= e;
                             break;
                           case AttendanceHisotryEventType.checkOut:
-                            editCheckOut ??= e;
+                            // Latest check-out of the day.
+                            editCheckOut = e;
                             break;
                           case AttendanceHisotryEventType.breakStart:
                             editBreakOut ??= e;
@@ -694,11 +718,12 @@ class _AttendanceDetailsSheetBodyState
 
   Widget _location(String text, {bool isRight = false}) {
     return Row(
+      mainAxisAlignment:
+          isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
       children: [
-        if (!isRight)
-          CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
-        if (!isRight) const SizedBox(width: 6),
-        Expanded(
+        CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
+        const SizedBox(width: 6),
+        Flexible(
           child: AppText.caption(
             text,
             color: kGreyColor,
@@ -708,9 +733,6 @@ class _AttendanceDetailsSheetBodyState
             align: isRight ? TextAlign.right : TextAlign.left,
           ),
         ),
-        if (isRight) const SizedBox(width: 6),
-        if (isRight)
-          CommonImageView(imagePath: Assets.imagesLocationDot, height: 12),
       ],
     );
   }

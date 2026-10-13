@@ -388,6 +388,8 @@ class AppBindings {
         smartAttendanceService.syncWithToggles;
     reminderSettingsProvider.onSmartAttendanceEvaluate =
         () => smartAttendanceService.evaluate(reason: 'toggle_on');
+    reminderSettingsProvider.onReminderAlertWritten =
+        alertsProvider.flagUnseenFromReminder;
     if (_wasAuthenticated) {
       smartAttendanceService.syncWithToggles();
     }

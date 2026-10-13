@@ -44,13 +44,14 @@ internal object AttendanceNotifier {
         manager.createNotificationChannel(channel)
     }
 
+    /** Returns true when the system accepted the notification. */
     fun show(
         context: Context,
         id: Int,
         title: String,
         message: String,
         payload: String?,
-    ) {
+    ): Boolean {
         val app = context.applicationContext
         ensureChannel(app)
         val nm = NotificationManagerCompat.from(app)
@@ -82,16 +83,19 @@ internal object AttendanceNotifier {
                 .setColor(color)
                 .setContentIntent(contentIntent)
                 .build()
-        try {
+        return try {
             nm.notify(id, notification)
             Log.i(
                 TAG,
                 "Posted id=$id title=$title enabled=${nm.areNotificationsEnabled()}",
             )
+            true
         } catch (error: SecurityException) {
             Log.e(TAG, "POST_NOTIFICATIONS missing for id=$id", error)
+            false
         } catch (error: Exception) {
             Log.e(TAG, "Failed to post id=$id", error)
+            false
         }
     }
 

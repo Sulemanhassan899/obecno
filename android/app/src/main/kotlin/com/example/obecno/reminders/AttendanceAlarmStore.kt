@@ -96,6 +96,39 @@ internal class AttendanceAlarmStore(context: Context) {
         }
     }
 
+    fun appendFired(alarm: StoredAlarm) {
+        if (alarm.isTest) return
+        val existing = loadFired()
+        if (existing.any { it.type == alarm.type && it.fireAt == alarm.fireAt }) return
+        saveFired(existing + alarm)
+    }
+
+    fun consumeFired(): List<StoredAlarm> {
+        val fired = loadFired()
+        prefs.edit().remove(FIRED_KEY).apply()
+        return fired
+    }
+
+    private fun loadFired(): List<StoredAlarm> {
+        val raw = prefs.getString(FIRED_KEY, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            buildList(array.length()) {
+                for (i in 0 until array.length()) {
+                    add(StoredAlarm.fromJson(array.getJSONObject(i)))
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveFired(alarms: List<StoredAlarm>) {
+        val array = JSONArray()
+        alarms.forEach { array.put(it.toJson()) }
+        prefs.edit().putString(FIRED_KEY, array.toString()).apply()
+    }
+
     fun consumeLaunchPayload(): String? {
         val payload = prefs.getString(LAUNCH_KEY, null)
         if (!payload.isNullOrEmpty()) {
@@ -116,6 +149,7 @@ internal class AttendanceAlarmStore(context: Context) {
         const val TEST_ID = 7399
         private const val PREFS = "obecno_attendance_alarms"
         private const val KEY = "alarms"
+        private const val FIRED_KEY = "fired_notifications"
         private const val LAUNCH_KEY = "launch_payload"
     }
 }

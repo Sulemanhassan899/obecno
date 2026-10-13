@@ -167,26 +167,31 @@ class ReminderDao {
   }) async {
     if (userId.isEmpty) return;
     final db = await _db.database;
+    final firedAt = log.firedAt.toIso8601String();
+    // Same type + same fire time → keep one. A later firing of the same
+    // type (second break, another check-in day-part, etc.) is inserted.
     final existing = await db.query(
       AttendanceDb.reminderLogsTable,
       columns: ['id'],
-      where: 'user_id = ? AND date = ? AND reminder_type = ?',
-      whereArgs: [userId, _dateKey(date), log.type.storageKey],
+      where:
+          'user_id = ? AND date = ? AND reminder_type = ? AND fired_at = ?',
+      whereArgs: [userId, _dateKey(date), log.type.storageKey, firedAt],
       limit: 1,
     );
     if (existing.isNotEmpty) {
       await db.update(
         AttendanceDb.reminderLogsTable,
         {
-          'fired_at': log.firedAt.toIso8601String(),
           'title': log.title,
           'message': log.message,
           'clock_status': log.clockStatus,
+          'delivered_at': log.deliveredAt?.toIso8601String(),
           'synced': 0,
         },
-        where: 'user_id = ? AND date = ? AND reminder_type = ?',
-        whereArgs: [userId, _dateKey(date), log.type.storageKey],
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
       );
+      await _archiveShownNotification(userId: userId, date: date, log: log);
       return;
     }
 
@@ -194,13 +199,82 @@ class ReminderDao {
       'user_id': userId,
       'date': _dateKey(date),
       'reminder_type': log.type.storageKey,
-      'fired_at': log.firedAt.toIso8601String(),
+      'fired_at': firedAt,
       'title': log.title,
       'message': log.message,
       'clock_status': log.clockStatus,
       'delivered_at': log.deliveredAt?.toIso8601String(),
       'synced': log.synced ? 1 : 0,
     });
+    await _archiveShownNotification(userId: userId, date: date, log: log);
+  }
+
+  /// Offline copy of a reminder that was shown. Date is the calendar day and
+  /// [ReminderLog.firedAt] is the time. Kept even if the live log is pruned.
+  Future<void> _archiveShownNotification({
+    required String userId,
+    required DateTime date,
+    required ReminderLog log,
+  }) async {
+    if (userId.isEmpty) return;
+    final firedAt = log.firedAt.toIso8601String();
+    if (firedAt.isEmpty) return;
+    final db = await _db.database;
+    await db.insert(
+      AttendanceDb.reminderNotificationHistoryTable,
+      {
+        'user_id': userId,
+        'date': _dateKey(date),
+        'fired_at': firedAt,
+        'reminder_type': log.type.storageKey,
+        'title': log.title,
+        'message': log.message,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> saveShownNotification({
+    required String userId,
+    required DateTime date,
+    required ReminderLog log,
+  }) {
+    return _archiveShownNotification(userId: userId, date: date, log: log);
+  }
+
+  Future<List<ReminderLog>> loadShownNotifications({
+    required String userId,
+    required DateTime month,
+  }) async {
+    if (userId.isEmpty) return const [];
+    final db = await _db.database;
+    final prefix =
+        '${month.year.toString().padLeft(4, '0')}-'
+        '${month.month.toString().padLeft(2, '0')}-';
+    final rows = await db.query(
+      AttendanceDb.reminderNotificationHistoryTable,
+      where: 'user_id = ? AND date LIKE ?',
+      whereArgs: [userId, '$prefix%'],
+      orderBy: 'fired_at DESC',
+    );
+    final logs = <ReminderLog>[];
+    for (final row in rows) {
+      final type = ReminderType.fromStorageKey(
+        row['reminder_type']?.toString() ?? '',
+      );
+      if (type == null) continue;
+      final firedAt = DateTime.tryParse(row['fired_at']?.toString() ?? '');
+      if (firedAt == null) continue;
+      logs.add(
+        ReminderLog(
+          type: type,
+          firedAt: firedAt,
+          title: row['title']?.toString() ?? '',
+          message: row['message']?.toString() ?? '',
+        ),
+      );
+    }
+    return logs;
   }
 
   Future<void> deleteLogsOfTypes({
@@ -467,6 +541,7 @@ class ReminderDao {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    await _archiveShownNotification(userId: userId, date: date, log: log);
   }
 
   Future<void> clearDelivered({
@@ -481,6 +556,29 @@ class ReminderDao {
       where: 'user_id = ? AND date = ? AND reminder_type = ?',
       whereArgs: [userId, _dateKey(date), type.storageKey],
     );
+  }
+
+  /// Keys like `break_time|1710000000000` — one per scheduled firing.
+  Future<Set<String>> loadDeliveredKeys({
+    required String userId,
+    required DateTime date,
+  }) async {
+    if (userId.isEmpty) return {};
+    final db = await _db.database;
+    final rows = await db.query(
+      AttendanceDb.reminderDeliveriesTable,
+      columns: ['reminder_type', 'scheduled_at'],
+      where: 'user_id = ? AND date = ?',
+      whereArgs: [userId, _dateKey(date)],
+    );
+    final keys = <String>{};
+    for (final row in rows) {
+      final type = row['reminder_type']?.toString() ?? '';
+      final scheduled = DateTime.tryParse(row['scheduled_at']?.toString() ?? '');
+      if (type.isEmpty || scheduled == null) continue;
+      keys.add('$type|${scheduled.millisecondsSinceEpoch}');
+    }
+    return keys;
   }
 
   Future<void> persistMissingSettings({

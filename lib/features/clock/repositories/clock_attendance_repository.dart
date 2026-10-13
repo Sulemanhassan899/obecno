@@ -147,13 +147,14 @@ class AttendanceRepository {
           _client,
         ).getAttendanceDetails(date: today, cancelToken: cancelToken);
         if (details.success && details.data != null) {
+          // Keep every same-day server punch for live clock state — including
+          // real early-morning times (e.g. 12:12 AM). Mint/pending-add hiding
+          // belongs to timeline/edit UI, not Check In / Check Out sync.
           final events =
               details.data!
                   .toClockEvents()
                   .where(
-                    (e) =>
-                        _isSameCalendarDay(e.effectiveTime, todayDate) &&
-                        !AttendanceEditRequest.isPlaceholderMint(e.time),
+                    (e) => _isSameCalendarDay(e.effectiveTime, todayDate),
                   )
                   .toList()
                 ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
@@ -217,57 +218,25 @@ class AttendanceRepository {
           '${events.length} today event(s) from attendance_details '
           '(${detailsRaw.length} raw row(s))',
         );
-        return events;
+        // Portal/overview often exposes live open sessions via top-level
+        // checkin while details rows use unrecognized type/time keys.
+        // Never return an empty parse here — fall through to summary fields.
+        if (events.isNotEmpty) return events;
+        debugPrint(
+          '[AttendanceRepository] fetchTodayEvents: details rows did not '
+          'parse — falling through to summary checkin/checkout',
+        );
       }
 
-      final sessionsRaw =
-          container['today_sessions'] ?? todayAttendanceMap?['today_sessions'];
-      final List<Map> sessionMaps;
-      if (sessionsRaw is List && sessionsRaw.isNotEmpty) {
-        sessionMaps = sessionsRaw.whereType<Map>().toList();
-      } else if (todayAttendanceMap != null) {
-        sessionMaps = [todayAttendanceMap];
-      } else if (container.containsKey('checkin') ||
-          container.containsKey('checkout')) {
-        sessionMaps = [container];
-      } else {
-        sessionMaps = const [];
-      }
-
-      if (sessionMaps.isEmpty) return const [];
-
-      final events = <AttendanceEvent>[];
-
-      for (final session in sessionMaps) {
-        final sessionLocation = _dayLevelLocation(session);
-
-        void addIfPresent(dynamic raw, AttendanceEventType type) {
-          final parsed = _parseTimeOfDay(raw?.toString(), day: todayDate);
-          if (parsed == null) return;
-          if (!_isSameCalendarDay(parsed, todayDate)) return;
-          events.add(
-            AttendanceEvent(
-              id: 'server_${type.name}_${parsed.microsecondsSinceEpoch}',
-              type: type,
-              time: parsed,
-              location: sessionLocation,
-            ),
-          );
-        }
-
-        addIfPresent(session['checkin'], AttendanceEventType.checkIn);
-        addIfPresent(session['breakout'], AttendanceEventType.breakStart);
-        addIfPresent(session['breakin'], AttendanceEventType.breakEnd);
-        addIfPresent(session['checkout'], AttendanceEventType.checkOut);
-      }
-
-      events.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
-
+      final events = _eventsFromSummarySessions(
+        container: container,
+        todayAttendance: todayAttendanceMap,
+        todayDate: todayDate,
+      );
       debugPrint(
         '[AttendanceRepository] fetchTodayEvents: parsed ${events.length} '
-        'event(s) from ${sessionMaps.length} session(s)',
+        'event(s) from summary sessions',
       );
-
       return events;
     } catch (e) {
       debugPrint('[AttendanceRepository] fetchTodayEvents: failed -> $e');
@@ -340,8 +309,102 @@ class AttendanceRepository {
     return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
+  /// Same summary fields the portal/manager dashboard uses when details
+  /// rows are missing or unparseable (open session still has `checkin`).
+  List<AttendanceEvent> _eventsFromSummarySessions({
+    required Map<String, dynamic> container,
+    required Map<String, dynamic>? todayAttendance,
+    required DateTime todayDate,
+  }) {
+    final sessionsRaw =
+        container['today_sessions'] ?? todayAttendance?['today_sessions'];
+    final List<Map> sessionMaps;
+    if (sessionsRaw is List && sessionsRaw.isNotEmpty) {
+      sessionMaps = sessionsRaw.whereType<Map>().toList();
+    } else if (todayAttendance != null) {
+      sessionMaps = [todayAttendance];
+    } else if (_hasSummaryPunchFields(container)) {
+      sessionMaps = [container];
+    } else {
+      sessionMaps = const [];
+    }
+
+    if (sessionMaps.isEmpty) return const [];
+
+    final events = <AttendanceEvent>[];
+    for (final session in sessionMaps) {
+      final sessionLocation = _dayLevelLocation(session);
+
+      void addIfPresent(dynamic raw, AttendanceEventType type) {
+        final parsed = _parseTimeOfDay(raw?.toString(), day: todayDate);
+        if (parsed == null) return;
+        if (!_isSameCalendarDay(parsed, todayDate)) return;
+        events.add(
+          AttendanceEvent(
+            id: 'server_${type.name}_${parsed.microsecondsSinceEpoch}',
+            type: type,
+            time: parsed,
+            location: sessionLocation,
+          ),
+        );
+      }
+
+      addIfPresent(
+        session['checkin'] ??
+            session['check_in'] ??
+            session['check_in_time'] ??
+            session['first_check_in'] ??
+            session['clock_in'],
+        AttendanceEventType.checkIn,
+      );
+      addIfPresent(
+        session['breakout'] ?? session['break_out'] ?? session['break_start'],
+        AttendanceEventType.breakStart,
+      );
+      addIfPresent(
+        session['breakin'] ?? session['break_in'] ?? session['break_end'],
+        AttendanceEventType.breakEnd,
+      );
+      addIfPresent(
+        session['checkout'] ??
+            session['check_out'] ??
+            session['check_out_time'] ??
+            session['last_check_out'] ??
+            session['clock_out'],
+        AttendanceEventType.checkOut,
+      );
+    }
+
+    events.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
+    return events;
+  }
+
+  bool _hasSummaryPunchFields(Map<String, dynamic> map) {
+    const keys = [
+      'checkin',
+      'check_in',
+      'check_in_time',
+      'first_check_in',
+      'clock_in',
+      'checkout',
+      'check_out',
+      'check_out_time',
+      'last_check_out',
+      'clock_out',
+      'breakout',
+      'break_out',
+      'breakin',
+      'break_in',
+    ];
+    return keys.any(map.containsKey);
+  }
+
   AttendanceEvent? _eventFromDetail(Map<String, dynamic> detail) {
-    final type = _eventTypeFromApiType(detail['type']?.toString());
+    final type = _eventTypeFromApiType(
+      detail['type']?.toString() ??
+          detail['action']?.toString() ??
+          detail['event']?.toString(),
+    );
     if (type == null) return null;
 
     final time = _parseDetailTimestamp(detail);
@@ -365,18 +428,33 @@ class AttendanceRepository {
   }
 
   AttendanceEventType? _eventTypeFromApiType(String? raw) {
-    switch (raw?.trim().toLowerCase()) {
+    final normalized = raw
+        ?.trim()
+        .toLowerCase()
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ');
+    switch (normalized) {
       case 'check in':
       case 'checkin':
+      case 'clock in':
+      case 'clockin':
+      case 'in':
         return AttendanceEventType.checkIn;
       case 'check out':
       case 'checkout':
+      case 'clock out':
+      case 'clockout':
+      case 'out':
         return AttendanceEventType.checkOut;
       case 'break out':
       case 'breakout':
+      case 'break start':
+      case 'breakstart':
         return AttendanceEventType.breakStart;
       case 'break in':
       case 'breakin':
+      case 'break end':
+      case 'breakend':
         return AttendanceEventType.breakEnd;
       default:
         return null;
@@ -384,31 +462,42 @@ class AttendanceRepository {
   }
 
   DateTime? _parseDetailTimestamp(Map<String, dynamic> detail) {
-    final timeStr = detail['attendance_time']?.toString();
-    if (timeStr != null && timeStr.trim().isNotEmpty) {
-      final dateStr = detail['attendance_date']?.toString();
-      final datePart = (dateStr != null && dateStr.trim().isNotEmpty)
-          ? DateTime.tryParse(dateStr.trim())
-          : null;
-      final base = datePart ?? DateTime.now();
+    final dateStr = detail['attendance_date']?.toString();
+    final datePart = (dateStr != null && dateStr.trim().isNotEmpty)
+        ? DateTime.tryParse(dateStr.trim())
+        : null;
+    final base = datePart ?? DateTime.now();
+
+    for (final key in const [
+      'attendance_time',
+      'time',
+      'punch_time',
+      'clock_time',
+    ]) {
+      final timeStr = detail[key]?.toString();
+      if (timeStr == null || timeStr.trim().isEmpty) continue;
       final wall = _parseTimeOfDay(timeStr, day: base);
       if (wall != null) return wall;
     }
 
-    final iso = detail['occurred_at_iso']?.toString();
-    if (iso != null && iso.trim().isNotEmpty) {
-      final parsed = DateTime.tryParse(iso.trim());
-      if (parsed != null) {
-        final local = parsed.toLocal();
-        return DateTime(
-          local.year,
-          local.month,
-          local.day,
-          local.hour,
-          local.minute,
-          local.second,
-        );
-      }
+    DateTime? asLocalWall(DateTime parsed) {
+      final local = parsed.toLocal();
+      return DateTime(
+        local.year,
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+        local.second,
+      );
+    }
+
+    for (final key in const ['occurred_at_iso', 'occurred_at', 'created_at']) {
+      final iso = detail[key]?.toString();
+      if (iso == null || iso.trim().isEmpty) continue;
+      final normalized = iso.contains('T') ? iso : iso.replaceFirst(' ', 'T');
+      final parsed = DateTime.tryParse(normalized.trim());
+      if (parsed != null) return asLocalWall(parsed);
     }
 
     return null;
@@ -447,13 +536,12 @@ class AttendanceRepository {
       // Accept any known attendance payload shape:
       // - history wrapper with today_attendance / today_sessions / history
       // - day object with attendance_details (POST/GET details response)
-      // - flat single-session fields (checkin / checkout)
+      // - flat single-session fields (checkin / checkout / aliases)
       if (map.containsKey('today_attendance') ||
           map.containsKey('attendance_details') ||
           map.containsKey('today_sessions') ||
           map.containsKey('history') ||
-          map.containsKey('checkin') ||
-          map.containsKey('checkout')) {
+          _hasSummaryPunchFields(map)) {
         return map;
       }
 

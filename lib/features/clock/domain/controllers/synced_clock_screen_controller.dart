@@ -55,6 +55,9 @@ class SyncedClockScreenController extends ClockScreenController {
       unawaited(reconcileWithServer());
     };
     this.trustedTime?.addListener(_onTrustedTimeChanged);
+    _maxSessionTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      unawaited(_runMaxSessionAutoCheckout());
+    });
     unawaited(_bootstrap());
   }
 
@@ -65,30 +68,74 @@ class SyncedClockScreenController extends ClockScreenController {
 
   void _onTrustedTimeChanged() {
     if (!_isStale) notifyListeners();
+    unawaited(_runMaxSessionAutoCheckout());
+  }
+
+  /// 24h open-session limit: punch check-out (time + place) and sync it.
+  Future<void> _runMaxSessionAutoCheckout() async {
+    if (_isStale ||
+        _maxSessionSyncInFlight ||
+        _isHandlingTap ||
+        isProcessing ||
+        isCoolingDown) {
+      return;
+    }
+
+    _maxSessionSyncInFlight = true;
+    try {
+      trustedNetworkOnline = await bindings.networkChecker.isConnected;
+      if (_isStale) return;
+
+      // Best-effort GPS so the auto check-out carries a place; never block
+      // the punch if location is unavailable.
+      try {
+        await _validateGeofence();
+      } catch (_) {}
+      if (_isStale) return;
+
+      final previousEvents = List.of(events);
+      final result = await ensureMaxSessionAutoCheckout();
+      if (result != AttendanceActionResult.checkedOut || _isStale) return;
+
+      _captureRealLocationIfOutOfRange(result);
+      unawaited(_syncReminderLogs());
+      await _syncIfNeeded(result, previousEvents);
+    } finally {
+      _maxSessionSyncInFlight = false;
+    }
   }
 
   void _onSmartAttendanceChanged() {
     if (_isStale) return;
-    unawaited(_reloadEventsFromPrefs().then((_) {
-      if (!_isStale) notifyListeners();
-    }));
+    unawaited(
+      _reloadEventsFromPrefs().then((_) {
+        if (!_isStale) notifyListeners();
+      }),
+    );
   }
 
   Future<void> _bootstrap() async {
     await trustedTime?.ensureLogin(userId: userId, createIfMissing: false);
     if (_isStale) return;
-    if (trustedTime?.sessionEndedByReboot == true ||
-        trustedTime?.rebootDetected == true) {
-      isProcessing = false;
-      if (!_isStale) notifyListeners();
-      return;
-    }
+    // Prefs first, then server — otherwise restore can re-apply a ghost
+    // check-in after reconcile already cleared the live session.
+    await ensureEventsRestored();
+    if (_isStale) return;
+    // Reboot blocks issuing new punches, but we still reconcile so the
+    // button/card mirror the portal open session.
+    final rebootBlocked =
+        trustedTime?.sessionEndedByReboot == true ||
+        trustedTime?.rebootDetected == true;
     await _loadBreakDurationPolicy();
     await reconcileWithServer().whenComplete(() {
       if (!_isStale) {
         isProcessing = false;
         notifyListeners();
-        if (bindings.smartAttendanceService.isEnabled) {
+        // Reconcile may leave events unchanged (already Check In) while
+        // reminder SQL still says checked_in — always re-sync.
+        unawaited(_syncReminderLogs());
+        unawaited(_runMaxSessionAutoCheckout());
+        if (!rebootBlocked && bindings.smartAttendanceService.isEnabled) {
           unawaited(
             bindings.smartAttendanceService.evaluate(reason: 'clock_open'),
           );
@@ -163,6 +210,8 @@ class SyncedClockScreenController extends ClockScreenController {
   bool _locationManuallyChosen = false;
   String? nearbyLocationId;
   bool _smartAttendanceInFlight = false;
+  Timer? _maxSessionTimer;
+  bool _maxSessionSyncInFlight = false;
 
   /// Sheet pick: keep this office even if GPS currently matches another one.
   void markLocationChosenManually() {
@@ -296,8 +345,9 @@ class SyncedClockScreenController extends ClockScreenController {
 
   @override
   void dispose() {
-    bindings.smartAttendanceService
-        .removeListener(_onSmartAttendanceChanged);
+    _maxSessionTimer?.cancel();
+    _maxSessionTimer = null;
+    bindings.smartAttendanceService.removeListener(_onSmartAttendanceChanged);
     bindings.smartAttendanceService.clockScreenActive = false;
     trustedTime?.removeListener(_onTrustedTimeChanged);
     _localDisposed = true;
@@ -419,9 +469,26 @@ class SyncedClockScreenController extends ClockScreenController {
     );
   }
 
+  /// Push the live clock button state into reminder SQL / AlarmManager.
+  /// Empty events clear a stale "checked_in" day_state that blocked check-in.
+  Future<void> syncRemindersFromLiveClock() => _syncReminderLogs();
+
+  @override
+  Future<void> ensureEventsRestored() async {
+    await super.ensureEventsRestored();
+    await _syncReminderLogs();
+  }
+
   @override
   void restoreEvents(List<AttendanceEvent> snapshot) {
     super.restoreEvents(snapshot);
+    unawaited(_syncReminderLogs());
+    unawaited(_runMaxSessionAutoCheckout());
+  }
+
+  @override
+  void replaceLiveEvents(List<AttendanceEvent> next) {
+    super.replaceLiveEvents(next);
     unawaited(_syncReminderLogs());
   }
 
@@ -585,10 +652,7 @@ class SyncedClockScreenController extends ClockScreenController {
     required bool entered,
     required String locationName,
   }) async {
-    await _maybeSmartAttendance(
-      entered: entered,
-      locationName: locationName,
-    );
+    await _maybeSmartAttendance(entered: entered, locationName: locationName);
   }
 
   /// Smart Attendance auto check-in / premises notifications on geofence edge.
@@ -627,8 +691,7 @@ class SyncedClockScreenController extends ClockScreenController {
     try {
       final prefs = await SharedPreferences.getInstance();
       final now = clockNow;
-      final key =
-          'clock_events_${userId}_${now.year}-${now.month}-${now.day}';
+      final key = 'clock_events_${userId}_${now.year}-${now.month}-${now.day}';
       final raw = prefs.getString(key);
       if (raw == null || raw.isEmpty) return;
       final decoded = jsonDecode(raw);
@@ -717,18 +780,25 @@ class SyncedClockScreenController extends ClockScreenController {
 
     if (!succeeded) {
       if (_lastSubmitWasConflict) {
-        // Do NOT restore previous events (which would drop the local event).
-        // Let the reconcile handle merge.
-        await reconcileWithServer();
+        // Reconcile drops orphan local open sessions so the button matches
+        // the portal (fixes "Unable to check out… make sure you are checked in").
+        await reconcileWithServer(force: true);
+        if (action == AttendanceAction.checkOut) {
+          await _forceServerLiveSessionIfStillOpenLocally();
+        }
         blockNextAction = false;
         if (!_isStale) notifyListeners();
         return AttendanceActionResult.none;
       }
 
-      await reconcileWithServer();
+      await reconcileWithServer(force: true);
       return AttendanceActionResult.none;
     }
 
+    // Pull the full day after a successful punch so the attendance card keeps
+    // the day's earliest check-in when this device started from empty local
+    // state (e.g. re-check-in after a portal-only session).
+    await reconcileWithServer(force: true);
     return localResult;
   }
 
@@ -771,14 +841,29 @@ class SyncedClockScreenController extends ClockScreenController {
     try {
       debugPrint('[SyncedClockScreenController] reconcileWithServer: start');
       final today = clockNow;
-      final serverEvents = await _repository
-          .fetchTodayEvents(
-            cancelToken: bindings.authProvider.sessionCancelToken,
-            forDay: today,
-          )
-          .timeout(const Duration(seconds: 10));
+      final yesterday = today.subtract(const Duration(days: 1));
+      // Fetch yesterday too so an open overnight session (check-in before
+      // midnight) is not dropped when today's list is empty.
+      Future<List<AttendanceEvent>?> fetchDay(DateTime day) async {
+        try {
+          return await _repository
+              .fetchTodayEvents(
+                cancelToken: bindings.authProvider.sessionCancelToken,
+                forDay: day,
+              )
+              .timeout(const Duration(seconds: 10));
+        } on TimeoutException {
+          return null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      final serverToday = await fetchDay(today);
       if (_isStale) return false;
-      if (serverEvents == null) {
+      final serverYesterday = await fetchDay(yesterday);
+      if (_isStale) return false;
+      if (serverToday == null && serverYesterday == null) {
         debugPrint(
           '[SyncedClockScreenController] reconcileWithServer: no server '
           'events returned, keeping local state',
@@ -786,39 +871,44 @@ class SyncedClockScreenController extends ClockScreenController {
         return false;
       }
 
-      bool isToday(AttendanceEvent e) =>
-          e.effectiveTime.year == today.year &&
-          e.effectiveTime.month == today.month &&
-          e.effectiveTime.day == today.day;
+      final serverEvents = <AttendanceEvent>[
+        ...?serverYesterday,
+        ...?serverToday,
+      ];
 
-      // Clock UI must never mix other days into today's timeline.
-      final serverToday = serverEvents
-          .where(isToday)
-          .where(
-            (e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time),
-          )
-          .toList();
-      final localToday = events
-          .where(isToday)
-          .where(
-            (e) => !AttendanceTimelineAssembler.isHiddenPlaceholder(e.time),
-          )
-          .toList();
+      final localActive = events;
+      final localSummary = AttendanceEngine.compute(localActive);
 
-      final merged = serverToday.isEmpty
-          ? localToday
-          : _mergeWithLocal(localToday, serverToday);
-
-      debugPrint(
-        '[SyncedClockScreenController] reconcileWithServer: merged '
-        '${serverToday.length} server event(s) with ${localToday.length} '
-        'local event(s) -> ${merged.length} total (today only)',
+      // Ghost overnight open: check-in was yesterday, server yesterday is
+      // closed (or empty after a real fetch), but local still shows Check Out.
+      final clearedStale = _clearStaleOvernightOpenIfNeeded(
+        localSummary: localSummary,
+        serverYesterday: serverYesterday,
+        serverToday: serverToday,
       );
-      if (_samePunchList(merged, localToday)) {
+      if (clearedStale) {
+        blockNextAction = false;
         _lastReconcileAt = DateTime.now();
         return true;
       }
-      restoreEvents(merged); // already calls notifyListeners()
+
+      final serverActive = serverEvents;
+      final merged = serverActive.isEmpty
+          ? localActive
+          : _mergeWithLocal(localActive, serverActive);
+
+      debugPrint(
+        '[SyncedClockScreenController] reconcileWithServer: merged '
+        '${serverActive.length} server event(s) with ${localActive.length} '
+        'local event(s) -> ${merged.length} total (active session window)',
+      );
+      if (_samePunchList(merged, localActive)) {
+        _lastReconcileAt = DateTime.now();
+        return true;
+      }
+      // Replace (not union): merged already includes local∪server minus
+      // orphan open tails. restoreEvents would re-add dropped phantoms.
+      replaceLiveEvents(merged);
       blockNextAction = false;
       _lastReconcileAt = DateTime.now();
       return true;
@@ -842,19 +932,9 @@ class SyncedClockScreenController extends ClockScreenController {
     }
   }
 
-  // Merge policy: STRICT UNION, never a filtered replace.
-  //
-  // Server data can legitimately be incomplete (e.g. a backend response
-  // shape that only reports the latest check-in/checkout cycle instead of
-  // the full day's event list). Treating "not found on server" as "safe to
-  // drop" silently destroys real, already-persisted history -- exactly the
-  // append-only guarantee this system must never violate.
-  //
-  // Instead: every server event is kept, and every local event is kept
-  // unless it is a confirmed duplicate of a specific server event (same id,
-  // or same type + timestamp within clock-skew tolerance). Nothing is ever
-  // dropped based on a timestamp cutoff. The merged list can only ever grow
-  // relative to both inputs, never shrink.
+  // Merge policy: UNION of server + local, with one exception —
+  // local-only punches that reopen a session the server already closed
+  // (failed / phantom check-ins) are dropped so the button matches portal.
   List<AttendanceEvent> _mergeWithLocal(
     List<AttendanceEvent> local,
     List<AttendanceEvent> server,
@@ -879,10 +959,126 @@ class SyncedClockScreenController extends ClockScreenController {
     }
 
     merged.sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
-    return AttendanceEngine.collapseDuplicatePunches(merged);
+    return _dropOrphanLocalOpenTail(
+      AttendanceEngine.collapseDuplicatePunches(merged),
+      server,
+    );
+  }
+
+  /// When the server session is closed, drop local-only punches that land
+  /// after the server's last event and would wrongly leave the clock on
+  /// Check Out (e.g. smart-attendance check-in that never reached the API).
+  List<AttendanceEvent> _dropOrphanLocalOpenTail(
+    List<AttendanceEvent> merged,
+    List<AttendanceEvent> server,
+  ) {
+    if (merged.isEmpty || server.isEmpty) return merged;
+
+    final serverSummary = AttendanceEngine.compute(server);
+    if (serverSummary.isCheckedIn || serverSummary.isOnBreak) {
+      return merged;
+    }
+
+    final serverSorted = AttendanceEngine.sortedOldestFirst(server);
+    final serverLastAt = serverSorted.last.effectiveTime;
+
+    final kept = <AttendanceEvent>[];
+    for (final event in AttendanceEngine.sortedOldestFirst(merged)) {
+      final onServer = server.any((s) => s.isSamePunchAs(event));
+      if (onServer || !event.effectiveTime.isAfter(serverLastAt)) {
+        kept.add(event);
+        continue;
+      }
+      // Local-only punch after server closed — orphan; do not keep.
+      debugPrint(
+        '[SyncedClockScreenController] dropping orphan local '
+        '${event.type.name} at ${event.effectiveTime}',
+      );
+    }
+    return kept;
+  }
+
+  /// Returns true when a stale overnight local open was cleared.
+  bool _clearStaleOvernightOpenIfNeeded({
+    required AttendanceSummary localSummary,
+    required List<AttendanceEvent>? serverYesterday,
+    required List<AttendanceEvent>? serverToday,
+  }) {
+    if (!localSummary.isCheckedIn && !localSummary.isOnBreak) return false;
+    final openStart = localSummary.openSessionStart ?? localSummary.firstCheckIn;
+    if (openStart == null) return false;
+
+    final now = clockNow;
+    final openIsToday =
+        openStart.year == now.year &&
+        openStart.month == now.month &&
+        openStart.day == now.day;
+    if (openIsToday) return false;
+
+    // Need a successful yesterday fetch to decide.
+    if (serverYesterday == null) return false;
+
+    final ySummary = AttendanceEngine.compute(serverYesterday);
+    if (ySummary.isCheckedIn || ySummary.isOnBreak) {
+      // Server still has a real overnight open — keep it.
+      return false;
+    }
+
+    // Server finished yesterday (or has no open session). Local Check Out
+    // from a ghost 10:42 PM check-in must not stick into today.
+    final replacement = <AttendanceEvent>[
+      ...serverYesterday,
+      ...?serverToday,
+    ];
+    debugPrint(
+      '[SyncedClockScreenController] clearing stale overnight local open '
+      '(started $openStart); applying ${replacement.length} server event(s)',
+    );
+    replaceLiveEvents(replacement);
+    return true;
   }
 
   bool _lastSubmitWasConflict = false;
+
+  /// After a rejected check-out, if local is still open but the server is
+  /// not, replace the live session with server punches only.
+  Future<void> _forceServerLiveSessionIfStillOpenLocally() async {
+    if (_isStale) return;
+    final local = AttendanceEngine.compute(events);
+    if (!local.isCheckedIn && !local.isOnBreak) return;
+
+    try {
+      final today = clockNow;
+      final yesterday = today.subtract(const Duration(days: 1));
+      final serverToday = await _repository.fetchTodayEvents(
+        cancelToken: bindings.authProvider.sessionCancelToken,
+        forDay: today,
+      );
+      if (_isStale) return;
+      final serverYesterday = await _repository.fetchTodayEvents(
+        cancelToken: bindings.authProvider.sessionCancelToken,
+        forDay: yesterday,
+      );
+      if (_isStale) return;
+
+      final server = <AttendanceEvent>[...?serverYesterday, ...?serverToday];
+      final serverSummary = AttendanceEngine.compute(server);
+      if (serverSummary.isCheckedIn || serverSummary.isOnBreak) return;
+
+      // Server is checked out — trust it for the live button (replace, no
+      // union, so phantom local check-ins cannot stick around).
+      replaceLiveEvents(server);
+      debugPrint(
+        '[SyncedClockScreenController] forced server session after '
+        'rejected check-out (${server.length} event(s))',
+      );
+    } catch (e) {
+      debugPrint(
+        '[SyncedClockScreenController] '
+        '_forceServerLiveSessionIfStillOpenLocally failed: $e',
+      );
+    }
+  }
 
   Future<bool> _submit(
     String action,

@@ -18,8 +18,8 @@ import 'package:obecno/features/employee_module/attendance/presentation/widgets/
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_widgets.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/attendance_details_sheet.dart';
-import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/hoilday_detail_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/attendance_day_overview_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 
 import 'package:flutter/cupertino.dart';
@@ -43,21 +43,31 @@ class EmployeeAttendanceScreen extends StatefulWidget {
       EmployeeAttendanceScreenState();
 }
 
-class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
+class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen>
+    with TickerProviderStateMixin {
   final MonthlyAttendanceController _controller = MonthlyAttendanceController();
   final AttendanceEditRequestStore _requestStore =
       AttendanceEditRequestStore.instance;
   AttendanceSummaryFilter? _summaryFilter;
+
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  final List<CurvedAnimation> _entranceAnimations = [];
 
   List<AttendanceDayRecord> get processedRecords {
     final store = _requestStore;
     final ascending =
         List<AttendanceDayRecord>.from(_controller.records)
             .map((record) {
-              final overlaid = record.overlayPendingAdd(
+              final dayRequests = store.forDay(record.date);
+              var overlaid = record.overlayPendingAdd(
                 pendingAdd: store.hasPendingAdd(record.date),
               );
-              if (overlaid.hasEditedTime || store.forDay(record.date).isEmpty) {
+              overlaid = _overlayPendingSessionSpan(overlaid, dayRequests);
+              if (overlaid.hasEditedTime || dayRequests.isEmpty) {
                 return overlaid;
               }
               return overlaid.copyWith(hasEditedTime: true);
@@ -73,6 +83,62 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
     }
 
     return AttendanceListGrouping.groupConsecutiveWeekends(ascending);
+  }
+
+  /// Extends list labels to the earliest pending check-in and latest pending
+  /// check-out so multi-session add requests show as e.g. 12:12 AM – 11:00 PM.
+  AttendanceDayRecord _overlayPendingSessionSpan(
+    AttendanceDayRecord record,
+    List<AttendanceEditRequest> requests,
+  ) {
+    if (requests.isEmpty || record.isOnLeave) return record;
+
+    DateTime? earliestIn = AttendanceEditRequest.parseClockTime(
+      record.checkIn ?? '',
+      date: record.date,
+    );
+    DateTime? latestOut = AttendanceEditRequest.parseClockTime(
+      record.checkOut ?? '',
+      date: record.date,
+    );
+
+    for (final request in requests) {
+      if (!request.isPending) continue;
+      final type = _historyType(request.eventType);
+      final time = AttendanceEditRequest.parseClockTime(
+        request.newTime,
+        date: record.date,
+      );
+      if (type == null || time == null) continue;
+      if (type == AttendanceHisotryEventType.checkIn) {
+        if (earliestIn == null || time.isBefore(earliestIn)) {
+          earliestIn = time;
+        }
+      } else if (type == AttendanceHisotryEventType.checkOut) {
+        if (latestOut == null || time.isAfter(latestOut)) {
+          latestOut = time;
+        }
+      }
+    }
+
+    String? format(DateTime? time) {
+      if (time == null) return null;
+      final period = time.hour >= 12 ? 'PM' : 'AM';
+      final hour12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
+      final hh = hour12.toString().padLeft(2, '0');
+      final mm = time.minute.toString().padLeft(2, '0');
+      return '$hh:$mm $period';
+    }
+
+    final nextIn = format(earliestIn);
+    final nextOut = format(latestOut);
+    if (nextIn == record.checkIn && nextOut == record.checkOut) {
+      return record;
+    }
+    return record.copyWith(
+      checkIn: nextIn ?? record.checkIn,
+      checkOut: nextOut ?? record.checkOut,
+    );
   }
 
   void _onSummaryFilterTap(AttendanceSummaryFilter filter) {
@@ -113,16 +179,67 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
         if (mounted) setState(() {});
       }),
     );
+    if (!widget.embeddedInSheet) {
+      _entranceController.forward();
+    }
   }
 
   @override
   void dispose() {
+    for (final animation in _entranceAnimations) {
+      animation.dispose();
+    }
+    _entranceController.dispose();
     _controller.dispose();
     super.dispose();
   }
 
+  CurvedAnimation _curveFor(int index, int total) {
+    final safeTotal = total <= 1 ? 1 : total;
+    final start = (index / safeTotal) * 0.6;
+    final end = (start + 0.4).clamp(0.0, 1.0);
+    return CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
+    );
+  }
+
+  Widget _staggered(int index, int total, Widget child) {
+    if (widget.embeddedInSheet) return child;
+    if (_entranceAnimations.length != total) {
+      for (final animation in _entranceAnimations) {
+        animation.dispose();
+      }
+      _entranceAnimations
+        ..clear()
+        ..addAll(List.generate(total, (i) => _curveFor(i, total)));
+    }
+    final animation = _entranceAnimations[index];
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animation.value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - animation.value) * 18),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   void notifyTabResumed() {
     unawaited(_reloadAndReconcile());
+    playEntranceAnimation();
+  }
+
+  void playEntranceAnimation() {
+    if (!mounted || widget.embeddedInSheet) return;
+    _entranceController
+      ..reset()
+      ..forward();
   }
 
   Future<void> _reloadAndReconcile() async {
@@ -191,13 +308,11 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
     return events;
   }
 
-  /// Combines a date-only `DateTime` with an "HH:mm[:ss]" time string.
+  /// Combines a date-only `DateTime` with an "HH:mm[:ss]" or "h:mm AM/PM"
+  /// time string so 12:12 AM sorts as hour 0, not noon.
   DateTime _combine(DateTime date, String time) {
-    final parts = time.split(':');
-    final h = int.tryParse(parts.elementAt(0)) ?? 0;
-    final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    final s = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
-    return DateTime(date.year, date.month, date.day, h, m, s);
+    return AttendanceEditRequest.parseClockTime(time, date: date) ??
+        DateTime(date.year, date.month, date.day);
   }
 
   AttendanceHisotryEventType? _historyType(String? eventType) {
@@ -219,7 +334,9 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
     DateTime day,
     List<AttendanceEditRequest> requests,
   ) {
-    final byType = <AttendanceHisotryEventType, HistoryAttendanceEvent>{};
+    // Keep every pending punch so earliest in / latest out can span
+    // multiple add-attendance sessions (not one slot per event type).
+    final events = <HistoryAttendanceEvent>[];
     for (final request in requests) {
       final type = _historyType(request.eventType);
       if (type == null) continue;
@@ -228,13 +345,16 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
         date: day,
       );
       if (time == null) continue;
-      byType[type] = HistoryAttendanceEvent(
-        time: time,
-        type: type,
-        editRequests: [request],
+      events.add(
+        HistoryAttendanceEvent(
+          time: time,
+          type: type,
+          editRequests: [request],
+        ),
       );
     }
-    return byType.values.toList()..sort((a, b) => a.time.compareTo(b.time));
+    events.sort((a, b) => a.time.compareTo(b.time));
+    return events;
   }
 
   Future<void> _onDayTap(AttendanceDayRecord record) async {
@@ -255,7 +375,10 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
       return;
     }
 
-    if (!record.isOnLeave && record.isAbsent) {
+    final noPunches = record.isAbsent ||
+        (record.isOnLeave && !record.hasVisiblePunch);
+
+    if (noPunches) {
       await _requestStore.ensureLoaded();
       final pending = _requestStore
           .forDay(record.date)
@@ -277,13 +400,12 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
         return;
       }
 
-      await AddAttendanceBottomSheet.show(
+      await AttendanceDayOverviewSheet.show(
         context,
         day: record.date,
         apiClient: _controller.apiClient,
         userEmail: _controller.userEmail,
         attendanceId: _controller.dayFor(record.date)?.recordId,
-        isCreating: true,
       );
       await _requestStore.ensureLoaded();
       if (mounted) setState(() {});
@@ -316,6 +438,7 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
       builder: (context, _) {
         final summary = _controller.summary;
 
+        const totalSections = 3;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -346,177 +469,184 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            const SizedBox(height: 16),
-
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.embeddedInSheet ? 16 : 0,
-              ),
-              child: AttendanceMonthHeader(
-                month: _controller.selectedMonth,
-                onPrevious: () {
-                  _clearSummaryFilter();
-                  _controller.previousMonth();
-                },
-                onNext: () {
-                  _clearSummaryFilter();
-                  _controller.nextMonth();
-                },
-                isNextEnabled: _controller.canGoNext,
-                isPreviousEnabled: _controller.canGoPrevious,
-                onTapDropdown: () {
-                  MonthYearPickerSheet.show(
-                    context,
-                    initialDate: _controller.selectedMonth,
-                    minDate: _controller.joiningDate,
-                    onSelected: (date) {
-                      _clearSummaryFilter();
-                      _controller.setMonth(date);
-                    },
-                  );
-                },
+            _staggered(0, totalSections, const SizedBox(height: 16)),
+            _staggered(
+              1,
+              totalSections,
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.embeddedInSheet ? 16 : 0,
+                ),
+                child: AttendanceMonthHeader(
+                  month: _controller.selectedMonth,
+                  onPrevious: () {
+                    _clearSummaryFilter();
+                    _controller.previousMonth();
+                  },
+                  onNext: () {
+                    _clearSummaryFilter();
+                    _controller.nextMonth();
+                  },
+                  isNextEnabled: _controller.canGoNext,
+                  isPreviousEnabled: _controller.canGoPrevious,
+                  onTapDropdown: () {
+                    MonthYearPickerSheet.show(
+                      context,
+                      initialDate: _controller.selectedMonth,
+                      minDate: _controller.joiningDate,
+                      onSelected: (date) {
+                        _clearSummaryFilter();
+                        _controller.setMonth(date);
+                      },
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeTop: true,
-                child: ShimmerRefreshIndicator(
-                  instagramStyle: true,
-                  triggerFraction: 0.48,
-                  onRefresh: () async {
-                    await _controller.refresh();
-                    await _reconcilePendingAdds();
-                    if (mounted) setState(() {});
-                  },
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: widget.embeddedInSheet ? 16 : 0,
-                    ),
-                    child: _controller.isLoading && summary == null
-                        ? _buildLoadingShimmer()
-                        : _controller.records.isEmpty
-                        ? ListView(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: ClampingScrollPhysics(),
-                            ),
-                            children: [
-                              SizedBox(
-                                height:
-                                    MediaQuery.of(context).size.height * 0.5,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.dataset_outlined,
-                                      size: 60,
-                                      color: kGreyColor.withOpacity(0.7),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    AppText.p2(
-                                      "No Record",
-                                      color: kGreyColor,
-                                      weight: FontWeight.w600,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    AppText.p2(
-                                      "You don’t have any records yet",
-                                      color: kGreyColor.withOpacity(0.7),
-                                      weight: FontWeight.w400,
-                                    ),
-                                  ],
-                                ),
+              child: _staggered(
+                2,
+                totalSections,
+                MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: ShimmerRefreshIndicator(
+                    instagramStyle: true,
+                    triggerFraction: 0.48,
+                    onRefresh: () async {
+                      await _controller.refresh();
+                      await _reconcilePendingAdds();
+                      if (mounted) setState(() {});
+                    },
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.embeddedInSheet ? 16 : 0,
+                      ),
+                      child: _controller.isLoading && summary == null
+                          ? _buildLoadingShimmer()
+                          : _controller.records.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: ClampingScrollPhysics(),
                               ),
-                            ],
-                          )
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(
-                              parent: ClampingScrollPhysics(),
-                            ),
-                            itemCount: processedRecords.length + 1,
-                            itemBuilder: (context, index) {
-                              if (index == 0) {
-                                return Column(
-                                  children: [
-                                    AttendanceSummaryCard(
-                                      summary:
-                                          summary ??
-                                          const MonthSummary(
-                                            workingDays: 0,
-                                            totalDays: 0,
-                                            absentOrLeaves: 0,
-                                            lateCheckIns: 0,
-                                            lateCheckOuts: 0,
-                                          ),
-                                      selectedFilter: _summaryFilter,
-                                      onFilterTap: _onSummaryFilterTap,
-                                    ),
-                                    if (_summaryFilter != null &&
-                                        processedRecords.isEmpty) ...[
-                                      const SizedBox(height: 40),
-                                      AppText.p2(
-                                        "No matching days for this filter",
-                                        color: kGreyColor,
-                                        weight: FontWeight.w500,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      AppText.caption(
-                                        "Tap the filter again to clear",
+                              children: [
+                                SizedBox(
+                                  height:
+                                      MediaQuery.of(context).size.height * 0.5,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.dataset_outlined,
+                                        size: 60,
                                         color: kGreyColor.withOpacity(0.7),
                                       ),
+                                      const SizedBox(height: 12),
+                                      AppText.p2(
+                                        "No Record",
+                                        color: kGreyColor,
+                                        weight: FontWeight.w600,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      AppText.p2(
+                                        "You don’t have any records yet",
+                                        color: kGreyColor.withOpacity(0.7),
+                                        weight: FontWeight.w400,
+                                      ),
                                     ],
-                                    const SizedBox(height: 20),
-                                  ],
-                                );
-                              }
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: ClampingScrollPhysics(),
+                              ),
+                              itemCount: processedRecords.length + 1,
+                              itemBuilder: (context, index) {
+                                if (index == 0) {
+                                  return Column(
+                                    children: [
+                                      AttendanceSummaryCard(
+                                        summary:
+                                            summary ??
+                                            const MonthSummary(
+                                              workingDays: 0,
+                                              totalDays: 0,
+                                              absentOrLeaves: 0,
+                                              lateCheckIns: 0,
+                                              lateCheckOuts: 0,
+                                            ),
+                                        selectedFilter: _summaryFilter,
+                                        onFilterTap: _onSummaryFilterTap,
+                                      ),
+                                      if (_summaryFilter != null &&
+                                          processedRecords.isEmpty) ...[
+                                        const SizedBox(height: 40),
+                                        AppText.p2(
+                                          "No matching days for this filter",
+                                          color: kGreyColor,
+                                          weight: FontWeight.w500,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        AppText.caption(
+                                          "Tap the filter again to clear",
+                                          color: kGreyColor.withOpacity(0.7),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 20),
+                                    ],
+                                  );
+                                }
 
-                              final record = processedRecords[index - 1];
-                              if (record.status ==
-                                  AttendanceDayStatus.holiday) {
-                                if (record.hasVisiblePunch) {
+                                final record = processedRecords[index - 1];
+                                if (record.status ==
+                                    AttendanceDayStatus.holiday) {
+                                  if (record.hasVisiblePunch) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                      ),
+                                      child: AttendanceDayTile(
+                                        record: record,
+                                        onTap: () => _onDayTap(record),
+                                      ),
+                                    );
+                                  }
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 6,
                                     ),
-                                    child: AttendanceDayTile(
-                                      record: record,
+                                    child: AttendanceHolidayCard(
+                                      title: record.weekendLabel ??
+                                          "Public Holiday",
+                                      date: _formatFullWeekdayDate(record.date),
                                       onTap: () => _onDayTap(record),
                                     ),
                                   );
                                 }
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  child: AttendanceHolidayCard(
-                                    title:
-                                        record.weekendLabel ?? "Public Holiday",
-                                    date: _formatFullWeekdayDate(record.date),
-                                    onTap: () => _onDayTap(record),
-                                  ),
-                                );
-                              }
 
-                              if (record.status ==
-                                  AttendanceDayStatus.weekend) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: 10,
-                                    top: 10,
-                                  ),
-                                  child: AttendanceWeekendCard(
-                                    label: record.weekendLabel ?? "Weekend",
-                                  ),
-                                );
-                              }
+                                if (record.status ==
+                                    AttendanceDayStatus.weekend) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: 10,
+                                      top: 10,
+                                    ),
+                                    child: AttendanceWeekendCard(
+                                      label: record.weekendLabel ?? "Weekend",
+                                    ),
+                                  );
+                                }
 
-                              return AttendanceDayTile(
-                                record: record,
-                                onTap: () => _onDayTap(record),
-                              );
-                            },
-                          ),
+                                return AttendanceDayTile(
+                                  record: record,
+                                  onTap: () => _onDayTap(record),
+                                );
+                              },
+                            ),
+                    ),
                   ),
                 ),
               ),

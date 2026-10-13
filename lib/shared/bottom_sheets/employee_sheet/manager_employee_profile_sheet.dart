@@ -176,6 +176,90 @@ class _ManagerEmployeeProfileSheetBodyState
     );
   }
 
+  void _showProfilePhotoPreview() {
+    final hasPhoto = _localPhoto != null || _data.hasNetworkPhoto;
+    final photoUrl = _localPhoto == null && _data.hasNetworkPhoto
+        ? _data.photo
+        : null;
+
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) {
+        final size = MediaQuery.sizeOf(dialogContext);
+        final side = (size.width - 48).clamp(240.0, 360.0);
+
+        return Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(dialogContext),
+                  behavior: HitTestBehavior.opaque,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => Navigator.pop(dialogContext),
+                        child: const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Center(
+                child: GestureDetector(
+                  onTap: () {},
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: side,
+                      height: side,
+                      child: hasPhoto
+                          ? CommonImageView(
+                              file: _localPhoto,
+                              url: photoUrl,
+                              height: side,
+                              width: side,
+                              fit: BoxFit.cover,
+                              errorImage: Assets.imagesUserimage,
+                            )
+                          : CommonImageView(
+                              imagePath: Assets.imagesUserimage,
+                              height: side,
+                              width: side,
+                              fit: BoxFit.contain,
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _onEditPhoto() async {
     if (!_canEditPhoto || _uploadingPhoto) return;
     final userId = _data.userId;
@@ -346,19 +430,22 @@ class _ManagerEmployeeProfileSheetBodyState
                   Center(
                     child: Stack(
                       children: [
-                        ClipOval(
-                          child: CommonImageView(
-                            file: _localPhoto,
-                            url: _localPhoto == null && _data.hasNetworkPhoto
-                                ? _data.photo
-                                : null,
-                            imagePath:
-                                _localPhoto == null && !_data.hasNetworkPhoto
-                                ? _data.photoPath
-                                : null,
-                            height: 96,
-                            width: 96,
-                            fit: BoxFit.cover,
+                        ButtonAnimations.press(
+                          onTap: _showProfilePhotoPreview,
+                          child: ClipOval(
+                            child: CommonImageView(
+                              file: _localPhoto,
+                              url: _localPhoto == null && _data.hasNetworkPhoto
+                                  ? _data.photo
+                                  : null,
+                              imagePath:
+                                  _localPhoto == null && !_data.hasNetworkPhoto
+                                  ? _data.photoPath
+                                  : null,
+                              height: 96,
+                              width: 96,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                         if (_uploadingPhoto)
