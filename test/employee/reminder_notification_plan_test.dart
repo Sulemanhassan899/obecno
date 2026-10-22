@@ -45,6 +45,7 @@ void main() {
     TimeOfDay? checkOutMissedTime,
     Set<ReminderType> alreadyFired = const {},
     String locationName = 'Islamabad',
+    bool Function(DateTime day)? isOnLeaveDay,
   }) {
     return ReminderNotificationPlan.build(
       now: now,
@@ -67,6 +68,7 @@ void main() {
       workingWeekdays: workingWeekdays,
       alreadyFired: alreadyFired,
       locationName: locationName,
+      isOnLeaveDay: isOnLeaveDay,
     );
   }
 
@@ -582,6 +584,39 @@ void main() {
       expect(items.where((e) => e.fireAt.day == 12), isEmpty);
     });
 
+    test('skips checkout and break reminders on a rest day', () {
+      final saturday = DateTime(2026, 9, 12, 10);
+      final items = plan(
+        now: saturday,
+        punches: [
+          ReminderPunch(
+            kind: ReminderPunchKind.checkIn,
+            time: DateTime(2026, 9, 12, 9),
+          ),
+        ],
+      );
+      expect(of(items, ReminderType.checkOut), isNull);
+      expect(of(items, ReminderType.breakTime), isNull);
+      expect(of(items, ReminderType.checkOutMissed), isNull);
+    });
+
+    test('skips all reminders on an approved leave day', () {
+      final leaveDay = DateTime(2026, 9, 9);
+      final items = plan(
+        now: wed(8),
+        punches: [
+          ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+        ],
+        isOnLeaveDay: (day) =>
+            day.year == leaveDay.year &&
+            day.month == leaveDay.month &&
+            day.day == leaveDay.day,
+      );
+      expect(items.where((e) => e.fireAt.day == 9), isEmpty);
+      expect(of(items, ReminderType.checkOut), isNull);
+      expect(of(items, ReminderType.breakTime), isNull);
+    });
+
     test('friday does not schedule saturday when saturday is a rest day', () {
       final friday = DateTime(2026, 9, 11, 8);
       final items = plan(now: friday);
@@ -698,17 +733,34 @@ void main() {
     });
 
     test(
-      'critical: 8:45 does not catch-up the 8:30 reminder or 8:35 missed',
+      'critical: 8:45 does not catch-up the 8:30 reminder (15m late)',
       () {
         final items = early(now: wed(8, 45));
         expect(of(items, ReminderType.checkIn, day: 9), isNull);
-        expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
       },
     );
 
-    test('critical: 9:10 does not catch-up 8:30 or 9:05 reminders', () {
+    test('critical: 8:45 still catch-ups 8:35 missed inside 10m window', () {
+      final items = early(now: wed(8, 45));
+      final missed = of(items, ReminderType.checkInMissed, day: 9)!;
+      expect(missed.deliverImmediately, isTrue);
+      expect(missed.fireAt, wed(8, 35));
+    });
+
+    test('critical: 9:10 does not catch-up 8:30 (40m late)', () {
       final items = early(now: wed(9, 10));
       expect(of(items, ReminderType.checkIn, day: 9), isNull);
+    });
+
+    test('critical: 8:42 still catch-ups 8:35 missed inside 10m window', () {
+      final items = early(now: wed(8, 42));
+      final missed = of(items, ReminderType.checkInMissed, day: 9)!;
+      expect(missed.deliverImmediately, isTrue);
+      expect(missed.fireAt, wed(8, 35));
+    });
+
+    test('critical: 9:10 does not catch-up 8:35 missed (35m late)', () {
+      final items = early(now: wed(9, 10));
       expect(of(items, ReminderType.checkInMissed, day: 9), isNull);
     });
 
@@ -801,7 +853,7 @@ void main() {
     });
 
     test(
-      'critical: 5:45 does not catch-up the 5:30 checkout or 5:35 missed',
+      'critical: 5:45 does not catch-up the 5:30 checkout (15m late)',
       () {
         final items = plan(
           now: wed(17, 45),
@@ -812,7 +864,40 @@ void main() {
           ],
         );
         expect(of(items, ReminderType.checkOut), isNull);
-        expect(of(items, ReminderType.checkOutMissed), isNull);
+      },
+    );
+
+    test(
+      'critical: 5:45 still catch-ups 5:35 checkout-missed inside 10m window',
+      () {
+        final items = plan(
+          now: wed(17, 45),
+          checkOutTime: const TimeOfDay(hour: 17, minute: 30),
+          policyCheckOutTime: checkOut,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+          ],
+        );
+        final missed = of(items, ReminderType.checkOutMissed)!;
+        expect(missed.deliverImmediately, isTrue);
+        expect(missed.fireAt, wed(17, 35));
+      },
+    );
+
+    test(
+      'critical: 5:37 catch-ups 5:30 checkout inside 10m window',
+      () {
+        final items = plan(
+          now: wed(17, 37),
+          checkOutTime: const TimeOfDay(hour: 17, minute: 30),
+          policyCheckOutTime: checkOut,
+          punches: [
+            ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9)),
+          ],
+        );
+        final checkout = of(items, ReminderType.checkOut)!;
+        expect(checkout.deliverImmediately, isTrue);
+        expect(checkout.fireAt, wed(17, 30));
       },
     );
 
@@ -872,9 +957,23 @@ void main() {
       },
     );
 
-    test('critical: 12:40 does not catch-up the 12:30 take-break reminder', () {
+    test('critical: 12:40 catch-ups 12:30 take-break inside 10m window', () {
       final items = plan(
         now: wed(12, 40),
+        breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
+        punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
+      );
+      final breaks = items.where(
+        (item) => item.type == ReminderType.breakTime && item.fireAt.day == 9,
+      );
+      expect(breaks, isNotEmpty);
+      expect(breaks.first.deliverImmediately, isTrue);
+      expect(breaks.first.fireAt, wed(12, 30));
+    });
+
+    test('critical: 12:45 does not catch-up 12:30 take-break (15m late)', () {
+      final items = plan(
+        now: wed(12, 45),
         breakReminderTime: const TimeOfDay(hour: 12, minute: 30),
         punches: [ReminderPunch(kind: ReminderPunchKind.checkIn, time: wed(9))],
       );

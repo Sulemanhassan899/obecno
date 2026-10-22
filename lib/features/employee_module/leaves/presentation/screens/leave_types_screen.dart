@@ -1,27 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/main.dart';
 
-class LeaveTypesScreen extends StatelessWidget {
+class LeaveTypesScreen extends StatefulWidget {
   const LeaveTypesScreen({super.key});
 
-  static const _overviewIds = ['casual', 'sick', 'emergency', 'marriage'];
+  @override
+  State<LeaveTypesScreen> createState() => _LeaveTypesScreenState();
+}
+
+class _LeaveTypesScreenState extends State<LeaveTypesScreen> {
+  final LeavesStore _store = bindings.leavesStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _store.addListener(_refresh);
+    _store.ensureLoaded();
+  }
+
+  @override
+  void dispose() {
+    _store.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    final store = LeavesMockStore.instance;
-    final types = [
-      for (final id in _overviewIds)
-        if (store.typeById(id) != null) store.typeById(id)!,
-    ];
+    final types = _store.types;
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
@@ -34,43 +54,50 @@ class LeaveTypesScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF2FF),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        CommonImageView(
-                          imagePath: Assets.imagesInfoCircle,
-                          height: 25,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: AppText.p2(
-                            store.quotaResetLabel,
-                            color: kSubText,
-                            weight: FontWeight.w500,
-                            align: TextAlign.left,
+              child: ShimmerRefreshIndicator(
+                instagramStyle: true,
+                triggerFraction: 0.40,
+                showOrb: false,
+                onRefresh: () => _store.refresh(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF2FF),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          CommonImageView(
+                            imagePath: Assets.imagesInfoCircle,
+                            height: 25,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: AppText.p2(
+                              _store.quotaResetLabel,
+                              color: kSubText,
+                              weight: FontWeight.w500,
+                              align: TextAlign.left,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  for (final type in types) ...[
-                    _LeaveTypeCard(type: type),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
+                    for (final type in types) ...[
+                      _LeaveTypeCard(type: type),
+                      const SizedBox(height: 12),
+                    ],
+                    const SizedBox(height: 24),
                   ],
-                  const SizedBox(height: 24),
-                ],
+                ),
               ),
             ),
           ],

@@ -17,13 +17,16 @@ class _MemoryReminderDao extends Fake implements ReminderDao {
   }
 
   @override
-  Future<void> insertLogIfAbsent({
+  Future<bool> insertLogIfAbsent({
     required String userId,
     required DateTime date,
     required ReminderLog log,
   }) async {
-    if (userId.isEmpty) return;
-    logs.putIfAbsent(_key(userId, date, log.type), () => log);
+    if (userId.isEmpty) return false;
+    final key = _key(userId, date, log.type);
+    if (logs.containsKey(key)) return false;
+    logs[key] = log;
+    return true;
   }
 
   @override
@@ -211,8 +214,15 @@ void main() {
       );
     });
 
-    test('after the minute does not catch up', () {
+    test('10m after the minute still catch-ups', () {
       final items = plan(now: at(9, 10), enabled: only(ReminderType.checkIn));
+      final item = ofPlan(items, ReminderType.checkIn, day: 9)!;
+      expect(item.deliverImmediately, isTrue);
+      expect(item.fireAt, at(9));
+    });
+
+    test('15m after the minute does not catch up', () {
+      final items = plan(now: at(9, 15), enabled: only(ReminderType.checkIn));
       expect(ofPlan(items, ReminderType.checkIn, day: 9), isNull);
     });
 
@@ -385,9 +395,20 @@ void main() {
       expect(ofPlan(items, ReminderType.checkOut)!.deliverImmediately, isTrue);
     });
 
-    test('after the minute does not catch up', () {
+    test('10m after the minute still catch-ups', () {
       final items = plan(
         now: at(18, 10),
+        enabled: only(ReminderType.checkOut),
+        punches: checkedIn,
+      );
+      final item = ofPlan(items, ReminderType.checkOut)!;
+      expect(item.deliverImmediately, isTrue);
+      expect(item.fireAt, at(18));
+    });
+
+    test('15m after the minute does not catch up', () {
+      final items = plan(
+        now: at(18, 15),
         enabled: only(ReminderType.checkOut),
         punches: checkedIn,
       );

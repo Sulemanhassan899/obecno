@@ -57,13 +57,13 @@ class _SplashScreenState extends State<SplashScreen>
     // / permission platform channels hang (common with secure storage).
     _failSafe = Timer(const Duration(seconds: 5), () {
       debugPrint('[SplashScreen] fail-safe fired');
-      _go(_fallbackPath());
+      unawaited(_fallbackPath().then(_go));
     });
 
     unawaited(_bootstrap());
   }
 
-  String _fallbackPath() {
+  Future<String> _fallbackPath() async {
     try {
       final auth = context.read<AuthProvider>();
       if (auth.isAuthenticated) {
@@ -71,6 +71,13 @@ class _SplashScreenState extends State<SplashScreen>
             ? '/manager_nav'
             : '/employee_nav';
       }
+    } catch (_) {}
+    try {
+      final done = await TokenService().isOnboardingCompleted.timeout(
+        const Duration(seconds: 1),
+        onTimeout: () => true,
+      );
+      if (done) return '/login';
     } catch (_) {}
     return '/onboarding';
   }
@@ -95,14 +102,14 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       dest = await _resolveDestination().timeout(
         const Duration(seconds: 4),
-        onTimeout: () {
+        onTimeout: () async {
           debugPrint('[SplashScreen] resolve timed out');
           return _fallbackPath();
         },
       );
     } catch (e, st) {
       debugPrint('[SplashScreen] bootstrap failed: $e\n$st');
-      dest = _fallbackPath();
+      dest = await _fallbackPath();
     }
 
     // Session is already known. Wait only for the splash animation (1.2s),
@@ -147,21 +154,29 @@ class _SplashScreenState extends State<SplashScreen>
       if (!authProvider.isAuthenticated) return '/login';
     }
 
-    var permissionsAllowed = false;
-    try {
-      permissionsAllowed =
-          await PermissionService.areCriticalPermissionsAllowed().timeout(
-            const Duration(seconds: 2),
-            onTimeout: () => true,
-          );
-    } catch (e) {
-      debugPrint('[SplashScreen] permission check failed: $e');
-      permissionsAllowed = true;
-    }
+    // First-time OS permissions only. Once marked done, never force that
+    // screen again on cold start (revokes are handled by AppGuard dialogs).
+    final permissionsSetupDone = await tokenService.isPermissionsSetupCompleted
+        .timeout(const Duration(seconds: 1), onTimeout: () => false);
 
-    if (!permissionsAllowed) {
-      AppGuard.permissionOnboardingPending = true;
-      return '/enable_permissions';
+    if (!permissionsSetupDone) {
+      var permissionsAllowed = false;
+      try {
+        permissionsAllowed =
+            await PermissionService.areFirstLoginPermissionsAllowed().timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => true,
+            );
+      } catch (e) {
+        debugPrint('[SplashScreen] permission check failed: $e');
+        permissionsAllowed = true;
+      }
+
+      if (!permissionsAllowed) {
+        AppGuard.permissionOnboardingPending = true;
+        return '/enable_permissions';
+      }
+      await tokenService.markPermissionsSetupCompleted();
     }
 
     try {

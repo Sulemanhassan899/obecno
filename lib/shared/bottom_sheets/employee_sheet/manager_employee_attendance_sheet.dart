@@ -16,6 +16,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/pending
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/presentation/widgets/manager_attendance_widgets.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_attendance_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
@@ -26,6 +27,8 @@ import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/attendance_day_overview_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/manager_leave_detail_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +37,9 @@ import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 class ManagerEmployeeAttendanceSheet {
   ManagerEmployeeAttendanceSheet._();
 
-  static Future<void> show({
+  /// When [selectLeaveDay] is true, tapping an On Leave day pops this sheet
+  /// and returns that [DateTime] instead of stacking another leave sheet.
+  static Future<DateTime?> show({
     required BuildContext context,
     String? employeeName,
     int? userId,
@@ -45,10 +50,11 @@ class ManagerEmployeeAttendanceSheet {
     String? locationName,
     String? locationAddress,
     String? statusFilter,
+    bool selectLeaveDay = false,
   }) {
     final isLocation = locationName != null && locationName.trim().isNotEmpty;
 
-    return AppSheet.show<void>(
+    return AppSheet.show<DateTime>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -76,6 +82,7 @@ class ManagerEmployeeAttendanceSheet {
                       role: role,
                       photo: photo,
                       joiningDate: joiningDate,
+                      selectLeaveDay: selectLeaveDay,
                     ),
             ),
           ),
@@ -92,10 +99,12 @@ class _EmployeeHistorySheetBody extends StatefulWidget {
     this.role,
     this.photo,
     this.joiningDate,
+    this.selectLeaveDay = false,
   });
 
   final String employeeName;
   final int? userId;
+  final bool selectLeaveDay;
   final String? role;
   final String? photo;
   final DateTime? joiningDate;
@@ -112,6 +121,23 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
   String? _error;
   MonthSummary? _summary;
   List<AttendanceDayRecord> _records = const [];
+  AttendanceSummaryFilter? _summaryFilter;
+
+  List<AttendanceDayRecord> get _visibleRecords {
+    if (_summaryFilter != null) {
+      return AttendanceMonthListFilter.apply(
+        records: _records,
+        filter: _summaryFilter,
+      );
+    }
+    return _records;
+  }
+
+  void _onSummaryFilterTap(AttendanceSummaryFilter filter) {
+    setState(() {
+      _summaryFilter = _summaryFilter == filter ? null : filter;
+    });
+  }
 
   bool get _canGoNext => AttendanceMonthBounds.canGoNext(selectedMonth: _month);
 
@@ -162,6 +188,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
 
   void _setMonth(DateTime date) {
     setState(() {
+      _summaryFilter = null;
       _month = AttendanceMonthBounds.clampMonth(
         selectedMonth: date,
         joiningDate: _joiningDate,
@@ -202,11 +229,19 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           .loadEmployeePermissions(userId: userId);
       final profileFuture = bindings.managerEmployeesService
           .loadEmployeeProfile(userId: userId);
+      // Attendance history often omits leave flags; overlay from leaves API
+      // so pending/approved leave days show as leave (not absent).
+      final leavesFuture = bindings.managerEmployeesService.loadEmployeeLeaves(
+        userId: userId,
+        dateFrom: _yyyyMMdd(from),
+        dateTo: _yyyyMMdd(to),
+      );
 
       final attendance = await attendanceFuture;
       final holidays = await holidaysFuture;
       final permissions = await permissionsFuture;
       final profile = await profileFuture;
+      final leaves = await leavesFuture;
       if (!mounted) return;
 
       if (!attendance.success || attendance.data == null) {
@@ -236,6 +271,18 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         }
       }
 
+      final leaveList = leaves.data ?? const [];
+      final leaveDates = _leaveDatesFromRequests(
+        leaveList,
+        from: from,
+        to: to,
+      );
+      final rejectedLeaveDates = _rejectedDatesFromRequests(
+        leaveList,
+        from: from,
+        to: to,
+      );
+
       final month = ManagerEmployeeHistoryMapper.build(
         month: _month,
         history: history,
@@ -243,6 +290,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
             ? const {1, 2, 3, 4, 5}
             : workingDays,
         holidays: holidays.data ?? const [],
+        extraLeaveDates: leaveDates,
+        rejectedLeaveDates: rejectedLeaveDates,
         scheduledCheckIn: policy.checkIn,
         graceMinutes: policy.graceMinutes,
         scheduledCheckOut: policy.checkOut,
@@ -301,9 +350,44 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
 
     if (isOnLeave && !_isManagerViewer) return;
 
+    if (isOnLeave && _isManagerViewer) {
+      // Opened from leave detail calendar — return the day instead of
+      // stacking another leave sheet (prevents leave↔attendance loop).
+      if (widget.selectLeaveDay) {
+        Navigator.pop(context, record.date);
+        return;
+      }
+      await ManagerLeaveDetailSheet.showForDay(
+        context: context,
+        day: record.date,
+        userId: widget.userId,
+        employeeName: widget.employeeName,
+        employeeRole: widget.role,
+        employeePhoto: widget.photo,
+      );
+      if (mounted) await _load(silent: true);
+      return;
+    }
+
     if (isDash) {
       if (!_isManagerViewer) return;
-      await _addTimeForAbsentDay(record);
+      // Same day-overview flow as employee; manager applies attendance as approved.
+      final result = await AttendanceDayOverviewSheet.show(
+        context,
+        day: record.date,
+        apiClient: bindings.apiClient,
+        userEmail: bindings.userEmail,
+        employeeUserId: widget.userId,
+        employeeName: widget.employeeName,
+        applyImmediately: true,
+      );
+      if (!mounted) return;
+      if (result is AddAttendanceSaveResult) {
+        _applyOptimisticAttendance(record.date, result);
+      } else if (result is DateTime) {
+        _applyOptimisticLeave(result);
+      }
+      await _load(silent: true);
       return;
     }
 
@@ -329,24 +413,6 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           : () =>
                 provider.loadEmployeeDay(employee: employee, day: record.date),
       showEmployeeHeader: false,
-    );
-    if (!mounted) return;
-    if (saved != null) {
-      _applyOptimisticAttendance(record.date, saved);
-    }
-    await _load(silent: true);
-  }
-
-  Future<void> _addTimeForAbsentDay(AttendanceDayRecord record) async {
-    final saved = await AddAttendanceBottomSheet.show(
-      context,
-      day: record.date,
-      apiClient: bindings.apiClient,
-      userEmail: bindings.userEmail,
-      employeeUserId: widget.userId,
-      employeeName: widget.employeeName,
-      applyImmediately: true,
-      isCreating: true,
     );
     if (!mounted) return;
     if (saved != null) {
@@ -395,6 +461,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                   : _formatTimeOfDay(saved.checkOut!),
               status: AttendanceDayStatus.normal,
               hasEditedTime: true,
+              isWeekendContext: record.isWeekendContext,
             )
           else
             record,
@@ -415,6 +482,27 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     });
   }
 
+  void _applyOptimisticLeave(DateTime day) {
+    setState(() {
+      _records = [
+        for (final record in _records)
+          if (_isSameDay(record.date, day))
+            AttendanceDayRecord(
+              day: record.day,
+              weekday: record.weekday,
+              date: record.date,
+              checkIn: 'Leave',
+              checkOut: 'Leave',
+              status: AttendanceDayStatus.onLeave,
+              hasEditedTime: record.hasEditedTime,
+              isWeekendContext: record.isWeekendContext,
+            )
+          else
+            record,
+      ];
+    });
+  }
+
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
@@ -422,6 +510,75 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     final period = t.hour >= 12 ? 'PM' : 'AM';
     final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
     return '${hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  /// Expands leave request ranges into calendar days (approved / pending only).
+  /// Rejected leaves never become On Leave — those days stay Absent.
+  Set<DateTime> _leaveDatesFromRequests(
+    List<ManagerEmployeeLeaveRequest> leaves, {
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return _expandLeaveDates(
+      leaves,
+      from: from,
+      to: to,
+      include: (status) => !_isRejectedLeave(status),
+    );
+  }
+
+  Set<DateTime> _rejectedDatesFromRequests(
+    List<ManagerEmployeeLeaveRequest> leaves, {
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return _expandLeaveDates(
+      leaves,
+      from: from,
+      to: to,
+      include: _isRejectedLeave,
+    );
+  }
+
+  Set<DateTime> _expandLeaveDates(
+    List<ManagerEmployeeLeaveRequest> leaves, {
+    required DateTime from,
+    required DateTime to,
+    required bool Function(String? status) include,
+  }) {
+    final dates = <DateTime>{};
+    final rangeStart = DateTime(from.year, from.month, from.day);
+    final rangeEnd = DateTime(to.year, to.month, to.day);
+
+    for (final leave in leaves) {
+      if (!include(leave.status)) continue;
+      final start = _parseLeaveDate(leave.fromDate);
+      if (start == null) continue;
+      final end = _parseLeaveDate(leave.toDate) ?? start;
+      var cursor = DateTime(start.year, start.month, start.day);
+      final last = DateTime(end.year, end.month, end.day);
+      while (!cursor.isAfter(last)) {
+        if (!cursor.isBefore(rangeStart) && !cursor.isAfter(rangeEnd)) {
+          dates.add(cursor);
+        }
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+    return dates;
+  }
+
+  bool _isRejectedLeave(String? status) {
+    final value = (status ?? '').trim().toLowerCase();
+    return value.contains('reject') ||
+        value.contains('deny') ||
+        value.contains('declined');
+  }
+
+  DateTime? _parseLeaveDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parsed = DateTime.tryParse(raw.trim());
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
   String _yyyyMMdd(DateTime date) =>
@@ -501,7 +658,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                   )
                 : ShimmerRefreshIndicator(
                     instagramStyle: true,
-                    triggerFraction: 0.48,
+                    triggerFraction: 0.40,
+                    showOrb: false,
                     onRefresh: _load,
                     child: ListView.builder(
                       shrinkWrap: true,
@@ -509,7 +667,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                         parent: ClampingScrollPhysics(),
                       ),
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      itemCount: _records.length + 1,
+                      itemCount: _visibleRecords.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) {
                           return Column(
@@ -524,12 +682,28 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
                                       lateCheckIns: 0,
                                       lateCheckOuts: 0,
                                     ),
+                                selectedFilter: _summaryFilter,
+                                onFilterTap: _onSummaryFilterTap,
                               ),
+                              if (_summaryFilter != null &&
+                                  _visibleRecords.isEmpty) ...[
+                                const SizedBox(height: 40),
+                                AppText.p2(
+                                  'No matching days for this filter',
+                                  color: kGreyColor,
+                                  weight: FontWeight.w500,
+                                ),
+                                const SizedBox(height: 8),
+                                AppText.caption(
+                                  'Tap the filter again to clear',
+                                  color: kGreyColor.withOpacity(0.7),
+                                ),
+                              ],
                               const SizedBox(height: 20),
                             ],
                           );
                         }
-                        final record = _records[index - 1];
+                        final record = _visibleRecords[index - 1];
                         if (record.status == AttendanceDayStatus.holiday) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 6),

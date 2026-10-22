@@ -438,9 +438,7 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
         userId: _authProvider?.user?.id,
       );
       _routeIfDeviceBlocked();
-    } catch (e) {
-      debugPrint('[AppGuard] device status refresh failed: $e');
-    }
+    } catch (_) {}
   }
 
   Future<void> _checkAll({String trigger = 'BACKGROUND'}) async {
@@ -458,13 +456,10 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
           await _refreshDeviceStatus(source: trigger);
           if (_deviceProvider?.isDeviceApproved != true &&
               _deviceProvider?.isDeviceBlocked == true) {
-            debugPrint('[AppGuard] device blocked, routing to /device_blocked');
             router.go('/device_blocked');
             return;
           }
-        } catch (e) {
-          debugPrint('[AppGuard] DeviceProvider unavailable: $e');
-        }
+        } catch (_) {}
       }
 
       // 1️⃣ Permissions -- only after the user is on a home screen.
@@ -497,16 +492,11 @@ class _AppGuardState extends State<AppGuard> with WidgetsBindingObserver {
           if (!_shouldWatchPermissions()) return;
           final status = await PermissionService.status(p).timeout(
             const Duration(seconds: 5),
-            onTimeout: () {
-              debugPrint('[AppGuard] $p status check timed out');
-              return PermissionStatus.denied;
-            },
+            onTimeout: () => PermissionStatus.denied,
           );
-          debugPrint('[AppGuard] _checkAll: $p status = $status');
 
           if (!PermissionService.isAllowed(status)) {
             if (!_shouldWatchPermissions()) return;
-            debugPrint('[AppGuard] $p not allowed, showing permission dialog.');
             AppLogger.info(
               '[PERMISSION_DIALOG]\n'
               'shown=true\n'

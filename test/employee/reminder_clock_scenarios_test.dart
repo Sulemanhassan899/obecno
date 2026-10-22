@@ -505,10 +505,27 @@ void main() {
           });
 
           test(
-            'critical: after reminder, early take-break does not catch-up',
+            'critical: 10m after reminder still catch-ups take-break',
             () {
               final items = plan(
                 now: onDay(remind).add(const Duration(minutes: 10)),
+                policyCheckIn: policyCheckIn,
+                policyCheckOut: policyCheckOut,
+                remindBreak: remind,
+                punches: inPunch,
+              );
+              final breaks = ofType(items, ReminderType.breakTime);
+              expect(breaks, isNotEmpty);
+              expect(breaks.first.deliverImmediately, isTrue);
+              expect(breaks.first.fireAt, onDay(remind));
+            },
+          );
+
+          test(
+            'critical: 15m after reminder does not catch-up take-break',
+            () {
+              final items = plan(
+                now: onDay(remind).add(const Duration(minutes: 15)),
                 policyCheckIn: policyCheckIn,
                 policyCheckOut: policyCheckOut,
                 remindBreak: remind,

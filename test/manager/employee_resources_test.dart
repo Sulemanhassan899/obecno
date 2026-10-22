@@ -506,4 +506,29 @@ void main() {
       expect(calendar.attendanceDates.first.day, 3);
     });
   });
+
+  group('ManagerEmployeeLeaveBalance name parsing', () {
+    test('does not use numeric type id as the display name', () {
+      final balance = ManagerEmployeeLeaveBalance.fromJson({
+        'leave_type_id': 4,
+        'type': 4,
+        'leave_type_name': 'Emergency leave',
+        'remaining': 15,
+        'entitled': 20,
+      });
+      expect(balance.typeId, '4');
+      expect(balance.type, 'Emergency leave');
+      expect(balance.remaining, '15');
+    });
+
+    test('reads name from nested leave_type object', () {
+      final balance = ManagerEmployeeLeaveBalance.fromJson({
+        'leave_type_id': 3,
+        'leave_type': {'id': 3, 'name': 'Sick leave'},
+        'available': 19,
+      });
+      expect(balance.typeId, '3');
+      expect(balance.type, 'Sick leave');
+    });
+  });
 }

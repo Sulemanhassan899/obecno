@@ -2,6 +2,11 @@ import 'package:obecno/core/services/logger.dart';
 
 import 'token_service.dart';
 
+/// Legacy 401 helper — kept for compile compatibility with older call sites.
+///
+/// Production traffic must use [SessionManager.handleUnauthorized] via
+/// [ApiClient]. This class no longer clears the session on its own.
+@Deprecated('Use SessionManager.handleUnauthorized via ApiClient')
 class AuthFailureHandler {
   AuthFailureHandler({required TokenService tokenService, this.onUnauthorized})
     : _tokenService = tokenService;
@@ -17,11 +22,17 @@ class AuthFailureHandler {
   }
 
   Future<void> _run() async {
-    final refreshed = await _tokenService.tryRefreshSession();
-    if (!refreshed) {
-      await _tokenService.clearSession();
-      await onUnauthorized?.call();
-      AppLogger.info('AuthFailureHandler: session cleared after 401/403.');
+    final refreshed = await _tokenService.tryRefreshSession(forceNetwork: true);
+    if (refreshed) {
+      AppLogger.info(
+        'AuthFailureHandler: token refreshed (prefer SessionManager path).',
+      );
+      return;
     }
+    // Do not clearSession() — SessionManager + /auth/me own logout.
+    AppLogger.info(
+      'AuthFailureHandler: refresh failed; session left for SessionManager.',
+    );
+    await onUnauthorized?.call();
   }
 }

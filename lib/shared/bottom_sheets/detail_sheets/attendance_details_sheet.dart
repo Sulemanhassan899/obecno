@@ -32,7 +32,7 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart'
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_timeline_cards.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
@@ -105,6 +105,8 @@ class _AttendanceDetailsSheetBodyState
   late List<HistoryAttendanceEvent> _events;
   late HistoryAttendanceSummary _summary;
   bool _loadingDetails = true;
+  /// After API details load, do not reset header/timeline from stale parent props.
+  bool _detailsFromServer = false;
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
   List<HistoryAttendanceEvent> _pendingAddEvents = const [];
@@ -127,7 +129,16 @@ class _AttendanceDetailsSheetBodyState
   @override
   void didUpdateWidget(covariant _AttendanceDetailsSheetBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.events != widget.events || oldWidget.day != widget.day) {
+    if (oldWidget.day != widget.day) {
+      _detailsFromServer = false;
+      _events = widget.events;
+      _summary = widget.summary;
+      _loadDetailsFromApi();
+      return;
+    }
+    // Same day: keep server header/timeline; ignore stale parent event lists.
+    if (_detailsFromServer) return;
+    if (oldWidget.events != widget.events) {
       _events = widget.events;
       _summary = widget.summary;
       _loadDetailsFromApi();
@@ -177,6 +188,7 @@ class _AttendanceDetailsSheetBodyState
             ]);
             _attendanceId = data.attendanceId;
             _loadingDetails = false;
+            _detailsFromServer = true;
           });
           await _syncReminders();
           return;
@@ -294,8 +306,8 @@ class _AttendanceDetailsSheetBodyState
   TimeOfDay _timeOfDay(DateTime dt) =>
       TimeOfDay(hour: dt.hour, minute: dt.minute);
 
-  String? get _firstCheckInLocation {
-    final target = _summary.firstCheckIn;
+  String? get _displayCheckInLocation {
+    final target = _summary.displayCheckIn;
     for (final e in HistoryAttendanceEngine.sortedOldestFirst(_events)) {
       if (e.type != AttendanceHisotryEventType.checkIn) continue;
       if (target != null &&
@@ -307,14 +319,13 @@ class _AttendanceDetailsSheetBodyState
     return null;
   }
 
-  String? get _lastCheckOutLocation {
-    final target = _summary.lastCheckOut;
+  String? get _displayCheckOutLocation {
+    final target = _summary.displayCheckOut;
+    if (target == null) return null;
     String? location;
     for (final e in HistoryAttendanceEngine.sortedOldestFirst(_events)) {
       if (e.type != AttendanceHisotryEventType.checkOut) continue;
-      if (target != null &&
-          e.time.hour == target.hour &&
-          e.time.minute == target.minute) {
+      if (e.time.hour == target.hour && e.time.minute == target.minute) {
         return e.location;
       }
       location = e.location;
@@ -346,7 +357,7 @@ class _AttendanceDetailsSheetBodyState
         .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
         .toList();
     final leaveEvents =
-        LeavesMockStore.instance.timelineEventsForDay(widget.day);
+        bindings.leavesStore.timelineEventsForDay(widget.day);
 
     return ConstrainedBox(
       constraints: AppSheetSize.constraintsOf(context),
@@ -449,7 +460,7 @@ class _AttendanceDetailsSheetBodyState
                                           const SizedBox(height: 6),
                                           AppText.h3(
                                             AttendanceFormat.time(
-                                              summary.firstCheckIn,
+                                              summary.displayCheckIn,
                                             ),
                                             align: TextAlign.left,
                                             color: kPrimaryColor,
@@ -486,7 +497,7 @@ class _AttendanceDetailsSheetBodyState
                                           const SizedBox(height: 6),
                                           AppText.h3(
                                             AttendanceFormat.time(
-                                              summary.lastCheckOut,
+                                              summary.displayCheckOut,
                                             ),
                                             align: TextAlign.right,
                                             color: kredColor,
@@ -503,11 +514,11 @@ class _AttendanceDetailsSheetBodyState
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Expanded(
-                                      child: summary.firstCheckIn == null
+                                      child: summary.displayCheckIn == null
                                           ? _location("--")
                                           : ResolvedLocationText(
-                                              rawLocation:
-                                                  _firstCheckInLocation,
+                                                  rawLocation:
+                                                  _displayCheckInLocation,
                                               knownLocations: knownLocations,
                                               onlyKnownLocations: true,
                                               builder: (context, text) =>
@@ -515,11 +526,11 @@ class _AttendanceDetailsSheetBodyState
                                             ),
                                     ),
                                     Expanded(
-                                      child: summary.lastCheckOut == null
+                                      child: summary.displayCheckOut == null
                                           ? _location("--", isRight: true)
                                           : ResolvedLocationText(
                                               rawLocation:
-                                                  _lastCheckOutLocation,
+                                                  _displayCheckOutLocation,
                                               knownLocations: knownLocations,
                                               onlyKnownLocations: true,
                                               builder: (context, text) =>
@@ -563,7 +574,7 @@ class _AttendanceDetailsSheetBodyState
                               child: LeaveTimelineCards(
                                 events: leaveEvents,
                                 onTapRequested: (event) {
-                                  final request = LeavesMockStore.instance
+                                  final request = bindings.leavesStore
                                       .requestForTimelineEvent(event.id);
                                   if (request == null) return;
                                   LeaveDetailSheet.show(

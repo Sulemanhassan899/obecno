@@ -4,7 +4,6 @@ import 'package:obecno/core/api/session_manager.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/constants.dart';
-import 'package:obecno/core/services/interceptor.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/network_checker.dart';
 import 'package:obecno/core/services/retry_interceptor.dart';
@@ -15,21 +14,15 @@ class ApiClient {
   ApiClient({
     required TokenService tokenService,
     required NetworkChecker networkChecker,
-    Future<void> Function()? onUnauthorized,
     String? baseUrl,
     http.Client? httpClient,
-
     SessionManager? sessionManager,
   }) : _tokenService = tokenService,
        _networkChecker = networkChecker,
        _baseUrl = baseUrl ?? AppConstants.baseUrl,
        _http = httpClient ?? http.Client(),
        _retryPolicy = RetryPolicy(),
-       _sessionManager = sessionManager,
-       _authFailureHandler = AuthFailureHandler(
-         tokenService: tokenService,
-         onUnauthorized: onUnauthorized,
-       );
+       _sessionManager = sessionManager;
 
   final TokenService _tokenService;
   final NetworkChecker _networkChecker;
@@ -37,7 +30,6 @@ class ApiClient {
   final http.Client _http;
   final RetryPolicy _retryPolicy;
   final SessionManager? _sessionManager;
-  final AuthFailureHandler _authFailureHandler;
 
   Uri _resolve(String path, Map<String, dynamic>? queryParameters) {
     final base = _baseUrl.endsWith('/')
@@ -207,28 +199,12 @@ class ApiClient {
           );
         }
       } else {
-        final hasSession = await _tokenService.isSessionActive;
-
-        if (hasSession) {
-          if (cancelToken?.isCancelled == true) {
-            throw ApiError(
-              type: ApiErrorType.cancelled,
-              message: cancelToken?.reason ?? 'Request cancelled',
-            );
-          }
-          final retryResponse = await _retryPolicy.run(
-            uri.path,
-            () => call().timeout(AppConstants.receiveTimeout),
-            method: method, // FIXED (issue #6)
-            cancelToken: cancelToken,
-          );
-
-          return RawApiResponse(
-            statusCode: retryResponse.statusCode,
-            data: _tryDecode(retryResponse.body) ?? retryResponse.body,
-            headers: retryResponse.headers,
-          );
-        }
+        // Tests / misconfigured client: no SessionManager — do not clear
+        // the session here. Surface the 401 to the caller.
+        AppLogger.info(
+          '[Interceptor] ${response.statusCode} without SessionManager '
+          'for ${uri.path} — not auto-clearing session',
+        );
       }
     }
 
@@ -251,19 +227,11 @@ class ApiClient {
     }
 
     if (response.statusCode >= 400) {
-      if (!skipAuthInterceptor &&
-          (response.statusCode == 401 ||
-              response.statusCode == 403 ||
-              response.statusCode == 419)) {
-        if (_sessionManager != null) {
-          if (response.statusCode == 403) {
-            await _sessionManager.handleUnauthorized();
-          }
-        } else {
-          await _authFailureHandler.handleUnauthorized();
-        }
-      }
-
+      // 403 = permission / business forbid — do NOT treat as session death.
+      // 401/419 recovery is owned only by [SessionManager] above.
+      // If sessionManager is null (tests), do not clear the session here —
+      // callers decide. Dual AuthFailureHandler path removed to avoid
+      // surprise logouts.
       throw ApiError.fromResponse(
         statusCode: response.statusCode,
         decodedBody: _tryDecode(response.body),

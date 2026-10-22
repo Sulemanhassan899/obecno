@@ -56,6 +56,9 @@ class _AllLocationsScreenState extends State<AllLocationsScreen> {
               const SizedBox(height: 16),
               Expanded(
                 child: ShimmerRefreshIndicator(
+                  instagramStyle: true,
+                  triggerFraction: 0.40,
+                  showOrb: false,
                   onRefresh: provider.refresh,
                   child: isInitialLoad
                       ? const Center(child: ShimmerProgress())

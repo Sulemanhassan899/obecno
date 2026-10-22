@@ -14,6 +14,7 @@ import 'package:obecno/features/clock/presentation/widgets/clock_attendance_engi
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/more/providers/reminder_settings_provider.dart';
 import 'package:obecno/shared/location/data/location_model.dart';
@@ -191,6 +192,12 @@ class SmartAttendanceService extends ChangeNotifier {
       debugPrint('[SmartAttendance] skip evaluate($reason): not authenticated');
       return;
     }
+
+    // Ensure leave data is warm so reminder/leave suppression stays accurate
+    // when Smart Attendance and reminders share the same day.
+    try {
+      await LeavesStore.instance.ensureLoaded();
+    } catch (_) {}
 
     final now = DateTime.now();
     final last = _lastEvaluateAt;

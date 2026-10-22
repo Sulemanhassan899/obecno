@@ -6,6 +6,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_format.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/widgets/my_button.dart';
 
 /// Stacked leave timeline cards — one card per event, never overwritten.
 class LeaveTimelineCards extends StatelessWidget {
@@ -13,10 +14,14 @@ class LeaveTimelineCards extends StatelessWidget {
     super.key,
     required this.events,
     this.onTapRequested,
+    this.onAddReason,
   });
 
   final List<LeaveTimelineEvent> events;
   final ValueChanged<LeaveTimelineEvent>? onTapRequested;
+
+  /// Manager-only: show "Add Reason" on rejected timeline cards.
+  final VoidCallback? onAddReason;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +38,8 @@ class LeaveTimelineCards extends StatelessWidget {
                     onTapRequested != null
                 ? () => onTapRequested!(events[i])
                 : null,
+            onAddReason:
+                events[i].kind == LeaveTimelineKind.rejected ? onAddReason : null,
           ),
         ],
       ],
@@ -41,10 +48,15 @@ class LeaveTimelineCards extends StatelessWidget {
 }
 
 class _LeaveTimelineCard extends StatelessWidget {
-  const _LeaveTimelineCard({required this.event, this.onTap});
+  const _LeaveTimelineCard({
+    required this.event,
+    this.onTap,
+    this.onAddReason,
+  });
 
   final LeaveTimelineEvent event;
   final VoidCallback? onTap;
+  final VoidCallback? onAddReason;
 
   static const _iconSlot = 16.0;
   static const _iconGap = 8.0;
@@ -56,6 +68,7 @@ class _LeaveTimelineCard extends StatelessWidget {
     final reason = event.kind == LeaveTimelineKind.rejected
         ? event.reason?.trim()
         : null;
+    final hasReason = reason != null && reason.isNotEmpty;
 
     final child = Container(
       width: double.infinity,
@@ -110,20 +123,50 @@ class _LeaveTimelineCard extends StatelessWidget {
                       weight: FontWeight.w400,
                       align: TextAlign.left,
                     ),
-                    if (reason != null && reason.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                    if (event.kind == LeaveTimelineKind.rejected) ...[
+                      const SizedBox(height: 10),
                       AppText.p2(
-                        'Reason: $reason',
-                        color: kSubText,
+                        'Reason:',
+                        color: kGreyColor,
                         weight: FontWeight.w400,
                         align: TextAlign.left,
                       ),
+                      if (hasReason) ...[
+                        const SizedBox(height: 4),
+                        AppText.p2(
+                          reason,
+                          color: kSubText,
+                          weight: FontWeight.w400,
+                          align: TextAlign.left,
+                        ),
+                      ],
                     ],
                   ],
                 ),
               ),
             ],
           ),
+          if (onAddReason != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: MyButton(
+                width: 140,
+                height: 40,
+                size: MyButtonSize.normal,
+                buttonText: hasReason ? 'Edit Reason' : 'Add Reason',
+                backgroundColor: kWhite,
+                fontColor: kBlack,
+                outlineColor: kBorderColor,
+                hasicon: true,
+                leftWidget: CommonImageView(
+                  imagePath: Assets.imagesPen,
+                  height: 14,
+                ),
+                onTap: () async => onAddReason!(),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -166,7 +209,6 @@ _TimelineStyle _styleFor(LeaveTimelineKind kind) {
         subtitle: (e) => 'Rejected by - ${e.actorName ?? 'Manager'}',
       );
     case LeaveTimelineKind.requested:
-      // Time is shown once on the shared "at" line — no duplicate subtitle.
       return _TimelineStyle(
         title: 'Leave Requested',
         color: kPurple,

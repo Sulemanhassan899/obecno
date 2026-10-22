@@ -1,5 +1,6 @@
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/shared_attendance/attendance_display_times.dart';
 
 class AttendanceSummary {
   final DateTime? firstCheckIn;
@@ -30,17 +31,28 @@ class AttendanceSummary {
     openSessionStart: null,
   );
 
+  /// Closed segments in [totalWorkingDuration], plus live open work only
+  /// (not first-check-in → now across gaps after an earlier checkout).
   Duration liveWorkingDuration({DateTime? now}) {
-    return AttendanceFormat.workedDuration(
-      start: firstCheckIn,
-      end: isOnBreak
-          ? openSessionStart
-          : isCheckedIn
-          ? (now ?? DateTime.now())
-          : lastCheckOut,
-      breaks: totalBreakDuration,
-    );
+    final clock = now ?? DateTime.now();
+    var live = totalWorkingDuration;
+    if (isOnBreak) return live;
+    if (isCheckedIn && openSessionStart != null) {
+      final extra = clock.difference(openSessionStart!);
+      if (!extra.isNegative) live += extra;
+    }
+    return live;
   }
+
+  /// Shared rule with Attendance history — see [AttendanceDisplayTimes].
+  DateTime? get displayCheckIn =>
+      AttendanceDisplayTimes.displayCheckIn(firstCheckIn: firstCheckIn);
+
+  /// Shared rule: hide checkout while the day is still open.
+  DateTime? get displayCheckOut => AttendanceDisplayTimes.displayCheckOut(
+    dayStillOpen: isCheckedIn || isOnBreak,
+    lastCheckOut: lastCheckOut,
+  );
 
   Duration liveBreakDuration({DateTime? now}) {
     if (!isOnBreak || openSessionStart == null) {
@@ -84,16 +96,27 @@ class AttendanceEngine {
     bool isCheckedIn = false;
     bool isOnBreak = false;
     Duration breaks = Duration.zero;
+    // Closed work only — open segment is added by [liveWorkingDuration].
+    var working = Duration.zero;
     final orphanEarlyCheckOuts = <DateTime>[];
 
+    DateTime spanEnd(DateTime start, DateTime rawEnd) {
+      if (rawEnd.isAfter(start)) return rawEnd;
+      return rawEnd.add(const Duration(days: 1));
+    }
+
     void considerCheckOut(DateTime raw, {required DateTime openStart}) {
-      var out = raw;
-      if (!out.isAfter(openStart)) {
-        out = out.add(const Duration(days: 1));
-      }
+      final out = spanEnd(openStart, raw);
       if (lastCheckOut == null || out.isAfter(lastCheckOut!)) {
         lastCheckOut = out;
       }
+    }
+
+    void closeWork(DateTime rawEnd) {
+      final start = openWorkStart;
+      if (start == null) return;
+      working += spanEnd(start, rawEnd).difference(start);
+      openWorkStart = null;
     }
 
     for (final e in sorted) {
@@ -103,16 +126,25 @@ class AttendanceEngine {
           if (firstCheckIn == null || at.isBefore(firstCheckIn)) {
             firstCheckIn = at;
           }
-          openWorkStart = at;
           isCheckedIn = true;
-          isOnBreak = false;
-          openBreakStart = null;
+          // An approved check-in edit can land inside an already-open break
+          // (break start is earlier on the timeline). Keep that break so the
+          // full break duration still counts.
+          if (openBreakStart != null && openBreakStart!.isBefore(at)) {
+            isOnBreak = true;
+            openWorkStart = null;
+          } else {
+            openWorkStart = at;
+            isOnBreak = false;
+            openBreakStart = null;
+          }
           break;
 
         case AttendanceEventType.checkOut:
-          if (openWorkStart != null) {
-            considerCheckOut(at, openStart: openWorkStart);
-            openWorkStart = null;
+          final workStart = openWorkStart;
+          if (workStart != null) {
+            considerCheckOut(at, openStart: workStart);
+            closeWork(at);
             isCheckedIn = false;
             isOnBreak = false;
             openBreakStart = null;
@@ -129,7 +161,7 @@ class AttendanceEngine {
           break;
 
         case AttendanceEventType.breakStart:
-          openWorkStart = null;
+          closeWork(at);
           openBreakStart = at;
           isOnBreak = true;
           break;
@@ -146,10 +178,11 @@ class AttendanceEngine {
       }
     }
 
-    if (openWorkStart != null && orphanEarlyCheckOuts.isNotEmpty) {
+    final orphanOpen = openWorkStart;
+    if (orphanOpen != null && orphanEarlyCheckOuts.isNotEmpty) {
       final rawOut = orphanEarlyCheckOuts.removeLast();
-      considerCheckOut(rawOut, openStart: openWorkStart);
-      openWorkStart = null;
+      considerCheckOut(rawOut, openStart: orphanOpen);
+      closeWork(rawOut);
       isCheckedIn = false;
       isOnBreak = false;
       openBreakStart = null;
@@ -163,19 +196,19 @@ class AttendanceEngine {
 
     final openSessionStart = openBreakStart ?? openWorkStart;
 
-    // Working hours = (check-out or now) − first check-in − breaks.
-    // 12:25 AM is hour 0; 8:00 PM is hour 20 — never 12-hour arithmetic.
-    var working = Duration.zero;
-    if (firstCheckIn != null) {
-      working = AttendanceFormat.workedDuration(
-        start: firstCheckIn,
-        end: isOnBreak
-            ? openBreakStart
-            : isCheckedIn
-            ? openWorkStart
-            : lastCheckOut,
-        breaks: breaks,
-      );
+    // Single closed shift whose check-in was edited into a break window:
+    // prefer (checkout − check-in − breaks) so working time matches the card.
+    final closedIn = firstCheckIn;
+    final closedOut = lastCheckOut;
+    if (closedIn != null &&
+        closedOut != null &&
+        !isCheckedIn &&
+        !isOnBreak &&
+        breaks > Duration.zero) {
+      final span = spanEnd(closedIn, closedOut).difference(closedIn);
+      if (breaks < span) {
+        working = span - breaks;
+      }
     }
 
     return AttendanceSummary(

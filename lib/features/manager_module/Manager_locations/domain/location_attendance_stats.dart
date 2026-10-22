@@ -59,14 +59,56 @@ class LocationAttendanceStats {
         if (_key(item).isNotEmpty) _key(item),
     };
     for (final item in attendance) {
-      if (!item.hasCheckIn) continue;
+      // Keep On Leave rows even without a punch — same as Attendance module.
+      if (!item.hasCheckIn && !item.isOnLeave) continue;
       if (!matchesLocation(item, location)) continue;
       final key = _key(item);
       if (key.isEmpty || seen.contains(key)) continue;
       merged.add(item);
       seen.add(key);
     }
-    return merged;
+    // Re-merge can pick a non-leave directory row first and drop the leave
+    // stamp; re-apply On Leave so the overview card + list stay in sync.
+    return _overlayLeaveStatus(merged, attendance);
+  }
+
+  /// Copy leave status onto location members when attendance already knows
+  /// they are on leave (by user id or name).
+  static List<ManagerTeamAttendanceItem> _overlayLeaveStatus(
+    List<ManagerTeamAttendanceItem> merged,
+    List<ManagerTeamAttendanceItem> attendance,
+  ) {
+    final leaveByUser = <int, ManagerTeamAttendanceItem>{};
+    final leaveByName = <String, ManagerTeamAttendanceItem>{};
+    for (final item in attendance) {
+      if (!item.isOnLeave) continue;
+      if (item.userId != null) leaveByUser[item.userId!] = item;
+      final name = (item.employeeName ?? '').trim().toLowerCase();
+      if (name.isNotEmpty) leaveByName[name] = item;
+    }
+    if (leaveByUser.isEmpty && leaveByName.isEmpty) return merged;
+
+    return [
+      for (final item in merged) _withLeaveIfNeeded(item, leaveByUser, leaveByName),
+    ];
+  }
+
+  static ManagerTeamAttendanceItem _withLeaveIfNeeded(
+    ManagerTeamAttendanceItem item,
+    Map<int, ManagerTeamAttendanceItem> leaveByUser,
+    Map<String, ManagerTeamAttendanceItem> leaveByName,
+  ) {
+    if (item.isOnLeave) return item;
+    final byUser =
+        item.userId == null ? null : leaveByUser[item.userId!];
+    final byName = leaveByName[(item.employeeName ?? '').trim().toLowerCase()];
+    final leave = byUser ?? byName;
+    if (leave == null) return item;
+    return item.copyWith(
+      status: 'leave',
+      statusLabel: leave.statusLabel ?? 'On Leave',
+      isOpen: false,
+    );
   }
 
   /// Snapshot present/total/late onto each location. Uncounted owner punches

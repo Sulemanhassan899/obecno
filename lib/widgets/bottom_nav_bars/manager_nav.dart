@@ -5,6 +5,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 import 'package:obecno/features/join/data/models/join_invite_models.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
@@ -26,7 +27,15 @@ class ManagerBottomNavBar extends StatefulWidget {
   static final ValueNotifier<int> _alertsTick = ValueNotifier(0);
   static bool openAlertsOnBuild = false;
 
-  static void goToAlerts() {
+  /// Optional Alerts chip: `leaves`, `device`, `reminder`, `check_in`, …
+  static String? pendingAlertsFilter;
+
+  /// Optional leave alert key to scroll/highlight on Alerts (Leaves filter).
+  static String? pendingAlertsLeaveKey;
+
+  static void goToAlerts({String? filter, String? leaveKey}) {
+    pendingAlertsFilter = filter;
+    pendingAlertsLeaveKey = leaveKey;
     openAlertsOnBuild = true;
     _alertsTick.value++;
   }
@@ -55,15 +64,18 @@ class ManagerBottomNavBar extends StatefulWidget {
 class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   int selectedIndex = 0;
   String? _attendanceStatusFilter;
+  final GlobalKey<OverviewScreenState> _overviewKey =
+      GlobalKey<OverviewScreenState>();
   final GlobalKey<ClockScreenState> _clockKey = GlobalKey<ClockScreenState>();
   final GlobalKey<ManagerAttendanceScreenState> _attendanceKey =
       GlobalKey<ManagerAttendanceScreenState>();
-  final GlobalKey<AlertsScreenState> _alertsKey = GlobalKey<AlertsScreenState>();
+  final GlobalKey<AlertsScreenState> _alertsKey =
+      GlobalKey<AlertsScreenState>();
   final GlobalKey<ProfileSettingsScreenState> _moreKey =
       GlobalKey<ProfileSettingsScreenState>();
 
   late final List<Widget> screens = [
-    const OverviewScreen(),
+    OverviewScreen(key: _overviewKey),
     ClockScreen(key: _clockKey),
     ManagerAttendanceScreen(key: _attendanceKey),
     AlertsScreen(key: _alertsKey),
@@ -73,27 +85,59 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   @override
   void initState() {
     super.initState();
-    if (ManagerBottomNavBar.openAlertsOnBuild) {
+    final openAlerts =
+        ManagerBottomNavBar.openAlertsOnBuild || AlertNavigation.pendingOpen;
+    final pendingFilter = ManagerBottomNavBar.pendingAlertsFilter;
+    final pendingLeaveKey = ManagerBottomNavBar.pendingAlertsLeaveKey;
+    if (openAlerts) {
       selectedIndex = 3;
       ManagerBottomNavBar.openAlertsOnBuild = false;
+      ManagerBottomNavBar.pendingAlertsFilter = null;
+      ManagerBottomNavBar.pendingAlertsLeaveKey = null;
+      AlertNavigation.pendingOpen = false;
     }
     ManagerBottomNavBar._alertsTick.addListener(_openAlerts);
     // Employees land on Clock, which arms reminders. Managers land on
     // Overview, so arm the same reminder schedule here.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Cold-start openAlertsOnBuild only sets the tab index; clear the red
+      // dot once the nav (and AlertsProvider) are actually mounted.
+      if (openAlerts || selectedIndex == 3) {
+        context.read<AlertsProvider>().setAlertsTabVisible(true);
+      }
+      if (openAlerts && (pendingFilter != null || pendingLeaveKey != null)) {
+        _alertsKey.currentState?.applyFilter(
+          pendingFilter ?? 'leaves',
+          leaveKey: pendingLeaveKey,
+        );
+      }
       unawaited(context.read<ReminderSettingsProvider>().activateFromClock());
       unawaited(context.read<JoinInviteProvider>().ensureLoaded());
+      if (context.read<AlertsProvider>().isManagerView) {
+        unawaited(context.read<AlertsProvider>().syncLeaveAlerts());
+      }
     });
   }
 
   void _openAlerts() {
     if (!mounted) return;
+    final filter = ManagerBottomNavBar.pendingAlertsFilter;
+    final leaveKey = ManagerBottomNavBar.pendingAlertsLeaveKey;
+    ManagerBottomNavBar.pendingAlertsFilter = null;
+    ManagerBottomNavBar.pendingAlertsLeaveKey = null;
     setState(() {
       selectedIndex = 3;
       ManagerBottomNavBar.openAlertsOnBuild = false;
     });
-    context.read<AlertsProvider>().markAlertsSeen();
+    context.read<AlertsProvider>().setAlertsTabVisible(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _alertsKey.currentState?.applyFilter(
+        filter ?? (leaveKey != null ? 'leaves' : null),
+        leaveKey: leaveKey,
+      );
+    });
   }
 
   @override
@@ -103,10 +147,14 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   }
 
   void openAttendance({String? statusFilter}) {
+    final leftAlerts = selectedIndex == 3;
     setState(() {
       selectedIndex = 2;
       _attendanceStatusFilter = statusFilter;
     });
+    if (leftAlerts) {
+      context.read<AlertsProvider>().setAlertsTabVisible(false);
+    }
   }
 
   void _selectTab(int index) {
@@ -124,8 +172,11 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       }
       selectedIndex = index;
     });
+    final alerts = context.read<AlertsProvider>();
     if (index == 3) {
-      context.read<AlertsProvider>().markAlertsSeen();
+      alerts.setAlertsTabVisible(true);
+    } else if (previousIndex == 3) {
+      alerts.setAlertsTabVisible(false);
     }
     if (index == previousIndex) return;
     if (index == 2) {
@@ -134,6 +185,8 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       switch (index) {
+        case 0:
+          _overviewKey.currentState?.playEntranceAnimation();
         case 1:
           _clockKey.currentState?.notifyTabResumed();
         case 2:
@@ -176,11 +229,16 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
+    final alerts = context.watch<AlertsProvider>();
+    final joinPending = context.watch<JoinInviteProvider>().managerAlerts().any(
+      (e) => e.status == JoinInviteStatus.pendingApproval,
+    );
+    // Red dot: pending leaves stay until approve/reject; join/unseen can
+    // hide while Alerts is open, then return after leaving.
     final showAlertsBadge =
-        context.watch<AlertsProvider>().showNavBadge ||
-        context.watch<JoinInviteProvider>().managerAlerts().any(
-          (e) => e.status == JoinInviteStatus.pendingApproval,
-        );
+        alerts.hasPendingLeaveAlerts ||
+        alerts.hasUnseenAlert ||
+        (selectedIndex != 3 && joinPending);
     final metrics = BottomNavMetrics.of(context);
     return Scaffold(
       body: IndexedStack(index: selectedIndex, children: screens),

@@ -56,7 +56,11 @@ class PendingAttendanceOverlay {
           checkin: save.checkIn ?? item.checkin,
           checkout: save.checkOut ?? item.checkout,
           isOpen: save.checkOut != null ? false : item.isOpen,
+          // Clear live "working" so the tile shows checkout instead of Working.
+          status: save.checkOut != null ? '' : item.status,
+          statusLabel: save.checkOut != null ? '' : item.statusLabel,
           isLate: save.checkIn != null ? false : item.isLate,
+          isEdited: true,
         );
       }).toList();
       if (!found && save.userId != null) {
@@ -68,6 +72,7 @@ class PendingAttendanceOverlay {
             checkin: save.checkIn,
             checkout: save.checkOut,
             isOpen: save.checkOut == null,
+            isEdited: true,
           ),
         ];
       }

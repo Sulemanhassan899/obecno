@@ -7,6 +7,7 @@ class EmployeeApiEndpoints {
   static const String login = '/auth/login';
   static const String logout = '/auth/logout';
   static const String currentUser = '/auth/me';
+  static const String refresh = '/auth/refresh';
   static const String forgot = '/auth/forgot-password';
   static const String changePassword = '/auth/change-password';
 

@@ -8,6 +8,7 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/clock/services/clock_local_session_sync.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_details_data.dart';
@@ -1324,6 +1325,10 @@ class _AttendanceContentState extends State<_AttendanceContent>
       updated: primary.end,
       fallbackHms: checkOutHms,
       hadInitial: primary.hadInitialEnd,
+      // Open day (no server checkout yet): always include checkout so
+      // employee requests and manager saves can leave "Working".
+      force: !primary.hadInitialEnd,
+      allowWithoutDetailId: !primary.hadInitialEnd,
     );
 
     if (widget.isCreating) {
@@ -1650,24 +1655,22 @@ class _AttendanceContentState extends State<_AttendanceContent>
           hasBreakSection &&
           _timeChanged(primaryBreak.initialEnd, primaryBreak.end);
 
+      // Open shifts often seed a schedule checkout in the sheet without
+      // hadInitialEnd. Manager apply-now and employee edit-requests must
+      // still include that checkout or the day stays open / "Working".
+      final closingOpenShift = !primary.hadInitialEnd;
+
       final sendCheckIn =
           widget.isCreating || primary.hadInitialStart || checkInDirty;
       final sendCheckOut =
-          widget.isCreating || primary.hadInitialEnd || checkOutDirty;
+          widget.isCreating ||
+          primary.hadInitialEnd ||
+          checkOutDirty ||
+          closingOpenShift;
       final sendBreakStart =
           hasBreakSection && (primaryBreak.hadInitialStart || breakStartDirty);
       final sendBreakEnd =
           hasBreakSection && (primaryBreak.hadInitialEnd || breakEndDirty);
-
-      debugPrint(
-        '[ManagerAttendance] handleSave userId=${widget.employeeUserId} '
-        'attendanceId=$attendanceId day=${widget.day} '
-        'dirty in=$checkInDirty out=$checkOutDirty '
-        'break=$breakStartDirty/$breakEndDirty '
-        'extras work=${workPairs.length} break=${breakPairs.length} '
-        'send in=$sendCheckIn(${primary.start.hour}:${primary.start.minute}) '
-        'out=$sendCheckOut(${primary.end.hour}:${primary.end.minute})',
-      );
 
       // Submit in chronological sequence so portal pending rows match the
       // employee's event order (9:00 → … → 6:00).
@@ -1838,7 +1841,10 @@ class _AttendanceContentState extends State<_AttendanceContent>
       if (success) {
         final saved = AddAttendanceSaveResult(
           checkIn: (checkInDirty || widget.isCreating) ? primary.start : null,
-          checkOut: (checkOutDirty || widget.isCreating) ? primary.end : null,
+          checkOut:
+              (checkOutDirty || widget.isCreating || closingOpenShift)
+              ? primary.end
+              : null,
           breakStart: breakStartDirty ? primaryBreak.start : null,
           breakEnd: breakEndDirty ? primaryBreak.end : null,
         );
@@ -1850,6 +1856,18 @@ class _AttendanceContentState extends State<_AttendanceContent>
             day: widget.day,
             checkIn: saved.checkIn,
             checkOut: saved.checkOut,
+          );
+          // Keep Clock prefs in sync when editing your own day so restart
+          // does not revive an open check-in after a checkout was applied.
+          final syncUserId =
+              widget.employeeUserId?.toString() ??
+              bindings.authProvider.user?.id?.toString();
+          await ClockLocalSessionSync.applyManagerSave(
+            userId: syncUserId,
+            day: widget.day,
+            checkIn: saved.checkIn ?? primary.start,
+            checkOut: saved.checkOut,
+            locationName: bindings.authProvider.selectedLocationName,
           );
         } else {
           ToastHelper.attendanceRequestSent(

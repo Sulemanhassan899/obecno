@@ -46,10 +46,7 @@ class ToastHelper {
     );
   }
 
-  static void error(
-    BuildContext context, {
-    required String message,
-  }) {
+  static void error(BuildContext context, {required String message}) {
     SnackbarHelper.showTopToast(
       context,
       message: message,
@@ -63,31 +60,19 @@ class ToastHelper {
   // =====================================================================
 
   static void deviceApproved(BuildContext context) {
-    success(
-      context,
-      message: 'Device Approved',
-    );
+    success(context, message: 'Device Approved');
   }
 
   static void deviceRejected(BuildContext context) {
-    success(
-      context,
-      message: 'Device Rejected',
-    );
+    success(context, message: 'Device Rejected');
   }
 
   static void deviceBlocked(BuildContext context) {
-    success(
-      context,
-      message: 'Device Blocked',
-    );
+    success(context, message: 'Device Blocked');
   }
 
   static void deviceUnblocked(BuildContext context) {
-    success(
-      context,
-      message: 'Device Unblocked',
-    );
+    success(context, message: 'Device Unblocked');
   }
 
   // =====================================================================
@@ -97,10 +82,7 @@ class ToastHelper {
   // =====================================================================
 
   static void changesSaved(BuildContext context) {
-    success(
-      context,
-      message: 'Changes saved.',
-    );
+    success(context, message: 'Changes saved.');
   }
 
   // =====================================================================
@@ -116,9 +98,7 @@ class ToastHelper {
     show(
       context,
       message: ok
-          ? ((message != null && message.isNotEmpty)
-                ? message
-                : 'Request send')
+          ? ((message != null && message.isNotEmpty) ? message : 'Request send')
           : ((message != null && message.isNotEmpty)
                 ? message
                 : 'Request not send'),
@@ -133,38 +113,23 @@ class ToastHelper {
   // =====================================================================
 
   static void locationDeleted(BuildContext context) {
-    success(
-      context,
-      message: 'Location deleted.',
-    );
+    success(context, message: 'Location deleted.');
   }
 
   static void locationDeactivated(BuildContext context) {
-    success(
-      context,
-      message: 'Location deactivated.',
-    );
+    success(context, message: 'Location deactivated.');
   }
 
   static void locationActivated(BuildContext context) {
-    success(
-      context,
-      message: 'Location activated.',
-    );
+    success(context, message: 'Location activated.');
   }
 
   static void accountDeactivated(BuildContext context) {
-    success(
-      context,
-      message: 'Account deactivated.',
-    );
+    success(context, message: 'Account deactivated.');
   }
 
   static void accountActivated(BuildContext context) {
-    success(
-      context,
-      message: 'Account activated.',
-    );
+    success(context, message: 'Account activated.');
   }
 
   static void couldNotGetLocation(BuildContext context) {
@@ -191,10 +156,7 @@ class ToastHelper {
     BuildContext context, {
     bool isRejected = false,
   }) {
-    error(
-      context,
-      message: isRejected ? 'Device rejected' : 'Device blocked',
-    );
+    error(context, message: isRejected ? 'Device rejected' : 'Device blocked');
   }
 
   static void unregisteredDevice(BuildContext context) {
@@ -215,6 +177,30 @@ class ToastHelper {
       message: AppStrings.checkedIn,
       backgroundColor: kBlack,
       imagePath: Assets.imagesCircleCheckDown,
+    );
+  }
+
+  // =====================================================================
+  // Leaves apply
+  // =====================================================================
+
+  static void leaveApplied(BuildContext context, {String? message}) {
+    show(
+      context,
+      message: (message != null && message.trim().isNotEmpty)
+          ? message.trim()
+          : 'Leave request submitted',
+      backgroundColor: kBlack,
+      imagePath: Assets.imagesCircleCheckTick,
+    );
+  }
+
+  static void leaveApplyFailed(BuildContext context, {String? message}) {
+    error(
+      context,
+      message: (message != null && message.trim().isNotEmpty)
+          ? message.trim()
+          : 'Leave request failed',
     );
   }
 
@@ -282,8 +268,7 @@ class ToastHelper {
   static void locationRequiredForOffice(BuildContext context) {
     error(
       context,
-      message:
-          'Location permissions required to view office locations.',
+      message: 'Location permissions required to view office locations.',
     );
   }
 

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_format.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/main.dart';
 
 /// Leave options shown when tapping Leave type on Apply sheet.
 class LeaveTypePickerSheet extends StatefulWidget {
@@ -15,23 +16,20 @@ class LeaveTypePickerSheet extends StatefulWidget {
     super.key,
     required this.selectedTypeId,
     required this.requestedDays,
+    this.types,
   });
 
   final String? selectedTypeId;
   final int requestedDays;
 
-  static const _pickerIds = [
-    'casual',
-    'sick',
-    'misc',
-    'paternity',
-    'bereavement',
-  ];
+  /// When set (e.g. manager assigning leave), use these instead of LeavesStore.
+  final List<LeaveTypeInfo>? types;
 
   static Future<LeaveTypeInfo?> show(
     BuildContext context, {
     String? selectedTypeId,
     int requestedDays = 1,
+    List<LeaveTypeInfo>? types,
   }) {
     return AppSheet.show<LeaveTypeInfo>(
       context: context,
@@ -46,6 +44,7 @@ class LeaveTypePickerSheet extends StatefulWidget {
           child: LeaveTypePickerSheet(
             selectedTypeId: selectedTypeId,
             requestedDays: requestedDays,
+            types: types,
           ),
         );
       },
@@ -63,6 +62,11 @@ class _LeaveTypePickerSheetState extends State<LeaveTypePickerSheet> {
   void initState() {
     super.initState();
     _selectedId = widget.selectedTypeId;
+    if (widget.types == null) {
+      bindings.leavesStore.ensureLoaded().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   String _label(LeaveTypeInfo type) {
@@ -84,11 +88,7 @@ class _LeaveTypePickerSheetState extends State<LeaveTypePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final store = LeavesMockStore.instance;
-    final types = [
-      for (final id in LeaveTypePickerSheet._pickerIds)
-        if (store.typeById(id) != null) store.typeById(id)!,
-    ];
+    final types = widget.types ?? bindings.leavesStore.types;
     final bottom = MediaQuery.paddingOf(context).bottom;
 
     return Column(

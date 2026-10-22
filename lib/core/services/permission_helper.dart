@@ -29,13 +29,9 @@ class PermissionService {
     if (p == AppPermission.location) {
       // AppGuard / UI "is location OFF?" — When-In-Use counts as ON.
       // (Always often lags as denied right after grant until process restart.)
-      final result = await _locationStatus(requireAlways: false);
-      debugPrint('[PermissionService] status(location) -> $result');
-      return result;
+      return _locationStatus(requireAlways: false);
     }
-    final result = await _map(p).status;
-    debugPrint('[PermissionService] status($p) -> $result');
-    return result;
+    return _map(p).status;
   }
 
   /// Background / geofence gate used by [areAllPermissionsAllowed].
@@ -59,9 +55,7 @@ class PermissionService {
       if (!requireAlways && geo == LocationPermission.whileInUse) {
         return PermissionStatus.granted;
       }
-    } catch (e) {
-      debugPrint('[PermissionService] Geolocator.checkPermission failed: $e');
-    }
+    } catch (_) {}
 
     final location = await Permission.location.status;
     if (isAllowed(location)) {
@@ -81,20 +75,13 @@ class PermissionService {
       final whenInUse = await Permission.locationWhenInUse.status;
       if (!isAllowed(whenInUse)) {
         final whenInUseResult = await Permission.locationWhenInUse.request();
-        debugPrint(
-          '[PermissionService] request(locationWhenInUse) -> $whenInUseResult',
-        );
         if (!isAllowed(whenInUseResult)) return whenInUseResult;
       }
 
-      final always = await Permission.locationAlways.request();
-      debugPrint('[PermissionService] request(locationAlways) -> $always');
-      return always;
+      return Permission.locationAlways.request();
     }
 
-    final result = await _map(p).request();
-    debugPrint('[PermissionService] request($p) -> $result');
-    return result;
+    return _map(p).request();
   }
 
   static Future<void> openSettings() async {
@@ -108,10 +95,7 @@ class PermissionService {
   /// "Location permission" page. Do not use MANAGE_APP_PERMISSION (that
   /// opens the generic "App permissions" list on many devices).
   static Future<void> openExactLocationAlwaysPage() async {
-    final result = await Permission.locationAlways.request();
-    debugPrint(
-      '[PermissionService] openExactLocationAlwaysPage -> $result',
-    );
+    await Permission.locationAlways.request();
   }
 
   /// @deprecated Use [openExactLocationAlwaysPage].
@@ -136,15 +120,9 @@ class PermissionService {
     final loc = await locationAlwaysStatus();
     final notif = await status(AppPermission.notification);
     final motion = await status(AppPermission.motion);
-    final result =
-        isAllowed(loc) &&
+    return isAllowed(loc) &&
         isAllowed(notif) &&
         isAllowed(motion, AppPermission.motion);
-    debugPrint(
-      '[PermissionService] areAllPermissionsAllowed() -> locationAlways: $loc, '
-      'notification: $notif, motion: $motion => $result',
-    );
-    return result;
   }
 
   /// Splash / cold-start gate: When-In-Use location is enough to enter the app.
@@ -154,12 +132,17 @@ class PermissionService {
   static Future<bool> areCriticalPermissionsAllowed() async {
     final loc = await _locationStatus(requireAlways: false);
     final motion = await status(AppPermission.motion);
-    final result = isAllowed(loc) && isAllowed(motion, AppPermission.motion);
-    debugPrint(
-      '[PermissionService] areCriticalPermissionsAllowed() -> location: $loc, '
-      'motion: $motion => $result',
-    );
-    return result;
+    return isAllowed(loc) && isAllowed(motion, AppPermission.motion);
+  }
+
+  /// First-time login gate: location (when-in-use) + notification + motion.
+  static Future<bool> areFirstLoginPermissionsAllowed() async {
+    final loc = await _locationStatus(requireAlways: false);
+    final notif = await status(AppPermission.notification);
+    final motion = await status(AppPermission.motion);
+    return isAllowed(loc) &&
+        isAllowed(notif) &&
+        isAllowed(motion, AppPermission.motion);
   }
 
   static Future<List<AppPermission>> missingPermissions() async {

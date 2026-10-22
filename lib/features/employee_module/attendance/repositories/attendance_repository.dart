@@ -183,11 +183,18 @@ class HistoryAttendanceRepository {
 
     final history = attendanceResponse.data!;
     final calendar = calendarResponse.success ? calendarResponse.data : null;
+    final leaves = leavesResponse.success ? leavesResponse.data : null;
+    final rejectedLeaveDates = leaves == null
+        ? const <DateTime>{}
+        : EmployeeLeaveDates.rejectedDates(leaves);
     final leaveDates = <DateTime>{
       ...?calendar?.leaveDates,
-      if (leavesResponse.success && leavesResponse.data != null)
-        ...EmployeeLeaveDates.approvedDates(leavesResponse.data!),
-    };
+      if (leaves != null) ...EmployeeLeaveDates.approvedDates(leaves),
+    }..removeWhere(
+      (d) => rejectedLeaveDates.any(
+        (r) => r.year == d.year && r.month == d.month && r.day == d.day,
+      ),
+    );
 
     final days = List<AttendanceDay>.from(history.history)
       ..sort((a, b) => b.date.compareTo(a.date)); // latest first
@@ -195,7 +202,11 @@ class HistoryAttendanceRepository {
     final today = history.today ?? DateTime.now();
     final joiningDate = _joiningDate;
 
-    final daysWithLeave = EmployeeLeaveDates.overlay(days, leaveDates);
+    final daysWithLeave = EmployeeLeaveDates.overlay(
+      days,
+      leaveDates,
+      rejectedDates: rejectedLeaveDates,
+    );
 
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
     // latest-first so records match the original display order.
@@ -403,6 +414,9 @@ class HistoryAttendanceRepository {
           break;
       }
 
+      // Weekend punches stay visible but do not inflate Mon–Fri totals.
+      if (record.isWeekendContext) continue;
+
       totalWorkingDays++;
       workingDays++;
 
@@ -570,6 +584,10 @@ class HistoryAttendanceRepository {
         break;
       case DayCardType.weekend:
         status = AttendanceDayStatus.weekend;
+        if (_hasCountablePunch(day)) {
+          checkInLabel = _formatTime12h(day.firstCheckIn);
+          checkOutLabel = _formatTime12h(day.lastCheckOut);
+        }
         break;
       case DayCardType.onLeave:
         checkInLabel = 'Leave';
@@ -590,6 +608,8 @@ class HistoryAttendanceRepository {
         break;
     }
 
+    final isWeekendContext = !_workingWeekdays.contains(dateOnly.weekday);
+
     return AttendanceDayRecord(
       day: day.date.day,
       weekday: _weekdayNames[day.date.weekday - 1],
@@ -599,6 +619,7 @@ class HistoryAttendanceRepository {
       status: status,
       weekendLabel: weekendLabel,
       hasEditedTime: day.isEdited,
+      isWeekendContext: isWeekendContext,
     );
   }
 

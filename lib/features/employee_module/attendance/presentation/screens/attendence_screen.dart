@@ -513,7 +513,8 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen>
                   removeTop: true,
                   child: ShimmerRefreshIndicator(
                     instagramStyle: true,
-                    triggerFraction: 0.48,
+                    triggerFraction: 0.40,
+                    showOrb: false,
                     onRefresh: () async {
                       await _controller.refresh();
                       await _reconcilePendingAdds();

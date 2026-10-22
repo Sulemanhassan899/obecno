@@ -1,12 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:system_clock/system_clock.dart';
 
 import 'package:obecno/core/helpers/dialog.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
@@ -15,7 +9,6 @@ import 'package:obecno/main.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/core/routes/app_routes.dart';
-import 'package:obecno/shared/location/service/geofence_helper.dart';
 
 enum DeviceApprovalStatus { approved, unregistered, blocked, permissionDenied }
 
@@ -108,213 +101,9 @@ class DeviceApprovalGuard {
   /// Public entry used by ClockScreen / other call sites.
   static Future<void> logDeviceInfoToConsole() => _logDeviceInfoToConsole();
 
-  /// Collects device, wall-clock, monotonic time, GPS, and geofence intel
-  /// and prints it to the console (Flutter-only; no custom native code).
-  static Future<void> _logDeviceInfoToConsole() async {
-    final buf = StringBuffer();
-    buf.writeln('[DEVICE_TELEMETRY]');
-
-    // ── 1. DEVICE INFORMATION ──────────────────────────────────────────
-    try {
-      final info = await bindings.deviceInfoService.collect();
-      buf.writeln('📦 1. DEVICE INFORMATION');
-      buf.writeln('deviceId=${info.deviceId}');
-      buf.writeln('deviceName=${info.deviceName}');
-      buf.writeln('model=${info.model}');
-      buf.writeln('manufacturer=${info.manufacturer}');
-      buf.writeln('platform=${info.platform}');
-      buf.writeln('os=${info.os}');
-      buf.writeln('osVersion=${info.osVersion}');
-      buf.writeln('appVersion=${info.appVersion}');
-      buf.writeln('deviceDetails=${info.deviceDetails}');
-    } catch (e) {
-      buf.writeln('📦 1. DEVICE INFORMATION → ERROR: $e');
-    }
-
-    // ── 2. TIME & TIMEZONE (WALL CLOCK) ────────────────────────────────
-    try {
-      final local = DateTime.now();
-      final utc = local.toUtc();
-      final hour = local.hour;
-      final timeBucket = hour < 12
-          ? 'morning'
-          : (hour < 17 ? 'afternoon' : 'evening');
-      const dayNames = [
-        'monday',
-        'tuesday',
-        'wednesday',
-        'thursday',
-        'friday',
-        'saturday',
-        'sunday',
-      ];
-      buf.writeln('⏱ 2. TIME & TIMEZONE (WALL CLOCK)');
-      buf.writeln('localTime=$local');
-      buf.writeln('utcTime=$utc');
-      buf.writeln('timezoneName=${local.timeZoneName}');
-      buf.writeln('timezoneOffsetMinutes=${local.timeZoneOffset.inMinutes}');
-      buf.writeln('isoTimestamp=${local.toIso8601String()}');
-      buf.writeln(
-        'isWeekend=${local.weekday == DateTime.saturday || local.weekday == DateTime.sunday}',
-      );
-      buf.writeln('dayOfWeek=${dayNames[local.weekday - 1]}');
-      buf.writeln('hourOfDay=$hour');
-      buf.writeln('timeBucket=$timeBucket');
-    } catch (e) {
-      buf.writeln('⏱ 2. TIME & TIMEZONE → ERROR: $e');
-    }
-
-    // ── 3. SYSTEM MONOTONIC TIME ───────────────────────────────────────
-    try {
-      final elapsedMs = SystemClock.elapsedRealtime().inMilliseconds;
-      final uptimeMs = SystemClock.uptime().inMilliseconds;
-      buf.writeln('⏱ 3. SYSTEM MONOTONIC TIME');
-      buf.writeln('elapsedRealtime=$elapsedMs');
-      buf.writeln('uptimeMillis=$uptimeMs');
-      buf.writeln(
-        'platformNote=${Platform.isAndroid ? "android(SystemClock via system_clock ffi)" : Platform.isIOS ? "ios(process uptime via system_clock ffi)" : Platform.operatingSystem}',
-      );
-    } catch (e) {
-      buf.writeln('⏱ 3. SYSTEM MONOTONIC TIME → ERROR: $e');
-    }
-
-    // ── 4. LOCATION DATA ──────────────────────────────────────────────
-    Position? position;
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (!serviceEnabled) {
-        buf.writeln('📍 4. LOCATION DATA → location services disabled');
-      } else if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        buf.writeln('📍 4. LOCATION DATA → permission denied');
-      } else {
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 12),
-        );
-        buf.writeln('📍 4. LOCATION DATA');
-        buf.writeln('latitude=${position.latitude}');
-        buf.writeln('longitude=${position.longitude}');
-        buf.writeln('accuracy=${position.accuracy}');
-        buf.writeln('altitude=${position.altitude}');
-        buf.writeln('speed=${position.speed}');
-        buf.writeln('heading=${position.heading}');
-        buf.writeln('timestamp=${position.timestamp}');
-        buf.writeln('isMocked=${position.isMocked}');
-      }
-    } catch (e) {
-      buf.writeln('📍 4. LOCATION DATA → ERROR: $e');
-    }
-
-    // ── 5. DERIVED LOCATION INTELLIGENCE ───────────────────────────────
-    try {
-      buf.writeln('🧭 5. DERIVED LOCATION INTELLIGENCE');
-      final office = bindings.locationProvider.companyLocation;
-      final radius = bindings.locationProvider.radiusMeters;
-      final officeName = bindings.locationProvider.companyLocationName;
-
-      if (position == null) {
-        buf.writeln('distanceFromOffice=n/a');
-        buf.writeln('isWithinRadius=n/a');
-        buf.writeln('office=$officeName ($office)');
-        buf.writeln('radiusMeters=$radius');
-      } else {
-        final user = GeoPoint(lat: position.latitude, lon: position.longitude);
-        final result = GeofenceHelper.evaluate(
-          companyLocation: office,
-          user: user,
-          radiusMeters: radius,
-          locationName: officeName,
-        );
-        buf.writeln('office=$officeName ($office)');
-        buf.writeln('radiusMeters=${result.radiusMeters}');
-        buf.writeln(
-          'distanceFromOfficeMeters=${result.distanceMeters.isFinite ? result.distanceMeters.toStringAsFixed(2) : "infinity"}',
-        );
-        buf.writeln('isWithinRadius=${result.isInside}');
-        buf.writeln('geofenceMessage=${result.message}');
-
-        final address = await _reverseGeocodeParts(
-          lat: position.latitude,
-          lon: position.longitude,
-        );
-        buf.writeln('country=${address['country']}');
-        buf.writeln('city=${address['city']}');
-        buf.writeln('area=${address['area']}');
-        buf.writeln('street=${address['street']}');
-      }
-    } catch (e) {
-      buf.writeln('🧭 5. DERIVED LOCATION INTELLIGENCE → ERROR: $e');
-    }
-
-    final log = buf.toString().trimRight();
-    AppLogger.info(log);
-    debugPrint(log);
-  }
-
-  static Future<Map<String, String?>> _reverseGeocodeParts({
-    required double lat,
-    required double lon,
-  }) async {
-    final empty = <String, String?>{
-      'country': null,
-      'city': null,
-      'area': null,
-      'street': null,
-    };
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-        'format': 'jsonv2',
-        'lat': '$lat',
-        'lon': '$lon',
-        'zoom': '18',
-        'accept-language': 'en',
-      });
-      final response = await http
-          .get(
-            uri,
-            headers: const {
-              'User-Agent': 'Obecno-Attendance-App/1.0 (device-telemetry)',
-              'Accept-Language': 'en',
-            },
-          )
-          .timeout(const Duration(seconds: 6));
-      if (response.statusCode != 200) return empty;
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) return empty;
-      final address = decoded['address'];
-      if (address is! Map) return empty;
-
-      String? pick(List<String> keys) {
-        for (final key in keys) {
-          final value = address[key];
-          if (value is String && value.trim().isNotEmpty) return value.trim();
-        }
-        return null;
-      }
-
-      return {
-        'country': pick(const ['country']),
-        'city': pick(const ['city', 'town', 'village', 'municipality']),
-        'area': pick(const [
-          'suburb',
-          'neighbourhood',
-          'city_district',
-          'county',
-          'state_district',
-        ]),
-        'street': pick(const ['road', 'pedestrian', 'footway', 'path']),
-      };
-    } catch (_) {
-      return empty;
-    }
-  }
+  /// Previously dumped device/GPS telemetry to the console. Kept as a
+  /// no-op so call sites stay intact without log noise.
+  static Future<void> _logDeviceInfoToConsole() async {}
 
   static String _policyFor(DeviceApprovalStatus status) {
     switch (status) {

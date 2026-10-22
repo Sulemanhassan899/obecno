@@ -24,8 +24,17 @@ static const String apiVersion = String.fromEnvironment(
   // ---------------------------------------------------------------------
   // Retry
   // ---------------------------------------------------------------------
-  static const int maxRetries = 5;
+  /// GET-only network retries (see [RetryPolicy]). Keep low to avoid storms.
+  static const int maxRetries = 3;
   static const Duration retryBaseDelay = Duration(milliseconds: 500);
+
+  /// When true, manager leave list/review also tries legacy `/manager/leaves*`
+  /// if `team-leaves` returns empty/fails. Prefer leaving this off once the
+  /// backend contract is stable.
+  static const bool useLegacyLeavePaths = bool.fromEnvironment(
+    'OBECNO_LEGACY_LEAVE_PATHS',
+    defaultValue: false,
+  );
 
   // ---------------------------------------------------------------------
   // Storage keys
@@ -45,6 +54,9 @@ static const String apiVersion = String.fromEnvironment(
 
   static const String keyTokenJson = 'session_token_json';
   static const String keyPermissionsJson = 'session_permissions_json';
+  static const String keyPermissionsSetupCompleted =
+      'permissions_setup_completed';
+  static const String keyOnboardingCompleted = 'onboarding_completed';
 
   /// Off in release. Enable only with:
   /// `--dart-define=OBECNO_DEBUG_LOGS=true`

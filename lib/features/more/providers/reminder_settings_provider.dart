@@ -19,15 +19,21 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required CompanyPolicyService policyService,
     required String Function() userIdProvider,
     String Function()? locationNameProvider,
+    bool Function(DateTime day)? isOnLeaveDay,
+    Future<void> Function()? ensureLeaveData,
   }) : _dao = dao,
        _policyService = policyService,
        _userIdProvider = userIdProvider,
-       _locationNameProvider = locationNameProvider;
+       _locationNameProvider = locationNameProvider,
+       _isOnLeaveDay = isOnLeaveDay,
+       _ensureLeaveData = ensureLeaveData;
 
   final ReminderDao _dao;
   final CompanyPolicyService _policyService;
   final String Function() _userIdProvider;
   final String Function()? _locationNameProvider;
+  final bool Function(DateTime day)? _isOnLeaveDay;
+  final Future<void> Function()? _ensureLeaveData;
 
   /// AppBindings wires Smart Attendance start/stop without a hard import cycle.
   void Function()? onSmartAttendanceTogglesChanged;
@@ -179,6 +185,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     if (userId.isEmpty) return;
     final fired = await NativeReminderScheduler.consumeFired();
     if (fired.isEmpty) return;
+    var anyNew = false;
     for (final notice in fired) {
       final type = ReminderType.fromStorageKey(notice.type);
       if (type == null) continue;
@@ -191,7 +198,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
         deliveredAt: at,
       );
       await _dao.saveShownNotification(userId: userId, date: at, log: log);
-      await _dao.insertLogIfAbsent(userId: userId, date: at, log: log);
+      if (await _dao.insertLogIfAbsent(userId: userId, date: at, log: log)) {
+        anyNew = true;
+      }
       await _dao.markDelivered(
         userId: userId,
         date: at,
@@ -199,7 +208,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
         deliveredAt: at,
       );
     }
-    _notifyReminderAlertWritten();
+    // Only raise the Alerts red-dot for newly stored rows — re-importing
+    // leftovers must not resurrect the badge after the user opened Alerts.
+    if (anyNew) _notifyReminderAlertWritten();
   }
 
   /// Pull-to-refresh: fetch latest permission clocks and reschedule.
@@ -456,6 +467,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required DateTime now,
   }) async {
     if (!entered) return;
+    if (await _shouldSuppressReminders(now)) return;
     // Enter-location toggle owns the "checked in" banner; auto punch itself
     // is silent when that notify toggle is off.
     if (!isEnabled(ReminderType.enterLocation)) return;
@@ -484,8 +496,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
     required bool checkedIn,
     required String locationName,
   }) async {
-    final place = _locationName(locationName);
     final now = DateTime.now();
+    if (await _shouldSuppressReminders(now)) return;
+    final place = _locationName(locationName);
     if (inside) {
       if (!isEnabled(ReminderType.enterLocation)) return;
       final title = ReminderCopy.smartAttendanceTitle;
@@ -533,6 +546,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
   /// Smart Attendance: nag to manually check out while outside, every 5 min.
   Future<void> notifySmartCheckoutNag({required String locationName}) async {
     if (!isEnabled(ReminderType.smartAttendance)) return;
+    if (await _shouldSuppressReminders(DateTime.now())) return;
     final place = _locationName(locationName);
     final title = ReminderCopy.smartAttendanceTitle;
     final body = ReminderCopy.leavePleaseCheckOut(place);
@@ -569,8 +583,12 @@ class ReminderSettingsProvider extends ChangeNotifier {
       deliveredAt: at,
     );
     await _dao.saveShownNotification(userId: userId, date: at, log: log);
-    await _dao.insertLogIfAbsent(userId: userId, date: at, log: log);
-    _notifyReminderAlertWritten();
+    final inserted = await _dao.insertLogIfAbsent(
+      userId: userId,
+      date: at,
+      log: log,
+    );
+    if (inserted) _notifyReminderAlertWritten();
   }
 
   Future<void> _maybeSmartAlreadyCheckedInAlert(
@@ -578,6 +596,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     List<ReminderPunch> punches,
   ) async {
     if (!isEnabled(ReminderType.enterLocation)) return;
+    if (await _shouldSuppressReminders(when)) return;
     final status = ReminderClockStatus.fromPunches(punches);
     if (status.hasNotStarted || status.firstCheckIn == null) return;
 
@@ -629,6 +648,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     // Clock is the source of truth — including an empty list after check-out
     // or a reset Check In button. Stale day_state must not keep "checked_in".
     await _persistClockState(day, punches, allowClear: true);
+    final suppress = await _shouldSuppressReminders(day);
     final logs = await ReminderEngine.syncDay(
       dao: _dao,
       userId: _userIdProvider(),
@@ -651,8 +671,14 @@ class ReminderSettingsProvider extends ChangeNotifier {
       longAttendanceHours: longAttendanceMinutes,
       punches: punches,
       locationName: _locationName(locationName),
+      onLeave: suppress,
     );
-    await _rescheduleNotifications(now: DateTime.now(), reloadPunches: false);
+    // Full OS rebuild so check-out / break alarms arm the moment Clock punches.
+    await _rescheduleNotifications(
+      now: DateTime.now(),
+      rebuildSchedule: true,
+      reloadPunches: false,
+    );
     return logs;
   }
 
@@ -666,6 +692,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
 
   String? _lastReminderSignature;
   DateTime? _lastWatchMinute;
+  bool? _lastSuppressed;
 
   Future<void> _onWatchTick() async {
     final now = DateTime.now();
@@ -680,15 +707,28 @@ class ReminderSettingsProvider extends ChangeNotifier {
     }
     final punches = await _loadTodayPunches(now);
     final fired = await _loadOsFired(now);
-    final signature = _reminderSignature(punches, fired: fired);
+    final suppressed = await _shouldSuppressReminders(now);
+    final suppressFlipped =
+        _lastSuppressed != null && _lastSuppressed != suppressed;
+    _lastSuppressed = suppressed;
+    final signature = _reminderSignature(
+      punches,
+      fired: fired,
+      suppressed: suppressed,
+    );
+    final signatureChanged = signature != _lastReminderSignature;
     // Punch/settings signature does not include the clock. Without this, an
     // open app never posts check-out or break banners on their minute.
-    if (!minuteChanged && signature == _lastReminderSignature) return;
+    if (!minuteChanged && !suppressFlipped && !signatureChanged) {
+      return;
+    }
     _lastWatchMinute = minute;
     _punches = punches;
     await _rescheduleNotifications(
       now: now,
-      rebuildSchedule: false,
+      // Punch / leave / rest changes must replaceAll so check-out & break
+      // alarms arm as soon as the user checks in (and stale ones clear).
+      rebuildSchedule: suppressFlipped || signatureChanged,
       reloadPunches: false,
     );
   }
@@ -696,6 +736,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
   String _reminderSignature(
     List<ReminderPunch> punches, {
     Set<ReminderType> fired = const {},
+    bool suppressed = false,
   }) {
     final punchPart = punches
         .map((punch) => '${punch.kind.name}@${punch.time.toIso8601String()}')
@@ -708,7 +749,21 @@ class ReminderSettingsProvider extends ChangeNotifier {
         '$breakReminderTime|$breakEndedReminderTime|$checkInMissedTime|'
         '$checkOutMissedTime|$graceMinutes|$checkInMissedMinutes|'
         '$checkOutMissedMinutes|$longerBreakMinutes|$breakMinutes|'
-        '$longAttendanceMinutes|${fired.map((type) => type.name).join(',')}';
+        '$longAttendanceMinutes|${fired.map((type) => type.name).join(',')}|'
+        'suppress=${suppressed ? 1 : 0}';
+  }
+
+  bool _isRestDay(DateTime day) {
+    final days = workingWeekdays.isEmpty
+        ? ReminderNotificationPlan.defaultWorkingWeekdays
+        : workingWeekdays;
+    return !days.contains(day.weekday);
+  }
+
+  Future<bool> _shouldSuppressReminders(DateTime day) async {
+    if (_isRestDay(day)) return true;
+    await _ensureLeaveData?.call();
+    return _isOnLeaveDay?.call(day) == true;
   }
 
   Future<void> _rescheduleNotifications({
@@ -742,12 +797,22 @@ class ReminderSettingsProvider extends ChangeNotifier {
       _punches = await _loadTodayPunches(when);
     }
     if (generation != _rescheduleGeneration) return;
+    await _ensureLeaveData?.call();
+    if (generation != _rescheduleGeneration) return;
+    final restToday = _isRestDay(when);
+    final onLeaveToday = _isOnLeaveDay?.call(when) == true;
+    final suppressToday = restToday || onLeaveToday;
+    _lastSuppressed = suppressToday;
     await _persistClockState(when, _punches);
     final alreadyFired = await _loadOsFired(when);
     final alreadyFiredKeys = await _loadOsFiredKeys(when);
     final place = _locationName(null);
     final status = ReminderClockStatus.fromPunches(_punches);
-    _lastReminderSignature = _reminderSignature(_punches, fired: alreadyFired);
+    _lastReminderSignature = _reminderSignature(
+      _punches,
+      fired: alreadyFired,
+      suppressed: suppressToday,
+    );
     // Snapshot times after settings load so a concurrent activate/load cannot
     // pass half-updated fields into sync/replaceAll.
     final enabled = Map<ReminderType, bool>.from(_enabled);
@@ -767,6 +832,9 @@ class ReminderSettingsProvider extends ChangeNotifier {
     final longMins = longAttendanceMinutes;
     final weekdays = Set<int>.from(workingWeekdays);
     final punches = List<ReminderPunch>.from(_punches);
+    final leaveCheck = _isOnLeaveDay;
+    // Leave/rest day: always replaceAll so leftover check-in alarms are cleared.
+    final effectiveRebuild = rebuildSchedule || suppressToday;
     if (generation != _rescheduleGeneration) return;
     final result = await ReminderNotificationService.instance.sync(
       now: when,
@@ -790,17 +858,21 @@ class ReminderSettingsProvider extends ChangeNotifier {
       alreadyFired: alreadyFired,
       alreadyFiredKeys: alreadyFiredKeys,
       locationName: place,
-      rebuildSchedule: rebuildSchedule,
-      requestPermission: rebuildSchedule,
+      rebuildSchedule: effectiveRebuild,
+      requestPermission: effectiveRebuild,
+      isOnLeaveDay: leaveCheck,
     );
     if (generation != _rescheduleGeneration) return;
+    // Leave/rest: OS plan is already empty for today; skip alert rows too.
+    if (suppressToday) return;
     var wroteAlert = false;
     for (final item in result.planned) {
       if (!item.deliverImmediately) continue;
       final key = ReminderNotificationPlan.firedKey(item.type, item.fireAt);
       if (!result.seenKeys.contains(key)) continue;
-      await _persistFiredLog(item: item, when: when, status: status);
-      wroteAlert = true;
+      if (await _persistFiredLog(item: item, when: when, status: status)) {
+        wroteAlert = true;
+      }
     }
     // A zoned break alarm can show without being in [planned] (already
     // delivered / leftover). Still write the timeline row.
@@ -871,7 +943,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
     );
     if (!result.seenTypes.contains(type) || plannedNow) return false;
     if (fireAt.isAfter(when)) return false;
-    await _persistFiredLog(
+    return _persistFiredLog(
       item: ScheduledReminderNotification(
         id: ReminderNotificationPlan.idFor(
           type,
@@ -886,10 +958,10 @@ class ReminderSettingsProvider extends ChangeNotifier {
       when: when,
       status: status,
     );
-    return true;
   }
 
-  Future<void> _persistFiredLog({
+  /// Returns `true` only when a new reminder row was stored.
+  Future<bool> _persistFiredLog({
     required ScheduledReminderNotification item,
     required DateTime when,
     required ReminderClockStatus status,
@@ -902,7 +974,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       clockStatus: status.storageValue,
       deliveredAt: when,
     );
-    await _dao.insertLogIfAbsent(
+    final inserted = await _dao.insertLogIfAbsent(
       userId: _userIdProvider(),
       date: when,
       log: log,
@@ -913,6 +985,7 @@ class ReminderSettingsProvider extends ChangeNotifier {
       log: log,
       deliveredAt: when,
     );
+    return inserted;
   }
 
   String _osFiredKey(DateTime date) {

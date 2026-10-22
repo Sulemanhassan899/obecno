@@ -1,6 +1,7 @@
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
@@ -73,10 +74,19 @@ class ManagerAttendanceService {
       items: merged,
       live: live,
     );
-    final attendance = await withOwnerAttendance(
+    // List load: seed leadership rows only. Per-employee punch hydration is
+    // deferred to the detail sheet so we do not fire N+1 attendance calls
+    // (slow load + 401/403 session storms) on every open.
+    final withOwner = await withOwnerAttendance(
       items: withLive,
       members: members,
       date: date,
+      hydrateMissingPunches: false,
+    );
+    final attendance = await _stampLeavesForDate(
+      attendance: withOwner,
+      date: date,
+      cancelToken: cancelToken,
     );
 
     final payload = attendanceResponse.data;
@@ -93,6 +103,163 @@ class ManagerAttendanceService {
       message: attendanceResponse.message,
       statusCode: attendanceResponse.statusCode,
     );
+  }
+
+  /// Overlay team-leaves onto attendance so On Leave filter works (incl. weekends).
+  ///
+  /// Past dates often omit leave from team-attendance punches, so we resolve
+  /// approved leaves the same way Overview does (day `date` / from-to / month
+  /// / no-status fallbacks) instead of only two approved range queries.
+  Future<List<ManagerTeamAttendanceItem>> _stampLeavesForDate({
+    required List<ManagerTeamAttendanceItem> attendance,
+    required DateTime date,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final day = DateTime(date.year, date.month, date.day);
+    final nameToUserId = <String, int>{};
+    for (final item in attendance) {
+      final id = item.userId;
+      final name = item.employeeName?.trim().toLowerCase();
+      if (id != null && name != null && name.isNotEmpty) {
+        nameToUserId.putIfAbsent(name, () => id);
+      }
+    }
+
+    final leaveByUser = <int, ManagerTeamLeaveItem>{};
+    final rejectedUserIds = <int>{};
+    void consider(
+      ManagerTeamLeaveItem leave, {
+      required bool assumeApprovedQuery,
+      required bool allowMissingDates,
+    }) {
+      final hasDates =
+          (leave.dateFrom ?? '').trim().isNotEmpty ||
+          (leave.dateTo ?? '').trim().isNotEmpty;
+      if (hasDates) {
+        if (!leave.coversDay(day)) return;
+      } else if (!allowMissingDates) {
+        return;
+      }
+      final userId = leave.userId ??
+          nameToUserId[leave.employeeName?.trim().toLowerCase() ?? ''];
+      if (userId == null) return;
+      if (leave.isRejectedLeave) {
+        rejectedUserIds.add(userId);
+        return;
+      }
+      if (!leave.countsAsOnLeaveOrBlank(
+        assumeApprovedQuery: assumeApprovedQuery,
+      )) {
+        return;
+      }
+      leaveByUser.putIfAbsent(userId, () => leave);
+    }
+
+    final overview = _overviewRepository;
+    if (overview != null) {
+      final dayKey = _yyyyMMdd(day);
+      final monthStart = DateTime(day.year, day.month, 1);
+      final monthEnd = DateTime(day.year, day.month + 1, 0);
+      final monthFrom = _yyyyMMdd(monthStart);
+      final monthTo = _yyyyMMdd(monthEnd);
+      try {
+        Future<List<ManagerTeamLeaveItem>> pull({
+          String? status,
+          String? dateFrom,
+          String? dateTo,
+          String? date,
+        }) async {
+          final res = await overview.getTeamLeaves(
+            status: status,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            date: date,
+            cancelToken: cancelToken,
+          );
+          return res.data ?? const [];
+        }
+
+        void ingest(
+          List<ManagerTeamLeaveItem> batch, {
+          required bool assumeApprovedQuery,
+          required bool allowMissingDates,
+        }) {
+          for (final leave in batch) {
+            consider(
+              leave,
+              assumeApprovedQuery: assumeApprovedQuery,
+              allowMissingDates: allowMissingDates,
+            );
+          }
+        }
+
+        // Contract: at most two queries — day range, then month range.
+        final dayBatch = await pull(
+          status: 'approved',
+          dateFrom: dayKey,
+          dateTo: dayKey,
+        );
+        ingest(dayBatch, assumeApprovedQuery: true, allowMissingDates: true);
+
+        if (leaveByUser.isEmpty) {
+          final monthBatch = await pull(
+            status: 'approved',
+            dateFrom: monthFrom,
+            dateTo: monthTo,
+          );
+          ingest(
+            monthBatch,
+            assumeApprovedQuery: true,
+            allowMissingDates: false,
+          );
+        }
+      } catch (_) {
+        // Leave overlay is best-effort; list still shows punch/directory rows.
+      }
+    }
+
+    if (leaveByUser.isEmpty && rejectedUserIds.isEmpty) return attendance;
+
+    final result = <ManagerTeamAttendanceItem>[];
+    final seen = <int>{};
+    for (final item in attendance) {
+      final userId = item.userId;
+      if (userId != null && leaveByUser.containsKey(userId)) {
+        seen.add(userId);
+        result.add(
+          item.isOnLeave
+              ? item
+              : item.copyWith(
+                  status: 'leave',
+                  statusLabel: 'On Leave',
+                  isOpen: false,
+                ),
+        );
+      } else if (userId != null &&
+          rejectedUserIds.contains(userId) &&
+          item.isOnLeave &&
+          !item.hasCheckIn) {
+        // Rejected leave must not keep an On Leave badge — show Absent.
+        result.add(
+          item.copyWith(status: 'absent', statusLabel: 'Absent', isOpen: false),
+        );
+      } else {
+        result.add(item);
+      }
+    }
+    for (final entry in leaveByUser.entries) {
+      if (seen.contains(entry.key)) continue;
+      final leave = entry.value;
+      result.add(
+        ManagerTeamAttendanceItem(
+          userId: entry.key,
+          employeeName: leave.employeeName ?? 'Employee',
+          status: 'leave',
+          statusLabel: leave.leaveType ?? 'On Leave',
+        ),
+      );
+    }
+    return result;
   }
 
   Future<ApiResponse<ManagerEmployeeAttendanceData>> loadEmployeeAttendance({
@@ -133,6 +300,31 @@ class ManagerAttendanceService {
       dateTo: _yyyyMMdd(to),
       cancelToken: cancelToken,
     );
+  }
+
+  /// Company holiday for [date], if any (used for the attendance holiday screen).
+  Future<HolidayInfo?> holidayForDate(
+    DateTime date, {
+    ApiCancelToken? cancelToken,
+  }) async {
+    final month =
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}';
+    final response = await _repository.getCompanyHolidays(
+      month: month,
+      cancelToken: cancelToken,
+    );
+    if (!response.success || response.data == null) return null;
+    final day = DateTime(date.year, date.month, date.day);
+    for (final holiday in response.data!) {
+      final h = DateTime(
+        holiday.date.year,
+        holiday.date.month,
+        holiday.date.day,
+      );
+      if (h == day) return holiday;
+    }
+    return null;
   }
 
   Future<ApiResponse<String>> saveEmployeeAttendance({
@@ -234,14 +426,16 @@ class ManagerAttendanceService {
     final repo = _employeesRepository;
     if (repo == null) return const [];
     try {
-      final employees = await repo.getEmployees(
+      final employeesFuture = repo.getEmployees(
         pageSize: 200,
         cancelToken: cancelToken,
       );
-      final team = await repo.getTeamMembers(
+      final teamFuture = repo.getTeamMembers(
         pageSize: 200,
         cancelToken: cancelToken,
       );
+      final employees = await employeesFuture;
+      final team = await teamFuture;
 
       final byId = <String, ManagerEmployeeModel>{};
       void addAll(List<ManagerEmployeeModel> list) {
@@ -289,12 +483,32 @@ class ManagerAttendanceService {
   /// team-attendance / live overlay row is missing check-in status. Detail
   /// sheets already use the per-employee API; the list must do the same when
   /// the bulk endpoints omit live status (common with multiple managers).
+  ///
+  /// Pass [hydrateMissingPunches]: false for list loads (bulk APIs only).
   Future<List<ManagerTeamAttendanceItem>> withOwnerAttendance({
     required List<ManagerTeamAttendanceItem> items,
     required List<ManagerEmployeeModel> members,
     required DateTime date,
+    bool hydrateMissingPunches = true,
   }) async {
     final seeded = _ensureLeadershipRows(items, members);
+    if (!hydrateMissingPunches) {
+      String? currentName;
+      final id = currentUserId;
+      if (id != null) {
+        for (final member in members) {
+          if (member.id == id) {
+            currentName = member.name;
+            break;
+          }
+        }
+      }
+      return TeamAttendanceMapper.statusFirst(
+        seeded,
+        currentUserId: id,
+        currentUserName: currentName,
+      );
+    }
     return _hydrateMissingPunches(items: seeded, members: members, date: date);
   }
 
@@ -397,33 +611,41 @@ class ManagerAttendanceService {
           }
           final hasCheckin =
               (checkin ?? next[index].checkin)?.trim().isNotEmpty == true;
-          next[index] = next[index].copyWith(
+          final previous = next[index];
+          final previousLate = previous.isLate ||
+              _statusLooksLate(previous.status) ||
+              _statusLooksLate(previous.statusLabel);
+          final onLeave = day?.isLeave == true && !hasCheckin;
+          next[index] = previous.copyWith(
             userId: userId,
-            attendanceId: day?.id ?? next[index].attendanceId,
-            employeeName: (next[index].employeeName ?? '').trim().isEmpty
-                ? (response.data!.employeeName ?? next[index].employeeName)
-                : next[index].employeeName,
-            checkin: checkin ?? next[index].checkin,
+            attendanceId: day?.id ?? previous.attendanceId,
+            employeeName: (previous.employeeName ?? '').trim().isEmpty
+                ? (response.data!.employeeName ?? previous.employeeName)
+                : previous.employeeName,
+            checkin: checkin ?? previous.checkin,
             checkout: isOpen || onBreak
                 ? ''
-                : (checkout ?? next[index].checkout),
+                : (checkout ?? previous.checkout),
             isOnBreak: onBreak,
+            // Open session → live badge; never drop a prior late flag.
+            // Leave beats working when attendance day is flagged is_leave.
             status: onBreak
                 ? 'break'
-                : (isOpen
-                      ? 'working'
-                      : (day?.isLeave == true && !hasCheckin
-                            ? 'leave'
-                            : next[index].status)),
-            isOpen: isOpen || onBreak,
-            locationId: next[index].locationId ?? punchLocation?.$1,
-            locationName: next[index].locationName ?? punchLocation?.$2,
+                : (onLeave
+                      ? 'leave'
+                      : (isOpen ? 'working' : previous.status)),
+            isLate: previousLate,
+            isEdited: previous.isEdited || (day?.isEdited ?? false),
+            isOutsideLocation: previous.isOutsideLocation,
+            isOpen: onLeave ? false : (isOpen || onBreak),
+            locationId: previous.locationId ?? punchLocation?.$1,
+            locationName: previous.locationName ?? punchLocation?.$2,
             currentLocation:
-                next[index].currentLocation ??
+                previous.currentLocation ??
                 punchLocation?.$3 ??
                 day?.currentLocation,
-            lat: day?.lat ?? next[index].lat,
-            lon: day?.lon ?? next[index].lon,
+            lat: day?.lat ?? previous.lat,
+            lon: day?.lon ?? previous.lon,
           );
         } catch (_) {}
       }());
@@ -510,5 +732,15 @@ class ManagerAttendanceService {
       return null;
     }
     return (locationId, locationName ?? current, current);
+  }
+
+  static bool _statusLooksLate(String? raw) {
+    final value =
+        (raw ?? '').toLowerCase().trim().replaceAll(RegExp(r'[\s\-_\/]+'), '');
+    if (value.isEmpty) return false;
+    if (value.contains('checkout') || value.contains('early')) return false;
+    return value == 'late' ||
+        value == 'latecheck' ||
+        value.contains('latecheckin');
   }
 }

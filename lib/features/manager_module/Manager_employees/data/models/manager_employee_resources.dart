@@ -177,7 +177,14 @@ class ManagerEmployeeLeaveRequest {
             json['leave_type_name'] ??
             json['name'],
       ),
-      status: _asNullableString(json['status'] ?? json['leave_status']),
+      status: _asNullableString(
+        json['approval_status'] ??
+            json['status_label'] ??
+            json['leave_status_label'] ??
+            json['approval_status_label'] ??
+            json['status'] ??
+            json['leave_status'],
+      ),
       fromDate: _asNullableString(
         json['from_date'] ?? json['start_date'] ?? json['from'] ?? json['date'],
       ),
@@ -207,6 +214,7 @@ class ManagerEmployeeLeaveRequest {
 class ManagerEmployeeLeaveBalance {
   const ManagerEmployeeLeaveBalance({
     required this.type,
+    this.typeId,
     this.entitled,
     this.used,
     this.remaining,
@@ -214,30 +222,50 @@ class ManagerEmployeeLeaveBalance {
   });
 
   final String type;
+  final String? typeId;
   final String? entitled;
   final String? used;
   final String? remaining;
   final String? year;
 
   factory ManagerEmployeeLeaveBalance.fromJson(Map<String, dynamic> json) {
+    final nested = _leaveTypeMap(json);
+    final typeId = _asNullableString(
+      json['leave_type_id'] ??
+          json['leavetype_id'] ??
+          json['type_id'] ??
+          nested?['id'] ??
+          nested?['leave_type_id'] ??
+          json['id'],
+    );
+    // Prefer a human name — `type` / `leave_type` are often numeric ids.
+    final typeName = _leaveTypeDisplayName(json, nested) ??
+        typeId ??
+        _asString(json['id']);
     return ManagerEmployeeLeaveBalance(
-      type: _asString(
-        json['type'] ??
-            json['leave_type'] ??
-            json['leave_type_name'] ??
-            json['name'] ??
-            json['id'],
-      ),
+      type: typeName,
+      typeId: typeId,
       entitled: _asNullableString(
         json['entitled'] ??
             json['total'] ??
             json['allocated'] ??
             json['quota'] ??
-            json['days'],
+            json['days'] ??
+            nested?['entitled'] ??
+            nested?['total'],
       ),
-      used: _asNullableString(json['used'] ?? json['taken'] ?? json['availed']),
+      used: _asNullableString(
+        json['used'] ??
+            json['taken'] ??
+            json['availed'] ??
+            nested?['used'],
+      ),
       remaining: _asNullableString(
-        json['remaining'] ?? json['available'] ?? json['balance'],
+        json['remaining'] ??
+            json['available'] ??
+            json['balance'] ??
+            nested?['remaining'] ??
+            nested?['available'],
       ),
       year: _asNullableString(json['year']),
     );
@@ -376,4 +404,50 @@ String? _asNullableString(dynamic raw) {
   if (raw == null) return null;
   final value = raw.toString().trim();
   return value.isEmpty ? null : value;
+}
+
+bool _looksLikeNumericId(String value) => int.tryParse(value) != null;
+
+Map<String, dynamic>? _leaveTypeMap(Map<String, dynamic> json) {
+  for (final key in const ['leave_type', 'leavetype', 'type', 'leaveType']) {
+    final value = json[key];
+    if (value is Map) return Map<String, dynamic>.from(value);
+  }
+  return null;
+}
+
+/// Display label for a leave balance row (never prefer bare numeric ids).
+String? _leaveTypeDisplayName(
+  Map<String, dynamic> json,
+  Map<String, dynamic>? nested,
+) {
+  String? pick(dynamic raw) {
+    if (raw == null || raw is Map || raw is List) return null;
+    final value = raw.toString().trim();
+    if (value.isEmpty || _looksLikeNumericId(value)) return null;
+    return value;
+  }
+
+  for (final key in const [
+    'leave_type_name',
+    'leave_type_title',
+    'type_name',
+    'type_title',
+    'title',
+    'label',
+    'name',
+  ]) {
+    final fromRoot = pick(json[key]);
+    if (fromRoot != null) return fromRoot;
+    final fromNested = pick(nested?[key]);
+    if (fromNested != null) return fromNested;
+  }
+
+  // String leave_type / type only when not an id.
+  final fromLeaveType = pick(json['leave_type']);
+  if (fromLeaveType != null) return fromLeaveType;
+  final fromType = pick(json['type']);
+  if (fromType != null) return fromType;
+
+  return null;
 }

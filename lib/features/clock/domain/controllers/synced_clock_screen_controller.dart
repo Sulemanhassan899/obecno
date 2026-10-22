@@ -5,7 +5,6 @@ import 'package:obecno/core/constants/app_strings.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/features/auth/services/company_policy_service.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:obecno/features/clock/domain/controllers/clock_controller.dart';
 import 'package:obecno/shared/location/data/location_model.dart';
@@ -46,7 +45,6 @@ class SyncedClockScreenController extends ClockScreenController {
        ) {
     bindings.smartAttendanceService.clockScreenActive = true;
     bindings.smartAttendanceService.addListener(_onSmartAttendanceChanged);
-    isProcessing = true;
     syncService?.onQueuedItemSynced = _onQueuedItemSynced;
     // Phase 6: when the background sync service completes a pass that
     // actually pushed queued items to the server, pull fresh server state
@@ -58,6 +56,8 @@ class SyncedClockScreenController extends ClockScreenController {
     _maxSessionTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       unawaited(_runMaxSessionAutoCheckout());
     });
+    // Spinner only while local restore runs — never while network hangs.
+    _setProcessing(true);
     unawaited(_bootstrap());
   }
 
@@ -114,25 +114,67 @@ class SyncedClockScreenController extends ClockScreenController {
     );
   }
 
-  Future<void> _bootstrap() async {
-    await trustedTime?.ensureLogin(userId: userId, createIfMissing: false);
-    if (_isStale) return;
-    // Prefs first, then server — otherwise restore can re-apply a ghost
-    // check-in after reconcile already cleared the live session.
-    await ensureEventsRestored();
-    if (_isStale) return;
-    // Reboot blocks issuing new punches, but we still reconcile so the
-    // button/card mirror the portal open session.
-    final rebootBlocked =
-        trustedTime?.sessionEndedByReboot == true ||
-        trustedTime?.rebootDetected == true;
-    await _loadBreakDurationPolicy();
-    await reconcileWithServer().whenComplete(() {
-      if (!_isStale) {
+  /// Hard cap so Check In / Check Out never stays on the spinner forever
+  /// when login, prefs, GPS, or reconcile hang.
+  static const Duration _processingMaxHold = Duration(seconds: 8);
+
+  Timer? _processingSafetyTimer;
+
+  void _setProcessing(bool value) {
+    if (_isStale && value) return;
+    isProcessing = value;
+    _processingSafetyTimer?.cancel();
+    _processingSafetyTimer = null;
+    if (value) {
+      _processingSafetyTimer = Timer(_processingMaxHold, () {
+        if (_isStale) return;
+        if (!isProcessing) return;
         isProcessing = false;
+        _isHandlingTap = false;
         notifyListeners();
-        // Reconcile may leave events unchanged (already Check In) while
-        // reminder SQL still says checked_in — always re-sync.
+      });
+    }
+    if (!_isStale) notifyListeners();
+  }
+
+  void _clearProcessing() => _setProcessing(false);
+
+  Future<void> _bootstrap() async {
+    try {
+      try {
+        await trustedTime
+            ?.ensureLogin(userId: userId, createIfMissing: false)
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      if (_isStale) return;
+
+      // Prefs first so Check Out / Check In paint from local session.
+      try {
+        await ensureEventsRestored().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      if (_isStale) return;
+
+      // Local state is enough for the button — never hold the spinner on
+      // policy / server reconcile (those can hang on bad networks).
+      _clearProcessing();
+
+      final rebootBlocked =
+          trustedTime?.sessionEndedByReboot == true ||
+          trustedTime?.rebootDetected == true;
+      try {
+        await _loadBreakDurationPolicy().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      if (_isStale) return;
+
+      unawaited(() async {
+        try {
+          await reconcileWithServer().timeout(const Duration(seconds: 15));
+        } catch (_) {}
+        if (_isStale) return;
+        try {
+          await ensureOpenSessionAligned();
+        } catch (_) {}
+        if (_isStale) return;
         unawaited(_syncReminderLogs());
         unawaited(_runMaxSessionAutoCheckout());
         if (!rebootBlocked && bindings.smartAttendanceService.isEnabled) {
@@ -140,8 +182,11 @@ class SyncedClockScreenController extends ClockScreenController {
             bindings.smartAttendanceService.evaluate(reason: 'clock_open'),
           );
         }
-      }
-    });
+      }());
+    } finally {
+      // Belt-and-suspenders: bootstrap must never leave the red disc spinning.
+      _clearProcessing();
+    }
   }
 
   void _onQueuedItemSynced(String requestId, String action, String message) {
@@ -345,6 +390,8 @@ class SyncedClockScreenController extends ClockScreenController {
 
   @override
   void dispose() {
+    _processingSafetyTimer?.cancel();
+    _processingSafetyTimer = null;
     _maxSessionTimer?.cancel();
     _maxSessionTimer = null;
     bindings.smartAttendanceService.removeListener(_onSmartAttendanceChanged);
@@ -366,8 +413,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
     _isHandlingTap = true;
     // Show loader INSTANTLY — before any async work
-    isProcessing = true;
-    notifyListeners();
+    _setProcessing(true);
 
     try {
       trustedNetworkOnline = await bindings.networkChecker.isConnected;
@@ -387,7 +433,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
       final previousEvents = List.of(events);
       // Temporarily clear so base class guard doesn't reject the call
-      isProcessing = false;
+      _clearProcessing();
       final result = await super.handleMainTap();
 
       _captureRealLocationIfOutOfRange(result);
@@ -396,14 +442,22 @@ class SyncedClockScreenController extends ClockScreenController {
         _recordBreakEnd(previousEvents);
       }
 
-      // Keep loader active during server sync
-      isProcessing = true;
+      // Keep loader active during server sync (safety timer still armed).
+      _setProcessing(true);
       unawaited(_syncReminderLogs());
-      return await _syncIfNeeded(result, previousEvents);
+      try {
+        return await _syncIfNeeded(
+          result,
+          previousEvents,
+        ).timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        lastServerMessage =
+            lastServerMessage ?? 'Sync timed out. Your punch is saved locally.';
+        return result;
+      }
     } finally {
-      isProcessing = false;
+      _clearProcessing();
       _isHandlingTap = false;
-      if (!_isStale) notifyListeners();
     }
   }
 
@@ -416,8 +470,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
     _isHandlingTap = true;
     // Show loader INSTANTLY — before any async work
-    isProcessing = true;
-    notifyListeners();
+    _setProcessing(true);
 
     try {
       trustedNetworkOnline = await bindings.networkChecker.isConnected;
@@ -437,7 +490,7 @@ class SyncedClockScreenController extends ClockScreenController {
 
       final previousEvents = List.of(events);
       // Temporarily clear so base class guard doesn't reject the call
-      isProcessing = false;
+      _clearProcessing();
       final result = await super.handleBreakTap();
 
       _captureRealLocationIfOutOfRange(result);
@@ -446,14 +499,22 @@ class SyncedClockScreenController extends ClockScreenController {
         _recordBreakEnd(previousEvents);
       }
 
-      // Keep loader active during server sync
-      isProcessing = true;
+      // Keep loader active during server sync (safety timer still armed).
+      _setProcessing(true);
       unawaited(_syncReminderLogs());
-      return await _syncIfNeeded(result, previousEvents);
+      try {
+        return await _syncIfNeeded(
+          result,
+          previousEvents,
+        ).timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        lastServerMessage =
+            lastServerMessage ?? 'Sync timed out. Your punch is saved locally.';
+        return result;
+      }
     } finally {
-      isProcessing = false;
+      _clearProcessing();
       _isHandlingTap = false;
-      if (!_isStale) notifyListeners();
     }
   }
 
@@ -641,10 +702,6 @@ class SyncedClockScreenController extends ClockScreenController {
   /// Offline GPS (especially A-GPS / fused location) often fails. Keep the
   /// last cached geofence result so the punch can still be queued.
   bool _allowOfflinePunchWithoutFix() {
-    debugPrint(
-      '[SyncedClockScreenController] GPS unavailable offline — '
-      'keeping cached geofence (inRange=$isInRange)',
-    );
     return true;
   }
 
@@ -730,12 +787,8 @@ class SyncedClockScreenController extends ClockScreenController {
         ]).timeout(const Duration(seconds: 3));
         _lastPolicyRefresh = DateTime.now();
       } on TimeoutException {
-        debugPrint(
-          '[SyncedClockScreenController] Network refresh timed out (expected if offline)',
-        );
-      } catch (e) {
-        debugPrint('[SyncedClockScreenController] Network refresh failed: $e');
-      }
+        // Expected when offline / slow network.
+      } catch (_) {}
     }
 
     if (_isStale) return;
@@ -761,12 +814,6 @@ class SyncedClockScreenController extends ClockScreenController {
     final duration = endedAt.difference(startedAt);
     lastBreakDuration = duration;
     recordedBreakDurations.add(duration);
-
-    debugPrint(
-      '[SyncedClockScreenController] Break duration: '
-      '${duration.inMinutes}m ${duration.inSeconds % 60}s '
-      '(started $startedAt, ended $endedAt)',
-    );
   }
 
   Future<AttendanceActionResult> _syncIfNeeded(
@@ -776,30 +823,150 @@ class SyncedClockScreenController extends ClockScreenController {
     final action = _apiActionFor(localResult);
     if (action == null) return localResult;
 
-    final succeeded = await _submit(action, localResult);
+    // Use pre-punch session so overnight check-out/break still map to the
+    // check-in calendar day after the optimistic local event is appended.
+    final prior = AttendanceEngine.compute(previousEvents);
+    final sessionAnchor = prior.openSessionStart ?? prior.firstCheckIn;
 
-    if (!succeeded) {
-      if (_lastSubmitWasConflict) {
-        // Reconcile drops orphan local open sessions so the button matches
-        // the portal (fixes "Unable to check out… make sure you are checked in").
-        await reconcileWithServer(force: true);
-        if (action == AttendanceAction.checkOut) {
-          await _forceServerLiveSessionIfStillOpenLocally();
-        }
-        blockNextAction = false;
-        if (!_isStale) notifyListeners();
-        return AttendanceActionResult.none;
-      }
+    final succeeded = await _submit(
+      action,
+      localResult,
+      sessionAnchor: sessionAnchor,
+    );
 
-      await reconcileWithServer(force: true);
-      return AttendanceActionResult.none;
+    if (!succeeded &&
+        _lastSubmitWasConflict &&
+        action == AttendanceAction.checkOut) {
+      // Drop the optimistic local check-out the API refused.
+      replaceLiveEvents(previousEvents);
     }
 
-    // Pull the full day after a successful punch so the attendance card keeps
-    // the day's earliest check-in when this device started from empty local
-    // state (e.g. re-check-in after a portal-only session).
+    // Always re-align with server / day mirrors so Clock matches Attendance
+    // (fixes Check In stuck while portal already shows Working).
     await reconcileWithServer(force: true);
-    return localResult;
+    if (!succeeded &&
+        _lastSubmitWasConflict &&
+        action == AttendanceAction.checkOut) {
+      await _forceServerLiveSessionIfStillOpenLocally();
+    }
+    await ensureOpenSessionAligned();
+
+    blockNextAction = false;
+    if (!_isStale) notifyListeners();
+
+    final toast = _toastResultAfterSync(
+      attempted: localResult,
+      succeeded: succeeded,
+    );
+    if (toast != AttendanceActionResult.none &&
+        toast != AttendanceActionResult.timeUnavailable) {
+      // Don't also show a red conflict toast when the live button is correct.
+      lastServerMessage = null;
+    }
+    return toast;
+  }
+
+  /// Day-scoped attendance APIs key the open row by check-in date. Overnight
+  /// punches must keep that calendar day in `datetime` (portal style), while
+  /// the clock time stays the real trusted punch time-of-day.
+  DateTime _apiCapturedAtForSession({
+    required String action,
+    required DateTime punchAt,
+    DateTime? sessionAnchor,
+  }) {
+    if (sessionAnchor == null) return punchAt;
+    final touchesOpenSession =
+        action == AttendanceAction.checkOut ||
+        action == AttendanceAction.breakStart ||
+        action == AttendanceAction.breakEnd;
+    if (!touchesOpenSession) return punchAt;
+
+    final sameCalendarDay =
+        punchAt.year == sessionAnchor.year &&
+        punchAt.month == sessionAnchor.month &&
+        punchAt.day == sessionAnchor.day;
+    if (sameCalendarDay) return punchAt;
+
+    return DateTime(
+      sessionAnchor.year,
+      sessionAnchor.month,
+      sessionAnchor.day,
+      punchAt.hour,
+      punchAt.minute,
+      punchAt.second,
+      punchAt.millisecond,
+      punchAt.microsecond,
+    );
+  }
+
+  /// Prefer a success toast that matches the live Clock button after sync.
+  AttendanceActionResult _toastResultAfterSync({
+    required AttendanceActionResult attempted,
+    required bool succeeded,
+  }) {
+    final summary = AttendanceEngine.compute(events);
+    switch (attempted) {
+      case AttendanceActionResult.checkedIn:
+        if (summary.isCheckedIn || summary.isOnBreak) {
+          return AttendanceActionResult.checkedIn;
+        }
+      case AttendanceActionResult.checkedOut:
+        if (!summary.isCheckedIn && !summary.isOnBreak) {
+          return AttendanceActionResult.checkedOut;
+        }
+      case AttendanceActionResult.breakStarted:
+        if (summary.isOnBreak) return AttendanceActionResult.breakStarted;
+      case AttendanceActionResult.breakEnded:
+        if (summary.isCheckedIn && !summary.isOnBreak) {
+          return AttendanceActionResult.breakEnded;
+        }
+      default:
+        break;
+    }
+    return succeeded ? attempted : AttendanceActionResult.none;
+  }
+
+  /// If live events were wiped but today still has an open session, restore
+  /// Check Out / Break. When online the server wins — day mirrors are only
+  /// used offline (or if the server fetch fails), so sync / sheets cannot be
+  /// undone by a stale local check-in time.
+  Future<void> ensureOpenSessionAligned() async {
+    if (_isStale) return;
+    final summary = AttendanceEngine.compute(events);
+    if (summary.isCheckedIn || summary.isOnBreak) return;
+
+    final online = await bindings.networkChecker.isConnected;
+    if (online) {
+      try {
+        final serverToday = await _repository
+            .fetchTodayEvents(
+              cancelToken: bindings.authProvider.sessionCancelToken,
+              forDay: clockNow,
+            )
+            .timeout(const Duration(seconds: 10));
+        if (_isStale) return;
+        if (serverToday != null) {
+          final serverSummary = AttendanceEngine.compute(serverToday);
+          if (serverSummary.isCheckedIn || serverSummary.isOnBreak) {
+            replaceLiveEvents(serverToday);
+            return;
+          }
+          // Server answered and the day is closed — never revive day mirrors.
+          await discardOpenSessionsFromDayMirrors(clockNow);
+          return;
+        }
+      } catch (_) {
+        // Fall through to offline day-mirror fallback.
+      }
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final open = openSessionsFromDayMirrorsWithPrefs(prefs, clockNow);
+      if (open.isNotEmpty) {
+        restoreEvents(open);
+      }
+    } catch (_) {}
   }
 
   bool _samePunchList(List<AttendanceEvent> a, List<AttendanceEvent> b) {
@@ -825,21 +992,20 @@ class SyncedClockScreenController extends ClockScreenController {
       final last = _lastReconcileAt;
       if (last != null &&
           DateTime.now().difference(last) < _reconcileMinInterval) {
+        // Still recover a wiped active session from day/server mirrors.
+        await ensureOpenSessionAligned();
         return false;
       }
     }
 
     final online = await bindings.networkChecker.isConnected;
     if (!online) {
-      debugPrint(
-        '[SyncedClockScreenController] reconcileWithServer: skipped (offline)',
-      );
+      await ensureOpenSessionAligned();
       return false;
     }
 
     _reconcileInFlight = true;
     try {
-      debugPrint('[SyncedClockScreenController] reconcileWithServer: start');
       final today = clockNow;
       final yesterday = today.subtract(const Duration(days: 1));
       // Fetch yesterday too so an open overnight session (check-in before
@@ -864,10 +1030,6 @@ class SyncedClockScreenController extends ClockScreenController {
       final serverYesterday = await fetchDay(yesterday);
       if (_isStale) return false;
       if (serverToday == null && serverYesterday == null) {
-        debugPrint(
-          '[SyncedClockScreenController] reconcileWithServer: no server '
-          'events returned, keeping local state',
-        );
         return false;
       }
 
@@ -897,11 +1059,6 @@ class SyncedClockScreenController extends ClockScreenController {
           ? localActive
           : _mergeWithLocal(localActive, serverActive);
 
-      debugPrint(
-        '[SyncedClockScreenController] reconcileWithServer: merged '
-        '${serverActive.length} server event(s) with ${localActive.length} '
-        'local event(s) -> ${merged.length} total (active session window)',
-      );
       if (_samePunchList(merged, localActive)) {
         _lastReconcileAt = DateTime.now();
         return true;
@@ -914,21 +1071,17 @@ class SyncedClockScreenController extends ClockScreenController {
       return true;
     } on TimeoutException {
       // Wi-Fi up but no route to the API is the common case. Keep the
-      // local clock state and don't dump a stack — this is expected.
-      debugPrint(
-        '[SyncedClockScreenController] reconcileWithServer: timed out, '
-        'keeping local attendance',
-      );
+      // local clock state — this is expected.
       _lastReconcileAt = DateTime.now();
       return false;
-    } catch (e) {
-      debugPrint(
-        '[SyncedClockScreenController] reconcileWithServer failed: $e',
-      );
+    } catch (_) {
       _lastReconcileAt = DateTime.now();
       return false;
     } finally {
       _reconcileInFlight = false;
+      // Employee + manager: if reconcile left an empty live session while
+      // today is still open on day prefs / server, recover Check Out / Break.
+      unawaited(ensureOpenSessionAligned());
     }
   }
 
@@ -990,10 +1143,6 @@ class SyncedClockScreenController extends ClockScreenController {
         continue;
       }
       // Local-only punch after server closed — orphan; do not keep.
-      debugPrint(
-        '[SyncedClockScreenController] dropping orphan local '
-        '${event.type.name} at ${event.effectiveTime}',
-      );
     }
     return kept;
   }
@@ -1030,22 +1179,19 @@ class SyncedClockScreenController extends ClockScreenController {
       ...serverYesterday,
       ...?serverToday,
     ];
-    debugPrint(
-      '[SyncedClockScreenController] clearing stale overnight local open '
-      '(started $openStart); applying ${replacement.length} server event(s)',
-    );
     replaceLiveEvents(replacement);
     return true;
   }
 
   bool _lastSubmitWasConflict = false;
 
-  /// After a rejected check-out, if local is still open but the server is
-  /// not, replace the live session with server punches only.
+  /// After a rejected check-out, replace the live session with server punches
+  /// so the Clock button matches portal (Check Out vs End Break vs Check In).
+  ///
+  /// Covers: server already closed; server still on break while local showed
+  /// Check Out; optimistic local check-out that the API refused.
   Future<void> _forceServerLiveSessionIfStillOpenLocally() async {
     if (_isStale) return;
-    final local = AttendanceEngine.compute(events);
-    if (!local.isCheckedIn && !local.isOnBreak) return;
 
     try {
       final today = clockNow;
@@ -1061,36 +1207,57 @@ class SyncedClockScreenController extends ClockScreenController {
       );
       if (_isStale) return;
 
+      // Both fetches failed — keep local rather than wiping the session.
+      if (serverToday == null && serverYesterday == null) return;
+
       final server = <AttendanceEvent>[...?serverYesterday, ...?serverToday];
       final serverSummary = AttendanceEngine.compute(server);
-      if (serverSummary.isCheckedIn || serverSummary.isOnBreak) return;
+      final local = AttendanceEngine.compute(events);
 
-      // Server is checked out — trust it for the live button (replace, no
-      // union, so phantom local check-ins cannot stick around).
-      replaceLiveEvents(server);
-      debugPrint(
-        '[SyncedClockScreenController] forced server session after '
-        'rejected check-out (${server.length} event(s))',
-      );
-    } catch (e) {
-      debugPrint(
-        '[SyncedClockScreenController] '
-        '_forceServerLiveSessionIfStillOpenLocally failed: $e',
-      );
-    }
+      final serverOpen =
+          serverSummary.isCheckedIn || serverSummary.isOnBreak;
+      final localOpen = local.isCheckedIn || local.isOnBreak;
+      final statusMismatch = local.isOnBreak != serverSummary.isOnBreak ||
+          local.isCheckedIn != serverSummary.isCheckedIn ||
+          localOpen != serverOpen;
+
+      // Trust server whenever local disagrees (or local looks closed after an
+      // optimistic check-out the API refused). Replace, no union.
+      if (!serverOpen || statusMismatch) {
+        replaceLiveEvents(server);
+      }
+    } catch (_) {}
   }
 
   Future<bool> _submit(
     String action,
-    AttendanceActionResult localResult,
-  ) async {
-    _lastSubmitWasConflict = false;
+    AttendanceActionResult localResult, {
+    DateTime? sessionAnchor,
+  }) async {
     final recorded = lastRecordedEvent;
     final capturedAt = recorded?.time;
     if (capturedAt == null) {
       lastTrustedTimeError = 'No trusted punch timestamp to send.';
       return false;
     }
+
+    return _submitPayload(
+      action: action,
+      capturedAt: _apiCapturedAtForSession(
+        action: action,
+        punchAt: capturedAt,
+        sessionAnchor: sessionAnchor,
+      ),
+      raiseOutOfRangeAlert: recorded != null && !recorded.isValidLocation,
+    );
+  }
+
+  Future<bool> _submitPayload({
+    required String action,
+    required DateTime capturedAt,
+    required bool raiseOutOfRangeAlert,
+  }) async {
+    _lastSubmitWasConflict = false;
 
     LocationModel? location = _lastGpsReading?.location;
     if (location == null) {
@@ -1132,15 +1299,13 @@ class SyncedClockScreenController extends ClockScreenController {
 
       blockNextAction = false;
 
-      if (submitResult.synced) {
-        if (!recorded!.isValidLocation) {
-          _raiseLocationAlert(
-            payload.requestId,
-            submitResult.notification ??
-                'You performed ${_actionLabel(action)} outside office '
-                    'premises.',
-          );
-        }
+      if (submitResult.synced && raiseOutOfRangeAlert) {
+        _raiseLocationAlert(
+          payload.requestId,
+          submitResult.notification ??
+              'You performed ${_actionLabel(action)} outside office '
+                  'premises.',
+        );
       }
 
       return true;

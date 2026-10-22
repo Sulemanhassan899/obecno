@@ -50,12 +50,6 @@ class ManagerLocationsProvider extends BaseProvider {
       _inactiveOverrideIds.add(key);
     }
 
-    debugPrint(
-      '[LocationStatus] provider.setLocationActive '
-      'id=$locationId isActive=$isActive '
-      'overrides=${_inactiveOverrideIds.join(",")}',
-    );
-
     locations = [
       for (final location in locations)
         location.id.trim().toLowerCase() == key
@@ -74,11 +68,6 @@ class ManagerLocationsProvider extends BaseProvider {
       ),
       onSuccess: (data) {
         locations = _applyActiveOverrides(data);
-        debugPrint(
-          '[LocationStatus] provider.load '
-          'count=${locations.length} '
-          'inactive=${locations.where((l) => !l.isActive).map((l) => l.id).join(",")}',
-        );
       },
     );
     if (ok) {

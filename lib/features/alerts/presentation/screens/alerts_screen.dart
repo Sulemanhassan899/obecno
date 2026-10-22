@@ -7,17 +7,25 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/alerts/data/models/device_alert_item.dart';
 import 'package:obecno/features/alerts/presentation/widgets/device_alert_card.dart';
+import 'package:obecno/features/alerts/presentation/widgets/leave_alert_card.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/join/data/models/join_invite_models.dart';
 import 'package:obecno/features/join/presentation/widgets/join_employee_alert_card.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
+import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/more/presentation/screens/linked_devices.dart';
 import 'package:obecno/main.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/manager_leave_detail_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/select_default_location_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -44,6 +52,7 @@ class AlertsScreenState extends State<AlertsScreen>
   Set<String> _knownReminderKeys = {};
   Set<_AlertFilter> _pulseFilters = {};
   Timer? _pulseTimer;
+  final Map<String, GlobalKey> _leaveCardKeys = {};
 
   late final AnimationController _entranceController = AnimationController(
     vsync: this,
@@ -87,7 +96,9 @@ class AlertsScreenState extends State<AlertsScreen>
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AlertsProvider>().refresh();
+      final alerts = context.read<AlertsProvider>();
+      alerts.refresh();
+      unawaited(alerts.syncLeaveAlerts());
       unawaited(context.read<JoinInviteProvider>().ensureLoaded());
       unawaited(_loadReminders());
       // Refresh Alerts as soon as a reminder is written (notification fired).
@@ -96,11 +107,99 @@ class AlertsScreenState extends State<AlertsScreen>
     _entranceController.forward();
   }
 
+  List<ManagerTeamLeaveItem> _visibleLeaves(AlertsProvider provider) {
+    if (_filter == _AlertFilter.checkIn ||
+        _filter == _AlertFilter.checkOut ||
+        _filter == _AlertFilter.device ||
+        _filter == _AlertFilter.reminder) {
+      return const [];
+    }
+    return provider.leaveAlerts;
+  }
+
+  String? _photoForLeave(ManagerTeamLeaveItem item) {
+    final direct = item.employeePhoto?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final members = context.read<ManagerEmployeesProvider>().members;
+    final userId = item.userId;
+    if (userId != null) {
+      for (final member in members) {
+        if (member.userId == userId) {
+          final photo = member.photo?.trim();
+          if (photo != null && photo.isNotEmpty) return photo;
+        }
+      }
+    }
+    final name = (item.employeeName ?? '').trim().toLowerCase();
+    if (name.isEmpty) return null;
+    for (final member in members) {
+      if (member.name.trim().toLowerCase() == name) {
+        final photo = member.photo?.trim();
+        if (photo != null && photo.isNotEmpty) return photo;
+      }
+    }
+    return null;
+  }
+
+  GlobalKey _keyForLeave(String alertKey) =>
+      _leaveCardKeys.putIfAbsent(alertKey, GlobalKey.new);
+
+  void _scrollToLeave(String? leaveKey) {
+    if (leaveKey == null || leaveKey.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _leaveCardKeys[leaveKey]?.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+        alignment: 0.15,
+      );
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        context.read<AlertsProvider>().clearLeaveFocus();
+      });
+    });
+  }
+
   void playEntranceAnimation() {
     if (!mounted) return;
     _entranceController
       ..reset()
       ..forward();
+  }
+
+  /// Used when Clock / notifications open Alerts on a specific chip
+  /// (`leaves`, `device`, `reminder`, `check_in`, `check_out`, `all`).
+  void applyFilter(String? filter, {String? leaveKey}) {
+    if (!mounted) return;
+    final normalized = (filter ?? '').trim().toLowerCase().replaceAll('-', '_');
+    final next = switch (normalized) {
+      'leave' || 'leaves' => _AlertFilter.leaves,
+      'device' || 'devices' => _AlertFilter.device,
+      'reminder' || 'reminders' => _AlertFilter.reminder,
+      'check_in' || 'checkin' => _AlertFilter.checkIn,
+      'check_out' || 'checkout' => _AlertFilter.checkOut,
+      'all' || '' => _AlertFilter.all,
+      _ => _AlertFilter.all,
+    };
+    final alerts = context.read<AlertsProvider>();
+    setState(() => _filter = next);
+    if (leaveKey != null && leaveKey.trim().isNotEmpty) {
+      alerts.focusLeave(leaveKey.trim());
+    }
+    if (next == _AlertFilter.leaves || leaveKey != null) {
+      unawaited(
+        alerts.syncLeaveAlerts().then((_) {
+          if (!mounted) return;
+          _scrollToLeave(leaveKey ?? alerts.focusLeaveKey);
+        }),
+      );
+    }
+    if (next == _AlertFilter.all || next == _AlertFilter.reminder) {
+      unawaited(_loadReminders());
+    }
+    playEntranceAnimation();
   }
 
   @override
@@ -155,10 +254,17 @@ class AlertsScreenState extends State<AlertsScreen>
     unawaited(_loadReminders());
   }
 
+  /// One Alerts card per reminder type + clock minute (not raw millis).
+  /// Native "fired now" and Flutter's planned fireAt often differ by seconds
+  /// but show the same "9:45 pm" label — collapse those into one row.
   String _reminderKey(ReminderLog log) {
     final local = log.firedAt.toLocal();
-    return '${log.type.storageKey}|${local.millisecondsSinceEpoch}|'
-        '${log.title}|${log.message}';
+    final y = local.year.toString().padLeft(4, '0');
+    final m = local.month.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    final h = local.hour.toString().padLeft(2, '0');
+    final min = local.minute.toString().padLeft(2, '0');
+    return '${log.type.storageKey}|$y-$m-$d|$h:$min';
   }
 
   Set<_AlertFilter> _chipsForReminder(ReminderType type) {
@@ -308,14 +414,11 @@ class AlertsScreenState extends State<AlertsScreen>
     ]);
     if (!mounted || token != _reminderLoad) return;
 
-    // One row per firing (type + exact time). Never collapse two breaks /
-    // check-ins on the same day into a single card.
+    // One row per type + clock minute. Same reminder from native import +
+    // Flutter engine must not appear twice with identical "9:45 pm" labels.
     final merged = <String, ReminderLog>{};
     void take(ReminderLog log) {
-      final local = log.firedAt.toLocal();
-      final key =
-          '${log.type.storageKey}|${local.millisecondsSinceEpoch}|'
-          '${log.title}|${log.message}';
+      final key = _reminderKey(log);
       final current = merged[key];
       if (current == null || _preferReminder(log, current)) {
         merged[key] = log;
@@ -395,37 +498,61 @@ class AlertsScreenState extends State<AlertsScreen>
     final joins = provider.isManagerView
         ? _visibleJoins(joinProvider.managerAlerts())
         : const <JoinInviteRecord>[];
+    final isManager =
+        provider.isManagerView ||
+        bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+    final leaves = _visibleLeaves(provider);
     final reminders = includeReminders ? _reminders : const <ReminderLog>[];
-    final totalCount = items.length + joins.length + reminders.length;
+    final focusLeaveKey = provider.focusLeaveKey;
+    final totalCount =
+        items.length + joins.length + reminders.length + leaves.length;
     final isInitialLoad =
         totalCount == 0 &&
         ((includeReminders && _remindersLoading) ||
             (!showingReminders &&
                 provider.isLoading &&
                 provider.items.isEmpty &&
-                joins.isEmpty));
+                joins.isEmpty &&
+                leaves.isEmpty));
 
-    // Build a merged timeline of joins, devices, and reminders.
+    // Build a merged timeline of joins, devices, leaves, and reminders.
+    // Leave approval cards stay on top (above reminders / older items).
     final timeline = <({DateTime stamp, Object item})>[
       for (final join in joins)
         (stamp: _stampForJoin(join), item: join as Object),
       for (final item in items)
         (stamp: item.device.cardTimestamp, item: item as Object),
+      for (final leave in leaves)
+        (stamp: leave.alertSortTime, item: leave as Object),
       for (final log in reminders) (stamp: log.firedAt, item: log as Object),
-    ]..sort((a, b) => b.stamp.compareTo(a.stamp));
+    ]..sort((a, b) {
+      final aLeave = a.item is ManagerTeamLeaveItem;
+      final bLeave = b.item is ManagerTeamLeaveItem;
+      if (aLeave != bLeave) return aLeave ? -1 : 1;
+      // Focused leave from notification tap rises to the top.
+      if (aLeave && bLeave && focusLeaveKey != null) {
+        final aFocus =
+            (a.item as ManagerTeamLeaveItem).alertKey == focusLeaveKey;
+        final bFocus =
+            (b.item as ManagerTeamLeaveItem).alertKey == focusLeaveKey;
+        if (aFocus != bFocus) return aFocus ? -1 : 1;
+      }
+      return b.stamp.compareTo(a.stamp);
+    });
 
     return Scaffold(
       backgroundColor: kbackground1,
       body: Padding(
         padding: AppSizes.page(context),
         child: ShimmerRefreshIndicator(
-          instagramStyle: !provider.isManagerView,
+          instagramStyle: true,
           triggerFraction: 0.40,
           showOrb: false,
           onRefresh: () async {
             await Future.wait([
               provider.refresh(),
               joinProvider.ensureLoaded(),
+              provider.syncLeaveAlerts(),
               if (_filter == _AlertFilter.all ||
                   _filter == _AlertFilter.reminder)
                 _loadReminders(),
@@ -575,6 +702,69 @@ class AlertsScreenState extends State<AlertsScreen>
                                   )
                                 else if (item is ReminderLog)
                                   _ReminderAlertCard(log: item)
+                                else if (item is ManagerTeamLeaveItem)
+                                  KeyedSubtree(
+                                    key: _keyForLeave(item.alertKey),
+                                    child: LeaveAlertCard(
+                                      item: item,
+                                      busy:
+                                          provider.actingLeaveKey ==
+                                          item.alertKey,
+                                      highlighted:
+                                          focusLeaveKey == item.alertKey,
+                                      isEmployeeView: !isManager,
+                                      onOpen: () async {
+                                        if (!isManager) {
+                                          await bindings.leavesStore
+                                              .ensureLoaded();
+                                          if (!context.mounted) return;
+                                          await LeaveDetailSheet.show(
+                                            context,
+                                            requestId: item.leaveRequestId,
+                                            fallbackNote: item.note,
+                                          );
+                                          return;
+                                        }
+                                        final result =
+                                            await ManagerLeaveDetailSheet.show(
+                                              context: context,
+                                              leave:
+                                                  ManagerLeaveView.fromTeamItem(
+                                                    item,
+                                                  ),
+                                              employeeName: item.employeeName,
+                                              employeePhoto: _photoForLeave(
+                                                item,
+                                              ),
+                                            );
+                                        if (result == 'approve' ||
+                                            result == 'reject') {
+                                          await provider.archiveLeaveReview(
+                                            item,
+                                            result as String,
+                                          );
+                                        } else if (result == true) {
+                                          await provider.syncLeaveAlerts();
+                                        }
+                                      },
+                                      onApprove: isManager &&
+                                              item.isPendingInInbox
+                                          ? () => provider.reviewLeaveAlert(
+                                              item,
+                                              'approve',
+                                              context,
+                                            )
+                                          : null,
+                                      onReject: isManager &&
+                                              item.isPendingInInbox
+                                          ? () => provider.reviewLeaveAlert(
+                                              item,
+                                              'reject',
+                                              context,
+                                            )
+                                          : null,
+                                    ),
+                                  )
                                 else if (item is DeviceAlertItem)
                                   DeviceAlertCard(
                                     item: item,
@@ -685,10 +875,10 @@ class _AlertFilterRow extends StatelessWidget {
     const chips = [
       (_AlertFilter.all, 'All'),
       (_AlertFilter.reminder, 'Reminder'),
+      (_AlertFilter.leaves, 'Leaves'),
       (_AlertFilter.device, 'Device'),
       (_AlertFilter.checkIn, 'Check-In'),
       (_AlertFilter.checkOut, 'Check-Out'),
-      (_AlertFilter.leaves, 'Leaves'),
     ];
 
     return SingleChildScrollView(

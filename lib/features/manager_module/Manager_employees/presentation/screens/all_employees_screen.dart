@@ -225,6 +225,9 @@ class _AllEmployeesScreenState extends State<AllEmployeesScreen> {
       backgroundColor: kbackground1,
       body: SafeArea(
         child: ShimmerRefreshIndicator(
+          instagramStyle: true,
+          triggerFraction: 0.40,
+          showOrb: false,
           onRefresh: () async {
             await Future.wait([
               employeesProvider.load(

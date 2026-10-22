@@ -33,15 +33,7 @@ class ManagerLocationsRepository extends BaseRepository {
         );
         final raw = data['locations'] ?? data['offices'] ?? data['data'];
         if (raw is List) {
-          final parsed = ManagerLocationModel.listFrom(raw);
-          for (final location in parsed) {
-            debugPrint(
-              '[LocationStatus] list.item '
-              'id=${location.id} name=${location.name} '
-              'isActive=${location.isActive}',
-            );
-          }
-          return parsed;
+          return ManagerLocationModel.listFrom(raw);
         }
         if (data.keys.any((k) => k == 'id' || k == 'name')) {
           return [ManagerLocationModel.fromJson(data)];
@@ -740,12 +732,6 @@ class ManagerLocationsRepository extends BaseRepository {
         userSending: payload,
       );
       last = await attempt.run();
-      debugPrint(
-        '[LocationStatus] statusWrite '
-        'id=$locationId isActive=$isActive api=${attempt.label} '
-        'ok=${_isHttpOk(last)} status=${last.statusCode} '
-        'message=${last.message}',
-      );
       AddLocationLog.dump(
         sheet: isActive ? 'Activate Location' : 'Deactivate Location',
         phase: 'response',

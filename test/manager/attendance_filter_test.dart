@@ -458,7 +458,8 @@ void main() {
       expect(details.name, 'Employee3');
       expect(details.checkIn, '11:33 AM');
       expect(details.checkOut, isNull);
-      expect(details.durationLabel, '0h 00m');
+      // Open session: work from check-in until first break (~1m 41s → 0h 01m).
+      expect(details.durationLabel, '0h 01m');
       expect(details.timeline.length, 3);
       expect(details.timeline.map((e) => e.type).toList(), [
         ManagerAttendanceEventType.breakEnd,
@@ -1074,6 +1075,19 @@ void main() {
         ),
         'leave',
       );
+      // Approved leave must win over a stale open-session signal.
+      expect(
+        TeamAttendanceMapper.uiStatus(
+          const ManagerTeamAttendanceItem(
+            employeeName: 'Owner',
+            status: 'leave',
+            statusLabel: 'On Leave',
+            isOpen: true,
+            checkin: '09:00:00',
+          ),
+        ),
+        'leave',
+      );
     });
 
     test('treats an open breakout as on break even without is_on_break', () {
@@ -1390,6 +1404,60 @@ void main() {
         members: members,
       );
       expect(stamped.single.present, 2);
+    });
+
+    test('keeps On Leave on assigned members for overview card + list', () {
+      const location = ManagerLocationModel(
+        id: '12',
+        name: 'Head Office',
+        address: 'Islamabad',
+      );
+      // Leave stamp as a separate row (directory row may not share userId).
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          locationId: '12',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 99,
+          employeeName: 'Employee3',
+          status: 'leave',
+          statusLabel: 'On Leave',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          locationId: '12',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: '12',
+        ),
+        ManagerEmployeeModel(
+          id: '1',
+          name: 'Owner',
+          role: 'Owner',
+          locationId: '12',
+        ),
+      ];
+
+      final merged = LocationAttendanceStats.merge(
+        location: location,
+        attendance: attendance,
+        members: members,
+      );
+      final onLeave = merged.where((e) => e.isOnLeave).toList();
+      expect(onLeave, hasLength(1));
+      expect(onLeave.single.employeeName, 'Employee3');
+      expect(
+        merged.where((e) => !e.hasCheckIn && !e.isOnLeave),
+        hasLength(1),
+      );
     });
   });
 

@@ -14,7 +14,7 @@ class LeaveStatusFilterResult {
   final LeaveRequestStatus? status;
 }
 
-/// Radio list: All types / Accepted / Pending / Rejected.
+/// Radio list: All types / Pending / Approved / Rejected.
 class LeaveStatusFilterSheet extends StatefulWidget {
   const LeaveStatusFilterSheet({super.key, this.selected});
 
@@ -60,11 +60,11 @@ class _LeaveStatusFilterSheetState extends State<LeaveStatusFilterSheet> {
     };
   }
 
-  static const _options = [
-    (key: _allKey, label: 'All types'),
-    (key: 'approved', label: 'Accepted'),
-    (key: 'pending', label: 'Pending'),
-    (key: 'rejected', label: 'Rejected'),
+  static const _options = <({String key, String label, Color? color})>[
+    (key: _allKey, label: 'All types', color: null),
+    (key: 'pending', label: 'Pending', color: kYellowColor),
+    (key: 'approved', label: 'Approved', color: kPrimaryColor),
+    (key: 'rejected', label: 'Rejected', color: kredColor),
   ];
 
   LeaveRequestStatus? _statusFromKey(String key) {
@@ -108,6 +108,7 @@ class _LeaveStatusFilterSheetState extends State<LeaveStatusFilterSheet> {
               itemBuilder: (context, index) {
                 final option = _options[index];
                 final selected = option.key == _selectedKey;
+                final accent = option.color ?? kPrimaryColor;
                 return ButtonAnimations.press(
                   onTap: () => setState(() => _selectedKey = option.key),
                   child: Container(
@@ -119,7 +120,7 @@ class _LeaveStatusFilterSheetState extends State<LeaveStatusFilterSheet> {
                       color: kWhite,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: selected ? kPrimaryColor : kBorderColor,
+                        color: selected ? accent : kBorderColor,
                         width: selected ? 1.5 : 1,
                       ),
                     ),
@@ -128,11 +129,15 @@ class _LeaveStatusFilterSheetState extends State<LeaveStatusFilterSheet> {
                         Expanded(
                           child: AppText.p1(
                             option.label,
-                            weight: FontWeight.w400,
+                            weight: FontWeight.w500,
+                            color: option.color ?? kBlack,
                             align: TextAlign.left,
                           ),
                         ),
-                        _LeaveRadioDot(selected: selected),
+                        _LeaveRadioDot(
+                          selected: selected,
+                          color: accent,
+                        ),
                       ],
                     ),
                   ),
@@ -163,9 +168,10 @@ class _LeaveStatusFilterSheetState extends State<LeaveStatusFilterSheet> {
 }
 
 class _LeaveRadioDot extends StatelessWidget {
-  const _LeaveRadioDot({required this.selected});
+  const _LeaveRadioDot({required this.selected, required this.color});
 
   final bool selected;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -175,10 +181,10 @@ class _LeaveRadioDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: selected ? kPrimaryColor : kBorderColor,
+          color: selected ? color : kBorderColor,
           width: 2,
         ),
-        color: selected ? kPrimaryColor : kWhite,
+        color: selected ? color : kWhite,
       ),
       child: selected
           ? Center(

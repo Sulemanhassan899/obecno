@@ -1,15 +1,25 @@
-import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/api_cancel_token.dart';
 import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/core/api/base_repository.dart';
 import 'package:obecno/core/api/manager_api_endpoints.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_employee_attendance_model.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 
 class ManagerAttendanceRepository extends BaseRepository {
   ManagerAttendanceRepository(super.apiClient);
+
+  Future<ApiResponse<List<HolidayInfo>>> getCompanyHolidays({
+    required String month,
+    ApiCancelToken? cancelToken,
+  }) {
+    return AttendanceService(apiClient).getCompanyHolidays(
+      month: month,
+      cancelToken: cancelToken,
+    );
+  }
 
   Future<ApiResponse<ManagerTeamAttendanceData>> getTeamAttendance({
     String? date,
@@ -177,21 +187,7 @@ class ManagerAttendanceRepository extends BaseRepository {
       additionalEvents: additionalEvents,
       changes: changes,
     );
-    debugPrint(
-      '[ManagerAttendance] SAVE userId=$userId attendanceId=$attendanceId '
-      'resolvedId=$resolvedId date=$date '
-      'in=$checkIn out=$checkOut break=$breakStart-$breakEnd '
-      'inId=$checkInDetailId outId=$checkOutDetailId '
-      'body=$employeeBody',
-    );
-
-    void logResult(String step, ApiResponse<String> result) {
-      debugPrint(
-        '[ManagerAttendance] SAVE $step success=${result.success} '
-        'status=${result.statusCode} message=${result.message} '
-        'data=${result.data}',
-      );
-    }
+    void logResult(String step, ApiResponse<String> result) {}
 
     // Primary: documented manager create/edit endpoint.
     if (userId != null) {

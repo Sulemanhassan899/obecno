@@ -25,6 +25,11 @@ class ManagerEmployeeHistoryMapper {
     required List<ManagerEmployeeAttendanceDay> history,
     Set<int> workingWeekdays = const {1, 2, 3, 4, 5},
     List<HolidayInfo> holidays = const [],
+    /// Leave days from `/employees/{id}/leaves` (pending + approved).
+    /// Merged with any `is_leave` flags on attendance history days.
+    Set<DateTime> extraLeaveDates = const {},
+    /// Rejected leave days must never show as On Leave (force Absent).
+    Set<DateTime> rejectedLeaveDates = const {},
     TimeOfDay? scheduledCheckIn,
     int graceMinutes = 0,
     TimeOfDay? scheduledCheckOut,
@@ -65,7 +70,15 @@ class ManagerEmployeeHistoryMapper {
 
     final byDate = <String, ManagerEmployeeAttendanceDay>{};
     final attendanceDates = <DateTime>{};
-    final leaveDates = <DateTime>{};
+    final rejected = {
+      for (final d in rejectedLeaveDates) DateTime(d.year, d.month, d.day),
+    };
+    bool isRejectedDay(DateTime d) =>
+        rejected.any((r) => r.year == d.year && r.month == d.month && r.day == d.day);
+    final leaveDates = <DateTime>{
+      for (final d in extraLeaveDates)
+        if (!isRejectedDay(d)) DateTime(d.year, d.month, d.day),
+    };
     final mergedHolidays = [...holidays];
     for (final day in history) {
       final date = day.date;
@@ -87,7 +100,7 @@ class ManagerEmployeeHistoryMapper {
           ),
         );
       }
-      if (day.isLeave) {
+      if (day.isLeave && !isRejectedDay(dateOnly)) {
         leaveDates.add(dateOnly);
       }
     }
@@ -123,8 +136,15 @@ class ManagerEmployeeHistoryMapper {
       String? checkOut;
       AttendanceDayStatus status;
       String? weekendLabel;
+      final isWeekendContext = !workingWeekdays.contains(day.weekday);
 
-      if (hasPunch && classification.type != DayCardType.holiday) {
+      if (classification.type == DayCardType.onLeave) {
+        status = AttendanceDayStatus.onLeave;
+        checkIn = 'Leave';
+        checkOut = 'Leave';
+        totalWorking += 1;
+        absent += 1;
+      } else if (hasPunch && classification.type != DayCardType.holiday) {
         checkIn =
             TeamAttendanceMapper.formatTime(punched.checkin) ??
             _firstDetailTime(punched, const ['check in', 'checkin']);
@@ -134,7 +154,7 @@ class ManagerEmployeeHistoryMapper {
         status = (checkOut == null || checkOut.isEmpty)
             ? AttendanceDayStatus.missingCheckOut
             : AttendanceDayStatus.normal;
-        if (classification.type != DayCardType.weekend) {
+        if (!isWeekendContext) {
           totalWorking += 1;
           workingDays += 1;
           if (_isLateIn(
@@ -197,6 +217,7 @@ class ManagerEmployeeHistoryMapper {
           status: status,
           weekendLabel: weekendLabel,
           hasEditedTime: punched?.isEdited ?? false,
+          isWeekendContext: isWeekendContext,
         ),
       );
     }

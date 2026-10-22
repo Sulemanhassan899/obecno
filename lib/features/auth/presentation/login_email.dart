@@ -1,6 +1,7 @@
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
+import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
@@ -8,6 +9,7 @@ import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 class LoginEmailScreen extends StatefulWidget {
@@ -108,7 +110,16 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     super.dispose();
   }
 
-  void _backToOnboarding() {
+  /// Returning users (onboarding already done) stay out of onboarding —
+  /// back exits the app. First-time users still go to onboarding.
+  Future<void> _onBack() async {
+    final done = await TokenService().isOnboardingCompleted;
+    if (!mounted) return;
+    if (done) {
+      // SystemNavigator.pop();
+      context.go('/onboarding');
+      return;
+    }
     context.go('/onboarding');
   }
 
@@ -118,7 +129,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        _backToOnboarding();
+        _onBack();
       },
       child: Scaffold(
         resizeToAvoidBottomInset: true,
@@ -140,7 +151,7 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
 
                       Padding(
                         padding: const EdgeInsets.only(top: 40),
-                        child: BackButtonBg(onTap: _backToOnboarding),
+                        child: BackButtonBg(onTap: _onBack),
                       ),
 
                       const SizedBox(height: 60),

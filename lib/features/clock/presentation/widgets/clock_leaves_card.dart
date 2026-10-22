@@ -4,12 +4,37 @@ import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/screens/leaves_screen.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/main.dart';
 
-class ClockLeavesCard extends StatelessWidget {
+class ClockLeavesCard extends StatefulWidget {
   const ClockLeavesCard({super.key});
+
+  @override
+  State<ClockLeavesCard> createState() => _ClockLeavesCardState();
+}
+
+class _ClockLeavesCardState extends State<ClockLeavesCard> {
+  final LeavesStore _store = bindings.leavesStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _store.addListener(_refresh);
+    _store.ensureLoaded();
+  }
+
+  @override
+  void dispose() {
+    _store.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   void _openLeaves(BuildContext context) {
     Navigator.of(
@@ -19,7 +44,7 @@ class ClockLeavesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available = LeavesMockStore.instance.totalAvailable;
+    final available = _store.totalAvailable;
 
     return ButtonAnimations.press(
       onTap: () => _openLeaves(context),

@@ -5,6 +5,7 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/presentation/forgot_password.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
@@ -124,16 +125,12 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
 
       setState(() => _isSubmitting = false);
 
-      AppGuard.permissionOnboardingPending = false;
       final viaLink = (joined ?? invite).source == JoinInviteSource.link;
-      if (viaLink) {
-        context.go(
-          '/youve_joined',
-          extra: (joined ?? invite).companyName,
-        );
-      } else {
-        context.go('/employee_nav');
-      }
+      final dest = viaLink
+          ? '/youve_joined'
+          : '/employee_nav';
+      final extra = viaLink ? (joined ?? invite).companyName : null;
+      await _routeAfterAuth(dest: dest, extra: extra);
       return;
     }
 
@@ -157,69 +154,79 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
 
     AppLogger.info('[LoginPasswordScreen] Login success (email: ${widget.email})');
 
-    // Login just set isAuthenticated. Hold AppGuard before the permission
-    // status await so its 10s poll cannot show "Permission Required" on
-    // the upcoming Enable Permissions screen.
-    AppGuard.permissionOnboardingPending = true;
-
-    final permissionsAllowed =
-        await PermissionService.areAllPermissionsAllowed();
     if (!mounted) return;
-
     setState(() => _isSubmitting = false);
 
-    if (permissionsAllowed) {
-      AppGuard.permissionOnboardingPending = false;
-      final homeTarget = context.read<AuthProvider>().homeTarget;
-      AppLogger.info(
-        '[LoginPasswordScreen] Permissions already allowed -- navigating to dashboard (homeTarget=$homeTarget)',
-      );
-      context.go(
-        homeTarget == AuthHomeTarget.manager
-            ? '/manager_nav'
-            : '/employee_nav',
-      );
+    final homeTarget = context.read<AuthProvider>().homeTarget;
+    final home = homeTarget == AuthHomeTarget.manager
+        ? '/manager_nav'
+        : '/employee_nav';
+    await _routeAfterAuth(dest: home, registerDeviceWithUi: true);
+  }
 
-      // Device register + toast/dialog only AFTER dashboard navigation when
-      // the custom permission screen is not needed (Scenario 1/4).
-      try {
-        final deviceProvider = context.read<DeviceProvider>();
-        final userId = context.read<AuthProvider>().user?.id;
-        unawaited(
-          deviceProvider.registerOnLogin().then((deviceCheck) async {
-            AppLogger.info(
-              '[LoginPasswordScreen] Device check outcome: $deviceCheck',
-            );
-            await deviceProvider.checkDeviceStatus(
-              null,
-              loginMessage: true,
-              source: 'LOGIN',
-              userId: userId,
-              isFirstLogin: true,
-            );
-          }),
-        );
-      } catch (e) {
-        debugPrint('[LoginPasswordScreen] DeviceProvider unavailable: $e');
-      }
-    } else {
-      // First-time login, system permissions not yet granted: hand off to
-      // the custom Enable Permissions screen only -- suppress AppGuard's
-      // own system-permission dialogs AND device toast/dialog until that
-      // screen finishes (Scenario 1).
+  /// First-time users → enable permissions (all three). Returning users who
+  /// already completed that screen go straight home.
+  Future<void> _routeAfterAuth({
+    required String dest,
+    Object? extra,
+    bool registerDeviceWithUi = false,
+  }) async {
+    final tokens = TokenService();
+    final setupDone = await tokens.isPermissionsSetupCompleted;
+    final osReady = setupDone
+        ? true
+        : await PermissionService.areFirstLoginPermissionsAllowed();
+
+    if (!mounted) return;
+
+    if (setupDone || osReady) {
+      if (!setupDone) await tokens.markPermissionsSetupCompleted();
+      AppGuard.permissionOnboardingPending = false;
       AppLogger.info(
-        '[LoginPasswordScreen] First-time login -- navigating to /enable_permissions',
+        '[LoginPasswordScreen] Going to $dest (permissions setup done)',
       );
-      AppGuard.permissionOnboardingPending = true;
-      // Silent register only (no UI) while onboarding permissions.
-      try {
-        final deviceProvider = context.read<DeviceProvider>();
-        unawaited(deviceProvider.registerOnLogin());
-      } catch (e) {
-        debugPrint('[LoginPasswordScreen] DeviceProvider unavailable: $e');
+      if (extra != null) {
+        context.go(dest, extra: extra);
+      } else {
+        context.go(dest);
       }
-      context.go('/enable_permissions');
+
+      if (registerDeviceWithUi) {
+        try {
+          final deviceProvider = context.read<DeviceProvider>();
+          final userId = context.read<AuthProvider>().user?.id;
+          unawaited(
+            deviceProvider.registerOnLogin().then((deviceCheck) async {
+              AppLogger.info(
+                '[LoginPasswordScreen] Device check outcome: $deviceCheck',
+              );
+              await deviceProvider.checkDeviceStatus(
+                null,
+                loginMessage: true,
+                source: 'LOGIN',
+                userId: userId,
+                isFirstLogin: true,
+              );
+            }),
+          );
+        } catch (e) {
+          debugPrint('[LoginPasswordScreen] DeviceProvider unavailable: $e');
+        }
+      }
+      return;
     }
+
+    AppLogger.info(
+      '[LoginPasswordScreen] First-time login -- navigating to /enable_permissions',
+    );
+    AppGuard.permissionOnboardingPending = true;
+    try {
+      final deviceProvider = context.read<DeviceProvider>();
+      unawaited(deviceProvider.registerOnLogin());
+    } catch (e) {
+      debugPrint('[LoginPasswordScreen] DeviceProvider unavailable: $e');
+    }
+    context.go('/enable_permissions');
   }
 
   @override

@@ -138,10 +138,6 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
         await _emitRebootLogout();
         return;
       }
-      debugPrint(
-        '[TRUSTED_TIME] reuse login=${session.loginAnchor!.wallClockLocal} '
-        'user=$userId',
-      );
       notifyListeners();
       return;
     }
@@ -155,7 +151,6 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     await session.login(sessionId: expected);
     _attachedUserId = userId;
     _skipNextResumeAppOpen = true;
-    debugPrint('[TRUSTED_TIME] captured login for user=$userId');
     notifyListeners();
   }
 
@@ -174,7 +169,6 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     _attachedUserId = null;
     final message = TrustedTimeMessages.sessionEnded;
     try {
-      debugPrint('[TRUSTED_TIME] $message');
       await onRebootSessionEnded?.call(message);
       _session?.acknowledgeRebootLogout();
       _showSessionEndedMessage(message);
@@ -204,7 +198,6 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     if (_attachedUserId == null && _session?.sessionActive != true) return;
     _attachedUserId = null;
     await _session?.expireSession();
-    debugPrint('[TRUSTED_TIME] session expired on logout');
     notifyListeners();
   }
 

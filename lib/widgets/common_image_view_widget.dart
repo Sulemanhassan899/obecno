@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
+import 'package:obecno/core/services/obecno_image_cache.dart';
 
 class CommonImageView extends StatelessWidget {
   final String? url;
@@ -148,6 +149,7 @@ class CommonImageView extends StatelessWidget {
     if (networkUrl != null) {
       return CachedNetworkImage(
         imageUrl: networkUrl,
+        cacheManager: ObecnoImageCache.instance,
         height: height,
         width: width,
         fit: fit,
@@ -161,7 +163,7 @@ class CommonImageView extends StatelessWidget {
           isLoading: true,
         ),
 
-        /// Error fallback
+        /// Error fallback (HTML/403 bodies are rejected by ObecnoImageCache)
         errorWidget: (_, __, ___) => _errorWidget(context),
       );
     }

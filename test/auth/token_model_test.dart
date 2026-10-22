@@ -44,5 +44,41 @@ void main() {
         'x',
       );
     });
+
+    test('fromJson defaults missing or zero expires_in', () {
+      final missing = TokenModel.fromJson({'access_token': 'x'});
+      expect(missing?.expiresIn, TokenModel.defaultExpiresInSeconds);
+      expect(missing?.isExpired, isFalse);
+
+      final zero = TokenModel.fromJson({
+        'access_token': 'x',
+        'expires_in': 0,
+      });
+      expect(zero?.expiresIn, TokenModel.defaultExpiresInSeconds);
+      expect(zero?.isExpired, isFalse);
+    });
+
+    test('fromJson reads nested token object', () {
+      final token = TokenModel.fromJson({
+        'token': {
+          'access_token': 'nested',
+          'token_type': 'Bearer',
+          'expires_in': 120,
+        },
+      });
+      expect(token?.accessToken, 'nested');
+      expect(token?.expiresIn, 120);
+    });
+
+    test('fromJson and storage keep refresh_token', () {
+      final token = TokenModel.fromJson({
+        'access_token': 'a',
+        'refresh_token': 'r',
+        'expires_in': 60,
+      });
+      expect(token?.refreshToken, 'r');
+      final restored = TokenModel.fromStorageJson(token!.toStorageJson());
+      expect(restored?.refreshToken, 'r');
+    });
   });
 }

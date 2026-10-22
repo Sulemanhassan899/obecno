@@ -635,11 +635,6 @@ class ManagerLocationsService {
       isActive: false,
       cancelToken: cancelToken,
     );
-    debugPrint(
-      '[LocationStatus] service.deactivate '
-      'id=$locationId success=${result.isHttpOk} '
-      'status=${result.statusCode} message=${result.message}',
-    );
     AddLocationLog.dump(
       sheet: 'Deactivate Location',
       phase: 'response',
@@ -672,11 +667,6 @@ class ManagerLocationsService {
       locationId: locationId,
       isActive: true,
       cancelToken: cancelToken,
-    );
-    debugPrint(
-      '[LocationStatus] service.activate '
-      'id=$locationId success=${result.isHttpOk} '
-      'status=${result.statusCode} message=${result.message}',
     );
     AddLocationLog.dump(
       sheet: 'Activate Location',

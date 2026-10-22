@@ -1,5 +1,6 @@
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 
 class TeamAttendanceMapper {
@@ -19,6 +20,9 @@ class TeamAttendanceMapper {
       checkOut: live ? null : formatTime(item.checkout),
       status: uiStatus(item),
       photo: item.photoUrl,
+      isLate: item.isLate,
+      editIcon: item.isEdited,
+      locationalert: item.isOutsideLocation,
     );
   }
 
@@ -26,6 +30,7 @@ class TeamAttendanceMapper {
     List<ManagerTeamAttendanceItem> items, {
     String? currentUserId,
     String? currentUserName,
+    List<ManagerLocationModel>? offices,
   }) {
     return statusFirst(
       items,
@@ -142,6 +147,8 @@ class TeamAttendanceMapper {
       statusLabel: live.statusLabel ?? base.statusLabel,
       isLate: live.isLate || base.isLate,
       isOnBreak: live.isCurrentlyOnBreak,
+      isEdited: live.isEdited || base.isEdited,
+      isOutsideLocation: live.isOutsideLocation || base.isOutsideLocation,
     );
   }
 
@@ -177,7 +184,7 @@ class TeamAttendanceMapper {
         currentUserName: currentUserName,
       )) {
         currentUser.add(item);
-      } else if (uiStatus(item).isNotEmpty) {
+      } else if (uiStatus(item).isNotEmpty || item.isLate) {
         withStatus.add(item);
       } else {
         withoutStatus.add(item);
@@ -202,8 +209,11 @@ class TeamAttendanceMapper {
   }
 
   static String uiStatus(ManagerTeamAttendanceItem item) {
+    // Approved leave always wins — including when bulk attendance still has a
+    // stale open-session / working signal for that day.
+    if (item.isOnLeave) return 'leave';
     if (item.isCurrentlyOnBreak) return 'break';
-    if (item.isOnLeave && !item.isOpen && !item.isActive) return 'leave';
+    // Late check-in wins over working for open (and closed) sessions when flagged.
     if (item.isLate) return 'late';
     if (item.isActive || item.isOpen) return 'working';
     // Bulk team-attendance often omits is_open; a check-in with no checkout

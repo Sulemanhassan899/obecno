@@ -1649,6 +1649,198 @@ class ManagerEmployeesRepository extends BaseRepository {
     );
   }
 
+  /// Assign leave for [userId] via manager employee leave routes only.
+  ///
+  /// Never uses `POST /employee/leaves` — that creates leave for the logged-in
+  /// manager, not [userId].
+  Future<ApiResponse<ManagerEmployeeLeaveRequest>> createEmployeeLeave({
+    required int userId,
+    required int leaveTypeId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? note,
+    String? typeName,
+    ApiCancelToken? cancelToken,
+  }) async {
+    String ymd(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    final from = ymd(startDate);
+    final to = ymd(endDate);
+    final description = (note ?? '').trim();
+
+    final body = <String, dynamic>{
+      'leavetype_id': leaveTypeId,
+      'leave_type_id': leaveTypeId,
+      'start_date': from,
+      'end_date': to,
+      'from_date': from,
+      'to_date': to,
+      'user_id': userId,
+      'employee_id': userId,
+      if (description.isNotEmpty) 'description': description,
+      if (description.isNotEmpty) 'reason': description,
+      if (description.isNotEmpty) 'note': description,
+      if (typeName != null && typeName.trim().isNotEmpty)
+        'leave_type': typeName.trim(),
+    };
+
+    ManagerEmployeeLeaveRequest parseLeave(dynamic json) {
+      // HTML/empty 404 bodies must not look like a successful leave create.
+      if (json is! Map && json is! List) {
+        return const ManagerEmployeeLeaveRequest(id: '');
+      }
+      final maps = _mapsFromDynamic(json, const [
+        'leave',
+        'data',
+        'request',
+        'item',
+      ]);
+      if (maps.isNotEmpty) {
+        return ManagerEmployeeLeaveRequest.fromJson(maps.first);
+      }
+      if (json is Map) {
+        return ManagerEmployeeLeaveRequest.fromJson(
+          Map<String, dynamic>.from(json),
+        );
+      }
+      return ManagerEmployeeLeaveRequest(
+        id: '',
+        type: typeName,
+        status: 'approved',
+        fromDate: from,
+        toDate: to,
+        reason: description.isEmpty ? null : description,
+      );
+    }
+
+    Future<ApiResponse<ManagerEmployeeLeaveRequest>> attempt(
+      String path, {
+      Map<String, dynamic>? query,
+    }) {
+      return postRequest<ManagerEmployeeLeaveRequest>(
+        path,
+        data: body,
+        queryParameters: query,
+        cancelToken: cancelToken,
+        parser: parseLeave,
+      );
+    }
+
+    var result = await attempt(
+      ManagerEmployeeApiEndpoints.postEmployeeLeaves(userId).path,
+    );
+    if (_isHttpOk(result) && (result.data?.id ?? '').isNotEmpty) {
+      return _approveAssignedLeaveIfNeeded(result, cancelToken: cancelToken);
+    }
+
+    if (result.statusCode == 404 ||
+        result.statusCode == 405 ||
+        !_isHttpOk(result) ||
+        (result.data?.id ?? '').isEmpty) {
+      result = await attempt(
+        ManagerEmployeeApiEndpoints.legacyEmployeeLeaves,
+        query: {'user_id': userId},
+      );
+    }
+
+    if (_isHttpOk(result) && (result.data?.id ?? '').isNotEmpty) {
+      return _approveAssignedLeaveIfNeeded(result, cancelToken: cancelToken);
+    }
+
+    if (_isHttpOk(result) && (result.data?.id ?? '').isEmpty) {
+      return ApiResponse.failure(
+        'Could not assign leave for this employee. '
+        'Manager leave create is not available on the server.',
+        statusCode: result.statusCode ?? 404,
+      );
+    }
+
+    return ApiResponse.failure(
+      result.message ??
+          'Could not assign leave for this employee. '
+              'Manager leave create is not available on the server.',
+      statusCode: result.statusCode,
+    );
+  }
+
+  Future<ApiResponse<ManagerEmployeeLeaveRequest>> _approveAssignedLeaveIfNeeded(
+    ApiResponse<ManagerEmployeeLeaveRequest> created, {
+    ApiCancelToken? cancelToken,
+  }) async {
+    final leave = created.data;
+    if (leave == null) return created;
+    final leaveId = int.tryParse(leave.id);
+    if (leaveId == null) return created;
+    final status = (leave.status ?? '').toLowerCase();
+    if (status.contains('approve') || status.contains('accept')) {
+      return created;
+    }
+
+    final review = await postRequest<String>(
+      ManagerEmployeeApiEndpoints.teamLeavesReview,
+      data: {
+        'leave_id': leaveId,
+        'action': 'approve',
+      },
+      cancelToken: cancelToken,
+      parser: (json) {
+        if (json is Map) {
+          final map = Map<String, dynamic>.from(json);
+          return (map['message'] ?? map['data'] ?? 'OK').toString();
+        }
+        return 'OK';
+      },
+    );
+    if (!_isHttpOk(review)) return created;
+
+    return ApiResponse.success(
+      ManagerEmployeeLeaveRequest(
+        id: leave.id,
+        type: leave.type,
+        status: 'approved',
+        fromDate: leave.fromDate,
+        toDate: leave.toDate,
+        days: leave.days,
+        reason: leave.reason,
+      ),
+      message: review.message ?? created.message,
+      statusCode: created.statusCode,
+    );
+  }
+
+  List<Map<String, dynamic>> _mapsFromDynamic(
+    dynamic json,
+    List<String> keys,
+  ) {
+    if (json is List) {
+      return json
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    }
+    if (json is! Map) return const [];
+    final map = Map<String, dynamic>.from(json);
+    for (final key in keys) {
+      final value = map[key];
+      if (value is Map) {
+        return [Map<String, dynamic>.from(value)];
+      }
+      if (value is List) {
+        return value
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList(growable: false);
+      }
+    }
+    if (map['id'] != null || map['leave_id'] != null) {
+      return [map];
+    }
+    return const [];
+  }
+
   Future<ApiResponse<List<ManagerEmployeeLeaveBalance>>>
   getEmployeeLeaveBalances({
     required int userId,

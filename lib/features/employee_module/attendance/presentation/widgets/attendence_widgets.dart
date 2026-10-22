@@ -228,8 +228,10 @@ class AttendanceDayTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icons = _statusIcons();
-    final tileColor =
-        backgroundColor ?? (_workedOnHoliday ? const Color(0xFFEFF6FF) : null);
+    final tileColor = backgroundColor ??
+        (record.isWeekendContext
+            ? kContainerYellowColor
+            : (_workedOnHoliday ? const Color(0xFFEFF6FF) : null));
 
     return ButtonAnimations.press(
       onTap: onTap,

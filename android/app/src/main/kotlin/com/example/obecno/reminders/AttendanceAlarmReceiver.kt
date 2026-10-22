@@ -6,6 +6,9 @@ import android.content.Intent
 
 class AttendanceAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        val scheduled =
+            intent.getLongExtra(AttendanceAlarmScheduler.EXTRA_FIRE_AT, 0L).takeIf { it > 0L }
+                ?: System.currentTimeMillis()
         val alarm =
             StoredAlarm(
                 id = intent.getIntExtra(AttendanceAlarmScheduler.EXTRA_ID, 0),
@@ -14,7 +17,9 @@ class AttendanceAlarmReceiver : BroadcastReceiver() {
                     intent.getStringExtra(AttendanceAlarmScheduler.EXTRA_TITLE)
                         ?: "Attendance reminder",
                 message = intent.getStringExtra(AttendanceAlarmScheduler.EXTRA_MESSAGE).orEmpty(),
-                fireAt = System.currentTimeMillis(),
+                // Prefer the planned minute — wall-clock "now" created duplicate
+                // Alerts rows next to Flutter's scheduled fireAt.
+                fireAt = scheduled,
                 payload =
                     intent.getStringExtra(AttendanceAlarmScheduler.EXTRA_PAYLOAD).orEmpty(),
                 isTest =

@@ -64,7 +64,8 @@ void main() {
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
       expect(summary.isCheckedIn, isFalse);
-      expect(summary.totalWorkingDuration, at(17, 57).difference(at(10, 57)));
+      // 1h + 3h + 1h — gaps between sessions are unpaid.
+      expect(summary.totalWorkingDuration, const Duration(hours: 5));
     });
 
     test('clock engine matches history engine', () {
@@ -103,12 +104,12 @@ void main() {
       final summary = AttendanceEngine.compute(events);
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
-      expect(summary.totalWorkingDuration, at(17, 57).difference(at(10, 57)));
+      expect(summary.totalWorkingDuration, const Duration(hours: 5));
     });
   });
 
-  group('Header duration matches displayed first in / last out', () {
-    test('5:59 PM to 6:35 PM is 36 minutes, not in-office leftover 12', () {
+  group('Header duration sums work segments only', () {
+    test('two closed sessions sum to 19m, not first-in→last-out 36m', () {
       final events = [
         AttendanceEvent(
           id: '1',
@@ -134,14 +135,14 @@ void main() {
       final summary = AttendanceEngine.compute(events);
       expect(summary.firstCheckIn, at(17, 59));
       expect(summary.lastCheckOut, at(18, 35));
-      expect(summary.totalWorkingDuration, const Duration(minutes: 36));
+      expect(summary.totalWorkingDuration, const Duration(minutes: 19));
       expect(
         summary.liveWorkingDuration(now: at(21, 6)),
-        const Duration(minutes: 36),
+        const Duration(minutes: 19),
       );
     });
 
-    test('does not sum only in-office sessions', () {
+    test('gap between checkout and re-check-in is not worked time', () {
       final events = [
         AttendanceEvent(
           id: '1',
@@ -167,14 +168,14 @@ void main() {
       final summary = AttendanceEngine.compute(events);
       expect(summary.firstCheckIn, at(17, 59));
       expect(summary.lastCheckOut, at(18, 31));
-      expect(summary.totalWorkingDuration, const Duration(minutes: 32));
+      expect(summary.totalWorkingDuration, const Duration(minutes: 10));
       expect(
         summary.liveWorkingDuration(now: at(21, 2)),
-        const Duration(minutes: 32),
+        const Duration(minutes: 10),
       );
     });
 
-    test('live duration spans first check-in to now while still in', () {
+    test('live duration is closed segments plus open session only', () {
       final events = [
         AttendanceEvent(
           id: '1',
@@ -194,9 +195,10 @@ void main() {
       ];
       final summary = AttendanceEngine.compute(events);
       expect(summary.isCheckedIn, isTrue);
+      // 7m closed + 18:28→21:02 open (not 17:59→21:02).
       expect(
         summary.liveWorkingDuration(now: at(21, 2)),
-        at(21, 2).difference(at(17, 59)),
+        const Duration(hours: 2, minutes: 41),
       );
     });
   });
@@ -241,10 +243,8 @@ void main() {
       expect(summary.firstCheckIn, at(10, 57));
       expect(summary.lastCheckOut, at(17, 57));
       expect(summary.totalBreakDuration, const Duration(hours: 1));
-      expect(
-        summary.totalWorkingDuration,
-        at(17, 57).difference(at(10, 57)) - const Duration(hours: 1),
-      );
+      // 1h + 1h + 1h + 1h segments; unpaid gap + break excluded.
+      expect(summary.totalWorkingDuration, const Duration(hours: 4));
     });
   });
 

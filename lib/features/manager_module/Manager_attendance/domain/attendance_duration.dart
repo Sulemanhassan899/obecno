@@ -1,8 +1,14 @@
+enum AttendancePunchKind { checkIn, checkOut, breakStart, breakEnd }
+
 class AttendanceDuration {
   AttendanceDuration._();
 
   /// Working hours for a single day: checkout − check-in, or elapsed time
   /// when the shift is still open today.
+  ///
+  /// When both [checkIn] and [checkOut] parse, their difference always wins —
+  /// never a live "now − check-in" span or stale API [hoursWorked] (that was
+  /// showing ~5h for a 54m closed session after a later re-check-in).
   static String label({
     required DateTime day,
     String? checkIn,
@@ -20,7 +26,16 @@ class AttendanceDuration {
       return format(end.difference(start));
     }
 
-    if (start != null && end == null && _isSameDay(day, clock)) {
+    // Open shift only when there is no checkout string to show.
+    final checkOutRaw = checkOut?.trim() ?? '';
+    final hasCheckOutLabel =
+        checkOutRaw.isNotEmpty &&
+        checkOutRaw != '--' &&
+        !checkOutRaw.toLowerCase().startsWith('--:--');
+    if (start != null &&
+        !hasCheckOutLabel &&
+        end == null &&
+        _isSameDay(day, clock)) {
       final elapsed = clock.difference(start);
       if (!elapsed.isNegative) return format(elapsed);
     }
@@ -38,6 +53,56 @@ class AttendanceDuration {
     if (fromWorked != null) return fromWorked;
     if (fromActual != null) return fromActual;
     return '0h 00m';
+  }
+
+  /// Sum closed work segments (+ live open segment for [day] == today).
+  /// Gaps between check-out and a later check-in are not counted.
+  static String fromWorkSegments({
+    required DateTime day,
+    required Iterable<({AttendancePunchKind kind, DateTime time})> punches,
+    DateTime? now,
+  }) {
+    final clock = now ?? DateTime.now();
+    final sorted = [...punches]..sort((a, b) => a.time.compareTo(b.time));
+
+    var worked = Duration.zero;
+    DateTime? openWork;
+
+    DateTime spanEnd(DateTime start, DateTime rawEnd) {
+      if (rawEnd.isAfter(start)) return rawEnd;
+      return rawEnd.add(const Duration(days: 1));
+    }
+
+    for (final punch in sorted) {
+      switch (punch.kind) {
+        case AttendancePunchKind.checkIn:
+          openWork = punch.time;
+          break;
+        case AttendancePunchKind.checkOut:
+          if (openWork != null) {
+            worked += spanEnd(openWork, punch.time).difference(openWork);
+            openWork = null;
+          }
+          break;
+        case AttendancePunchKind.breakStart:
+          if (openWork != null) {
+            worked += spanEnd(openWork, punch.time).difference(openWork);
+            openWork = null;
+          }
+          break;
+        case AttendancePunchKind.breakEnd:
+          openWork = punch.time;
+          break;
+      }
+    }
+
+    if (openWork != null && _isSameDay(day, clock)) {
+      if (clock.isAfter(openWork)) {
+        worked += clock.difference(openWork);
+      }
+    }
+
+    return format(worked);
   }
 
   static String format(Duration duration) {

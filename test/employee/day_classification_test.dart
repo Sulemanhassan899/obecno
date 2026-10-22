@@ -102,12 +102,14 @@ void main() {
           weekday: 'Sat',
           date: DateTime(2026, 8, 15),
           status: AttendanceDayStatus.weekend,
+          isWeekendContext: true,
         ),
         AttendanceDayRecord(
           day: 16,
           weekday: 'Sun',
           date: DateTime(2026, 8, 16),
           status: AttendanceDayStatus.weekend,
+          isWeekendContext: true,
         ),
       ]);
 
@@ -116,6 +118,96 @@ void main() {
       expect(grouped.last.weekendLabel, 'National Day');
       expect(grouped.first.status, AttendanceDayStatus.weekend);
       expect(grouped.first.weekendLabel, 'Weekend, 15 Aug 2026 - 16 Aug 2026');
+    });
+
+    test('keeps weekend leave/punch rows and preserves full banner dates', () {
+      final bothActive = AttendanceListGrouping.groupConsecutiveWeekends([
+        AttendanceDayRecord(
+          day: 10,
+          weekday: 'Sat',
+          date: DateTime(2025, 10, 10),
+          checkIn: '08:52 AM',
+          checkOut: '05:12 PM',
+          status: AttendanceDayStatus.normal,
+          isWeekendContext: true,
+        ),
+        AttendanceDayRecord(
+          day: 11,
+          weekday: 'Sun',
+          date: DateTime(2025, 10, 11),
+          checkIn: 'Leave',
+          checkOut: 'Leave',
+          status: AttendanceDayStatus.onLeave,
+          isWeekendContext: true,
+        ),
+      ]);
+
+      expect(bothActive, hasLength(3));
+      expect(bothActive[0].status, AttendanceDayStatus.weekend);
+      expect(
+        bothActive[0].weekendLabel,
+        'Weekend, 10 Oct 2025 - 11 Oct 2025',
+      );
+      expect(bothActive[1].isOnLeave, isTrue);
+      expect(bothActive[2].hasVisiblePunch, isTrue);
+
+      // Leave on Sat must not shrink the card to Sunday-only.
+      final satLeaveSunEmpty = AttendanceListGrouping.groupConsecutiveWeekends([
+        AttendanceDayRecord(
+          day: 10,
+          weekday: 'Sat',
+          date: DateTime(2025, 10, 10),
+          checkIn: 'Leave',
+          checkOut: 'Leave',
+          status: AttendanceDayStatus.onLeave,
+          isWeekendContext: true,
+        ),
+        AttendanceDayRecord(
+          day: 11,
+          weekday: 'Sun',
+          date: DateTime(2025, 10, 11),
+          status: AttendanceDayStatus.weekend,
+          isWeekendContext: true,
+        ),
+      ]);
+      expect(
+        satLeaveSunEmpty.first.weekendLabel,
+        'Weekend, 10 Oct 2025 - 11 Oct 2025',
+      );
+      expect(satLeaveSunEmpty.where((r) => r.isOnLeave), hasLength(1));
+    });
+  });
+
+  group('DayClassificationEngine weekend activity', () {
+    final working = {
+      DateTime.monday,
+      DateTime.tuesday,
+      DateTime.wednesday,
+      DateTime.thursday,
+      DateTime.friday,
+    };
+
+    test('marks leave on weekend as onLeave', () {
+      final sat = DateTime(2025, 10, 11);
+      final result = DayClassificationEngine.classifyDay(
+        date: sat,
+        workingWeekdays: working,
+        attendanceDates: {},
+        holidays: const [],
+        leaveDates: {DateTime(2025, 10, 11)},
+      );
+      expect(result.type, DayCardType.onLeave);
+    });
+
+    test('marks punch on weekend as worked', () {
+      final sat = DateTime(2025, 10, 11);
+      final result = DayClassificationEngine.classifyDay(
+        date: sat,
+        workingWeekdays: working,
+        attendanceDates: {DateTime(2025, 10, 11)},
+        holidays: const [],
+      );
+      expect(result.type, DayCardType.worked);
     });
   });
 
