@@ -473,6 +473,26 @@ class ManagerEmployeesService {
     );
   }
 
+  Future<ApiResponse<ManagerEmployeeLeaveRequest>> createEmployeeLeave({
+    required int userId,
+    required int leaveTypeId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? note,
+    String? typeName,
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.createEmployeeLeave(
+      userId: userId,
+      leaveTypeId: leaveTypeId,
+      startDate: startDate,
+      endDate: endDate,
+      note: note,
+      typeName: typeName,
+      cancelToken: cancelToken,
+    );
+  }
+
   Future<ApiResponse<List<ManagerEmployeeLeaveBalance>>>
   loadEmployeeLeaveBalances({
     required int userId,

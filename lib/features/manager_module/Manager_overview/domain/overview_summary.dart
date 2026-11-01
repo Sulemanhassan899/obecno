@@ -8,6 +8,7 @@ class OverviewSummary {
     onBreak: 0,
     lateCheckIn: 0,
     absent: 0,
+    onLeave: 0,
   );
 
   const OverviewSummary({
@@ -17,6 +18,7 @@ class OverviewSummary {
     required this.onBreak,
     required this.lateCheckIn,
     required this.absent,
+    required this.onLeave,
   });
 
   final int presentToday;
@@ -25,12 +27,14 @@ class OverviewSummary {
   final int onBreak;
   final int lateCheckIn;
   final int absent;
+  final int onLeave;
 
   factory OverviewSummary.fromAttendance({
     required List<ManagerTeamAttendanceItem> attendance,
     required int teamMemberCount,
   }) {
     final present = attendance.where((e) => e.hasCheckIn).length;
+    final onLeave = attendance.where((e) => e.isOnLeave).length;
     var total = teamMemberCount;
     if (attendance.length > total) total = attendance.length;
     if (present > total) total = present;
@@ -41,7 +45,9 @@ class OverviewSummary {
       active: attendance.where((e) => e.isActive).length,
       onBreak: attendance.where((e) => e.isCurrentlyOnBreak).length,
       lateCheckIn: attendance.where((e) => e.isLate).length,
-      absent: (total - present).clamp(0, total),
+      // Leave is its own bucket — do not fold it into Absent.
+      absent: (total - present - onLeave).clamp(0, total),
+      onLeave: onLeave,
     );
   }
 }

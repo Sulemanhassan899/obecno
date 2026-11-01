@@ -2,11 +2,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_history_date_picker_sheet.dart';
@@ -14,6 +15,7 @@ import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_status_filter_she
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_request_card.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
+import 'package:obecno/main.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
   const LeaveHistoryScreen({super.key});
@@ -22,16 +24,16 @@ class LeaveHistoryScreen extends StatefulWidget {
   State<LeaveHistoryScreen> createState() => _LeaveHistoryScreenState();
 }
 
-class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
-  final LeavesMockStore _store = LeavesMockStore.instance;
+class _LeaveHistoryScreenState extends State<LeaveHistoryScreen>
+    with WidgetsBindingObserver {
+  final LeavesStore _store = bindings.leavesStore;
 
   /// null = no date filter (show full list). Label still shows today by default.
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
   LeaveRequestStatus? _statusFilter; // null = All types
 
-  static final _monthYear = DateFormat('MMM yy');
-  static final _dayMonth = DateFormat('d MMM');
+  static final _dayMonthYear = DateFormat('d MMM yy');
 
   DateTime get _today {
     final now = DateTime.now();
@@ -43,50 +45,61 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _store.addListener(_refresh);
+    _store.ensureLoaded();
+    _store.watchPendingStatuses();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _store.unwatchPendingStatuses();
     _store.removeListener(_refresh);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _store.refresh();
+    }
   }
 
   void _refresh() {
     if (mounted) setState(() {});
   }
 
+  String _formatDurationDate(DateTime date) =>
+      _dayMonthYear.format(date).toLowerCase();
+
   String get _durationLabel {
     if (!_hasDateFilter) {
-      return _dayMonth.format(_today);
+      return _formatDurationDate(_today);
     }
     final start = _rangeStart!;
     final end = _rangeEnd ?? start;
     if (start.year == end.year &&
         start.month == end.month &&
         start.day == end.day) {
-      return _dayMonth.format(start);
+      return _formatDurationDate(start);
     }
-    return '${_monthYear.format(start)} - ${_monthYear.format(end)}';
+    return '${_formatDurationDate(start)} - ${_formatDurationDate(end)}';
   }
 
   String get _showLabel => switch (_statusFilter) {
-        LeaveRequestStatus.approved => 'Accepted',
-        LeaveRequestStatus.pending => 'Pending',
-        LeaveRequestStatus.rejected => 'Rejected',
-        null => 'All types',
-      };
+    LeaveRequestStatus.approved => 'Approved',
+    LeaveRequestStatus.pending => 'Pending',
+    LeaveRequestStatus.rejected => 'Rejected',
+    null => 'All types',
+  };
 
   List<LeaveRequest> get _filtered {
     return [
       for (final request in _store.requests)
         if ((_statusFilter == null || request.status == _statusFilter) &&
             (!_hasDateFilter ||
-                _overlaps(
-                  request,
-                  _rangeStart!,
-                  _rangeEnd ?? _rangeStart!,
-                )))
+                _overlaps(request, _rangeStart!, _rangeEnd ?? _rangeStart!)))
           request,
     ];
   }
@@ -152,28 +165,43 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
             _filtersCard(),
             const SizedBox(height: 14),
             Expanded(
-              child: requests.isEmpty
-                  ? Center(
-                      child: AppText.p2(
-                        'No leave history',
-                        color: kGreyColor,
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: EdgeInsets.zero,
-                      itemCount: requests.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final request = requests[index];
-                        return LeaveRequestCard(
-                          request: request,
-                          onTap: () => LeaveDetailSheet.show(
-                            context,
-                            requestId: request.id,
+              child: ShimmerRefreshIndicator(
+                instagramStyle: true,
+                triggerFraction: 0.40,
+                showOrb: false,
+                onRefresh: () => _store.refresh(),
+                child: requests.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.45,
+                            child: Center(
+                              child: AppText.p2(
+                                'No leave history',
+                                color: kGreyColor,
+                              ),
+                            ),
                           ),
-                        );
-                      },
-                    ),
+                        ],
+                      )
+                    : ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: requests.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final request = requests[index];
+                          return LeaveRequestCard(
+                            request: request,
+                            onTap: () => LeaveDetailSheet.show(
+                              context,
+                              requestId: request.id,
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
           ],
         ),
@@ -260,11 +288,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: Center(child: trailing),
-                ),
+                SizedBox(width: 18, height: 18, child: Center(child: trailing)),
               ],
             ),
           ],

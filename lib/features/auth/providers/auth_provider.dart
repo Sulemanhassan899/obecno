@@ -372,11 +372,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Authenticates a locally invited employee without calling the API.
+  ///
+  /// Disabled in release builds — invitees must use a real server session.
   Future<bool> loginWithLocalInvite({
     required String contact,
     required String companyName,
     String? locationName,
   }) async {
+    if (kReleaseMode) {
+      _errorMessage =
+          'Invite login is not available. Open your invite link, then sign in with your account password.';
+      notifyListeners();
+      return false;
+    }
+
     final trimmed = contact.trim();
     if (trimmed.isEmpty) {
       _errorMessage = 'Please enter your email again.';
@@ -549,6 +558,12 @@ class AuthProvider extends ChangeNotifier {
     _restoredRole ??= await _service.getCachedRole();
     _isLocalInviteSession = await _service.isLocalInviteSession();
 
+    // Release builds must never keep a synthetic local-invite session.
+    if (kReleaseMode && _isLocalInviteSession) {
+      await logout();
+      return false;
+    }
+
     await restoreCompanyAndLocationsFromCache();
     // Offline restore: /auth/me may fail with "No internet" while a local
     // session still exists. Clock/Attendance need a user id before they
@@ -579,8 +594,12 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshWorkspaceFromNetwork() async {
     if (_isLocalInviteSession) return;
 
+    // Soft resume: try token refresh first, then /auth/me. Only logout when
+    // the server confirms the session is dead (401/419) — never on blips.
+    await _service.refreshAccessToken();
+
     _lastMeRefreshedAt = null;
-    final ok = await refreshCurrentUser();
+    final ok = await refreshCurrentUser(force: true);
     if (!ok && _lastMeFailureConfirmedUnauthorized) {
       await logout();
       return;
@@ -641,16 +660,19 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
+    // Only 401/419 mean "session dead". 403 is often "not allowed for this
+    // resource" and must not wipe a still-valid login.
     _lastMeFailureConfirmedUnauthorized =
-        response.statusCode == 401 ||
-        response.statusCode == 403 ||
-        response.statusCode == 419;
+        response.statusCode == 401 || response.statusCode == 419;
 
     return false;
   }
 
   Future<void> validateSessionOnUnauthorized() async {
-    final stillValid = await refreshCurrentUser();
+    // Prefer renewing the access token before treating the session as lost.
+    await _service.refreshAccessToken();
+
+    final stillValid = await refreshCurrentUser(force: true);
     if (!stillValid && _lastMeFailureConfirmedUnauthorized) {
       await logout();
     }

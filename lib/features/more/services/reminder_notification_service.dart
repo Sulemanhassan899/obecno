@@ -32,6 +32,11 @@ class ReminderNotificationService {
   bool _initialized = false;
   void Function(String? payload)? onNotificationTap;
 
+  /// Avoid Android "Shedding cancel (dupe)" rate-limits when the watch
+  /// timer rebuilds and cancels the same IDs every few seconds.
+  static const _cancelDebounce = Duration(seconds: 3);
+  final Map<int, DateTime> _lastCancelAt = {};
+
   Future<void> init() async {
     if (_initialized) return;
     try {
@@ -177,15 +182,40 @@ class ReminderNotificationService {
     88034,
   ];
 
+  bool _shouldSkipCancel(int id) {
+    final last = _lastCancelAt[id];
+    if (last == null) return false;
+    return DateTime.now().difference(last) < _cancelDebounce;
+  }
+
+  Future<void> _cancelPluginId(int id) async {
+    if (_shouldSkipCancel(id)) return;
+    _lastCancelAt[id] = DateTime.now();
+    await _plugin.cancel(id: id);
+  }
+
+  Future<void> _cancelNativeIds(List<int> ids) async {
+    final fresh = <int>[
+      for (final id in ids)
+        if (!_shouldSkipCancel(id)) id,
+    ];
+    if (fresh.isEmpty) return;
+    final now = DateTime.now();
+    for (final id in fresh) {
+      _lastCancelAt[id] = now;
+    }
+    await NativeReminderScheduler.cancelIds(fresh);
+  }
+
   Future<void> cancelDemoNotifications() async {
     await init();
     if (!_initialized) return;
     try {
       if (NativeReminderScheduler.isAndroid) {
-        await NativeReminderScheduler.cancelIds(demoNotificationIds);
+        await _cancelNativeIds(demoNotificationIds);
       }
       for (final id in demoNotificationIds) {
-        await _plugin.cancel(id: id);
+        await _cancelPluginId(id);
       }
     } catch (e, st) {
       AppLogger.error(
@@ -201,8 +231,10 @@ class ReminderNotificationService {
     if (!_initialized) return;
     try {
       await NativeReminderScheduler.cancelAll();
+      _lastCancelAt.clear();
       for (final id in ReminderNotificationPlan.allIds()) {
         await _plugin.cancel(id: id);
+        _lastCancelAt[id] = DateTime.now();
       }
       await cancelDemoNotifications();
     } catch (e, st) {
@@ -239,6 +271,7 @@ class ReminderNotificationService {
     String locationName = 'work',
     bool requestPermission = true,
     bool rebuildSchedule = true,
+    bool Function(DateTime day)? isOnLeaveDay,
   }) async {
     await init();
     if (!_initialized) {
@@ -279,6 +312,7 @@ class ReminderNotificationService {
       alreadyFired: seen,
       alreadyFiredKeys: seenKeys,
       locationName: locationName,
+      isOnLeaveDay: isOnLeaveDay,
     );
 
     final future = <ScheduledReminderNotification>[];
@@ -499,7 +533,7 @@ class ReminderNotificationService {
     try {
       final pending = await _plugin.pendingNotificationRequests();
       for (final request in pending) {
-        await _plugin.cancel(id: request.id);
+        await _cancelPluginId(request.id);
       }
     } catch (e, st) {
       AppLogger.error(
@@ -515,7 +549,7 @@ class ReminderNotificationService {
       try {
         for (final id in ReminderNotificationPlan.allIds()) {
           if (keep.contains(id)) continue;
-          await _plugin.cancel(id: id);
+          await _cancelPluginId(id);
         }
       } catch (e2, st2) {
         AppLogger.error(
@@ -550,14 +584,10 @@ class ReminderNotificationService {
         continue;
       }
       try {
-        await NativeReminderScheduler.cancelIds([
-          id,
-          ReminderNotificationPlan.idFor(type, dayOffset: 1),
-        ]);
-        await _plugin.cancel(id: id);
-        await _plugin.cancel(
-          id: ReminderNotificationPlan.idFor(type, dayOffset: 1),
-        );
+        final day1 = ReminderNotificationPlan.idFor(type, dayOffset: 1);
+        await _cancelNativeIds([id, day1]);
+        await _cancelPluginId(id);
+        await _cancelPluginId(day1);
       } catch (e, st) {
         AppLogger.error(
           'ReminderNotificationService',

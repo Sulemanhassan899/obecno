@@ -48,10 +48,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     super.initState();
     _location = widget.location;
     _schedule = widget.location.policy;
-    debugPrint(
-      '[LocationStatus] setup.init '
-      'id=${_location.id} name=${_location.name} isActive=${_location.isActive}',
-    );
     _load();
   }
 
@@ -61,10 +57,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     );
     if (fromProvider == null) return;
     if (fromProvider.isActive == _location.isActive) return;
-    debugPrint(
-      '[LocationStatus] setup.syncFromProvider '
-      'id=${_location.id} was=${_location.isActive} now=${fromProvider.isActive}',
-    );
     _location = _location.copyWith(isActive: fromProvider.isActive);
   }
 
@@ -85,10 +77,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     } else {
       _location = result.data!;
       _schedule = result.data!.policy;
-      debugPrint(
-        '[LocationStatus] setup.loadLocation '
-        'id=${_location.id} apiIsActive=${_location.isActive}',
-      );
     }
 
     final schedule = await bindings.managerLocationsService
@@ -102,10 +90,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
       }
       _loading = false;
     });
-    debugPrint(
-      '[LocationStatus] setup.load.done '
-      'id=${_location.id} isActive=${_location.isActive}',
-    );
   }
 
   Future<void> _refreshList() {
@@ -286,10 +270,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
       members = await _membersForReassign();
       if (!mounted) return;
     }
-    debugPrint(
-      '[LocationStatus] reassign.members '
-      'locationId=${_location.id} count=${members.length}',
-    );
     if (members.isEmpty) {
       bindings.managerLocationsService.clearAssignedMembers(_location.id);
       return;
@@ -337,11 +317,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
             defaultLocationId: payload.defaultLocationId,
             locationIds: payload.locationIds,
           );
-      debugPrint(
-        '[LocationStatus] reassign.user userId=$userId '
-        'success=${result.success} default=${payload.defaultLocationId} '
-        'locations=${payload.locationIds.join(",")}',
-      );
       if (!result.success) continue;
 
       employeesProvider.applyEmployeeLocations(
@@ -358,10 +333,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     final confirmed = await DeleteLocationDialog.showSimple(context);
     if (!mounted || confirmed != true) return;
 
-    debugPrint(
-      '[LocationStatus] deactivate.start id=${_location.id} '
-      'name=${_location.name}',
-    );
     setState(() => _busy = true);
 
     // Capture + unassign while the location is still active — members lookup
@@ -375,12 +346,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
       locationId: _location.id,
     );
     if (!mounted) return;
-
-    debugPrint(
-      '[LocationStatus] deactivate.api '
-      'success=${result.isHttpOk} status=${result.statusCode} '
-      'message=${result.message}',
-    );
 
     if (!result.isHttpOk) {
       setState(() => _busy = false);
@@ -405,28 +370,14 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     if (!mounted) return;
     _syncActiveFromProvider();
     setState(() {});
-    debugPrint(
-      '[LocationStatus] deactivate.done id=${_location.id} '
-      'isActive=${_location.isActive}',
-    );
   }
 
   Future<void> _onActivate() async {
-    debugPrint(
-      '[LocationStatus] activate.start id=${_location.id} '
-      'name=${_location.name}',
-    );
     setState(() => _busy = true);
     final result = await bindings.managerLocationsService.activateLocation(
       locationId: _location.id,
     );
     if (!mounted) return;
-
-    debugPrint(
-      '[LocationStatus] activate.api '
-      'success=${result.isHttpOk} status=${result.statusCode} '
-      'message=${result.message}',
-    );
 
     if (!result.isHttpOk) {
       setState(() => _busy = false);
@@ -451,10 +402,6 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
     if (!mounted) return;
     _syncActiveFromProvider();
     setState(() {});
-    debugPrint(
-      '[LocationStatus] activate.done id=${_location.id} '
-      'isActive=${_location.isActive}',
-    );
   }
 
   Future<void> _onDelete() async {
@@ -540,6 +487,9 @@ class _LocationSetupScreenState extends State<LocationSetupScreen> {
                     const SizedBox(height: 20),
                     Expanded(
                       child: ShimmerRefreshIndicator(
+                        instagramStyle: true,
+                        triggerFraction: 0.40,
+                        showOrb: false,
                         onRefresh: _load,
                         child: ListView(
                           physics: const AlwaysScrollableScrollPhysics(),

@@ -18,8 +18,13 @@ import 'package:obecno/features/clock/domain/controllers/synced_clock_screen_con
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/features/clock/data/models/clock_attendence_event.dart';
+import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/clock/presentation/widgets/clock_alert_card.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_attendence_card.dart';
 import 'package:obecno/features/clock/presentation/widgets/clock_leaves_card.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/widgets/bottom_nav_bars/manager_nav.dart';
 
 import 'package:obecno/shared/bottom_sheets/location_sheet/location_detail_sheet.dart';
 import 'package:obecno/shared/location/service/attendance_permission_service.dart';
@@ -156,6 +161,62 @@ class ClockScreenState extends State<ClockScreen>
     ToastHelper.error(context, message: message);
   }
 
+  /// Manager order: Alert (if new) → Attendance (if any) → Leaves.
+  List<Widget> _clockFeedCards(SyncedClockScreenController syncedController) {
+    final isManager =
+        bindings.authProvider.homeTarget == AuthHomeTarget.manager;
+    final alerts = context.watch<AlertsProvider>();
+    final pendingLeaves =
+        bindings.managerOverviewProvider.dashboard?.pendingTeamLeaveCount ?? 0;
+    final hasLeaveAlert = pendingLeaves > 0;
+    final hasDeviceAlert = alerts.pendingCount > 0;
+    final hasReminderAlert = alerts.hasUnseenAlert && !hasDeviceAlert;
+    // Banner is "unseen only" — hide the instant Alerts is viewed.
+    // (Nav red-dot can stay for pending leaves; this row must not.)
+    final showAlertRow = isManager && alerts.hasUnseenAlert;
+    final alertKind = hasLeaveAlert
+        ? ClockAlertKind.leave
+        : hasDeviceAlert
+            ? ClockAlertKind.device
+            : hasReminderAlert
+                ? ClockAlertKind.reminder
+                : ClockAlertKind.general;
+
+    return [
+      if (showAlertRow) ...[
+        ClockAlertCard(
+          kind: alertKind,
+          onView: () {
+            // Clear unseen immediately so this row drops with no wait.
+            context.read<AlertsProvider>().markAlertsSeen();
+            ManagerBottomNavBar.goToAlerts(
+              filter: switch (alertKind) {
+                ClockAlertKind.leave => 'leaves',
+                ClockAlertKind.device => 'device',
+                ClockAlertKind.reminder => 'reminder',
+                ClockAlertKind.general => null,
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (_controller.hasAnyEventToday) ...[
+        AttendanceCard(
+          day: syncedController.phoneNow,
+          events: _controller.events,
+          apiClient: bindings.apiClient,
+          userEmail: bindings.userEmail,
+          clockNow: () => syncedController.phoneNow,
+          onEditAttendance: () {},
+          onTodayEventsLoaded: _controller.mergeTodayEvents,
+        ),
+        const SizedBox(height: 12),
+      ],
+      const ClockLeavesCard(),
+    ];
+  }
+
   void _startMonitoring() {
     ConnectivityService.start();
     unawaited(_hydrateConnectivity());
@@ -206,7 +267,10 @@ class ClockScreenState extends State<ClockScreen>
     if (!_clockStarted || !mounted || !_isActive || _isOffline) return;
     final controller = _controller;
     if (controller is SyncedClockScreenController) {
-      unawaited(controller.reconcileWithServer());
+      unawaited(() async {
+        await controller.reconcileWithServer();
+        await controller.ensureOpenSessionAligned();
+      }());
     }
   }
 
@@ -219,9 +283,12 @@ class ClockScreenState extends State<ClockScreen>
     }
     final controller = _controller;
     if (controller is SyncedClockScreenController) {
-      if (!_isOffline) {
-        unawaited(controller.reconcileWithServer(force: true));
-      }
+      unawaited(() async {
+        if (!_isOffline) {
+          await controller.reconcileWithServer(force: true);
+        }
+        await controller.ensureOpenSessionAligned();
+      }());
       unawaited(controller.refreshGeofenceStatus());
     }
     playEntranceAnimation();
@@ -243,9 +310,12 @@ class ClockScreenState extends State<ClockScreen>
       if (!mounted) return;
       final controller = _controller;
       if (controller is SyncedClockScreenController) {
-        if (!_isOffline) {
-          unawaited(controller.reconcileWithServer(force: true));
-        }
+        unawaited(() async {
+          if (!_isOffline) {
+            await controller.reconcileWithServer(force: true);
+          }
+          await controller.ensureOpenSessionAligned();
+        }());
       }
       _checkPermissions();
     } else if (state == AppLifecycleState.paused ||
@@ -554,6 +624,18 @@ class ClockScreenState extends State<ClockScreen>
         ToastHelper.breakLimitReached(context);
         break;
       case AttendanceActionResult.outOfRange:
+        {
+          final msg =
+              (_controller as SyncedClockScreenController).lastServerMessage;
+          (_controller as SyncedClockScreenController).lastServerMessage = null;
+          ToastHelper.error(
+            context,
+            message: (msg != null && msg.isNotEmpty)
+                ? msg
+                : 'Unable to verify your location. Please try again.',
+          );
+          break;
+        }
       case AttendanceActionResult.none:
         break;
       case AttendanceActionResult.timeUnavailable:
@@ -817,20 +899,7 @@ class ClockScreenState extends State<ClockScreen>
                 ),
               ],
               const SizedBox(height: 30),
-              if (!isOnBreak && _controller.hasAnyEventToday) ...[
-                AttendanceCard(
-                  day: syncedController.phoneNow,
-                  events: _controller.events,
-                  apiClient: bindings.apiClient,
-                  userEmail: bindings.userEmail,
-                  clockNow: () => syncedController.phoneNow,
-                  onEditAttendance: () {},
-                  onTodayEventsLoaded: _controller.mergeTodayEvents,
-                ),
-              
-              ],
-              const SizedBox(height: 20),
-              if (!isOnBreak) const ClockLeavesCard(),
+              if (!isOnBreak) ..._clockFeedCards(syncedController),
               const SizedBox(height: 30),
             ];
 

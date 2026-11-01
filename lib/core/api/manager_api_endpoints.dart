@@ -204,6 +204,10 @@ class ManagerEmployeeApiEndpoints {
   static ManagerApiRoute getEmployeeLeaves(Object employeeId) =>
       ManagerApiRoute.get('${_employee(employeeId)}/leaves');
 
+  /// Assign leave for an employee (manager). Same collection as GET leaves.
+  static ManagerApiRoute postEmployeeLeaves(Object employeeId) =>
+      ManagerApiRoute.post('${_employee(employeeId)}/leaves');
+
   static ManagerApiRoute getEmployeeLeaveBalances(Object employeeId) =>
       ManagerApiRoute.get('${_employee(employeeId)}/leave-balances');
 
@@ -444,6 +448,9 @@ class ManagerEmployeeApiEndpoints {
   static const String teamMembers = '$_base/team-members';
   static const String teamLeaves = '$_base/team-leaves';
   static const String teamLeavesReview = '$_base/team-leaves/review';
+  /// Spec path used by some backends instead of [teamLeaves].
+  static const String leaves = '$_base/leaves';
+  static String leaveReview(Object leaveId) => '$_base/leaves/$leaveId/review';
   static const String teamCalendar = '$_base/team-calendar';
 
   static const String teamAttendance = _teamAttendance;

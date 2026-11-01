@@ -56,15 +56,10 @@ class DeviceProvider extends BaseProvider {
   bool get isDeviceApproved => _deviceApproved;
   bool get isDeviceBlocked => _deviceBlocked;
 
-  /// Join-invite only: first device is covered by account approval.
-  /// Does not POST a device request or change the normal device-request flow.
+  /// Formerly set local-invite devices to approved without the server.
+  /// Kept as a no-op so call sites compile; approval comes from fetch/register only.
   void markApprovedForLocalInvite() {
-    if (_deviceApproved && !_deviceBlocked) return;
-    _deviceApproved = true;
-    _deviceBlocked = false;
-    _statusValidated = true;
-    _lastKnownStatus = 'approved';
-    notifyListeners();
+    // No-op — do not override server device status from the client.
   }
 
   String get _approvalSignature =>

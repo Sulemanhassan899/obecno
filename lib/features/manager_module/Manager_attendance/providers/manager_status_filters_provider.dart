@@ -9,14 +9,14 @@ class ManagerStatusFiltersProvider extends BaseProvider {
 
   final ManagerStatusFiltersService _service;
 
-  List<StatusFilterOption> options = StatusFilterOption.options;
+  /// Attendance status catalog from API only — never seeded from hardcoded UI.
+  List<StatusFilterOption> options = const [];
 
   Future<bool> load() {
     return safeCall<List<ManagerStatusFilter>>(
       operationKey: 'manager_status_filters_load',
       request: (cancelToken) => _service.loadFilters(cancelToken: cancelToken),
       onSuccess: (filters) {
-        if (filters.isEmpty) return;
         options = StatusFilterMapper.toOptions(filters);
       },
     );
@@ -24,17 +24,13 @@ class ManagerStatusFiltersProvider extends BaseProvider {
 
   Future<void> ensureLoaded() async {
     if (status == ViewStatus.success && options.isNotEmpty) return;
-    final ok = await load();
-    if (!ok && options.isEmpty) {
-      options = StatusFilterOption.options;
-      notifyListeners();
-    }
+    await load();
   }
 
   void reset() {
     cancelAll();
     resetViewState();
-    options = StatusFilterOption.options;
+    options = const [];
     notifyListeners();
   }
 }

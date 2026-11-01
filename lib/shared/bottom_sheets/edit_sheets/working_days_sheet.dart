@@ -308,7 +308,7 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       workingDays: Set<String>.from(_selectedDays),
       weekStartDay: _startDay,
       hoursPerDay: _hoursInDay,
@@ -386,7 +386,7 @@ class _WorkingDaysSheetBodyState extends State<_WorkingDaysSheetBody> {
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       workingDays: Set<String>.from(_selectedDays),
       weekStartDay: _startDay,
       hoursPerDay: _hoursInDay,

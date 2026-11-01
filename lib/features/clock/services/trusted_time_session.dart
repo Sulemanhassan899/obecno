@@ -1,12 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:obecno/features/clock/clocks/clocks.dart';
 import 'package:obecno/features/clock/domain/trusted_time_models.dart';
 import 'package:obecno/features/clock/services/trusted_time_calculator.dart';
 import 'package:obecno/features/clock/services/trusted_time_store.dart';
 
-void _log(String message) {
-  debugPrint('[TRUSTED_TIME] $message');
-}
+void _log(String message) {}
 
 /// Optional extra trusted time (e.g. HTTP Date). When it disagrees with
 /// the monotonic calculation, the punch is a MISMATCH and the trusted

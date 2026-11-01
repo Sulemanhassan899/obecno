@@ -1,7 +1,11 @@
 import 'package:obecno/core/constants/app_enums.dart';
 import 'package:obecno/features/employee_module/attendance/data/models/attendance_edit_request.dart';
 
-/// Groups consecutive weekend rows. Holidays stay as individual cards.
+/// Groups consecutive calendar-weekend rows. Holidays stay as individual cards.
+///
+/// Weekend leave/punch days stay as list tiles (beige). The Weekend card date
+/// range always uses the full consecutive weekend span in the list (same as
+/// before) — activity days must not shrink or shift that range.
 class AttendanceListGrouping {
   AttendanceListGrouping._();
 
@@ -28,8 +32,16 @@ class AttendanceListGrouping {
 
     void flush() {
       if (run.isEmpty) return;
+      // Banner dates = full weekend span in this run (incl. leave/punch days).
       final start = run.first.date;
       final end = run.last.date;
+      // Activity rows first, then banner — after [reversed] the banner leads
+      // the weekend block (newest-first list).
+      for (final record in run) {
+        if (record.isOnLeave || record.hasVisiblePunch) {
+          result.add(record);
+        }
+      }
       result.add(
         AttendanceDayRecord(
           day: end.day,
@@ -37,13 +49,17 @@ class AttendanceListGrouping {
           date: end,
           status: AttendanceDayStatus.weekend,
           weekendLabel: 'Weekend, ${_formatDate(start)} - ${_formatDate(end)}',
+          isWeekendContext: true,
         ),
       );
       run = [];
     }
 
     for (final record in ascending) {
-      if (record.status == AttendanceDayStatus.weekend) {
+      // Calendar weekend (not only empty [weekend] status) so leave/punch
+      // days still count toward the card's start–end dates.
+      if (record.isWeekendContext ||
+          record.status == AttendanceDayStatus.weekend) {
         run.add(record);
       } else {
         flush();
@@ -68,6 +84,7 @@ class AttendanceDayRecord {
     this.status = AttendanceDayStatus.normal,
     this.weekendLabel,
     this.hasEditedTime = false,
+    this.isWeekendContext = false,
   });
 
   final int day;
@@ -83,12 +100,17 @@ class AttendanceDayRecord {
   /// or rejected.
   final bool hasEditedTime;
 
+  /// Calendar non-working day (e.g. Sat/Sun). Used for beige list tiles when
+  /// the day still has leave or punches and is not collapsed into the banner.
+  final bool isWeekendContext;
+
   AttendanceDayRecord copyWith({
     String? checkIn,
     String? checkOut,
     AttendanceDayStatus? status,
     String? weekendLabel,
     bool? hasEditedTime,
+    bool? isWeekendContext,
     bool clearCheckIn = false,
     bool clearCheckOut = false,
   }) {
@@ -101,6 +123,7 @@ class AttendanceDayRecord {
       status: status ?? this.status,
       weekendLabel: weekendLabel ?? this.weekendLabel,
       hasEditedTime: hasEditedTime ?? this.hasEditedTime,
+      isWeekendContext: isWeekendContext ?? this.isWeekendContext,
     );
   }
 
@@ -159,6 +182,7 @@ class AttendanceDayRecord {
       date: date,
       status: AttendanceDayStatus.absent,
       hasEditedTime: hasEditedTime,
+      isWeekendContext: isWeekendContext,
     );
   }
 }

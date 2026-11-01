@@ -5,19 +5,17 @@ import 'package:obecno/shared/bottom_sheets/edit_sheets/status_filter_sheet.dart
 class StatusFilterMapper {
   StatusFilterMapper._();
 
+  /// Maps API catalog rows as-is (including `all`). Labels/ids come from API.
   static List<StatusFilterOption> toOptions(List<ManagerStatusFilter> filters) {
-    final mapped = filters
-        .where((filter) => filter.key.toLowerCase() != StatusFilterOption.allId)
+    return filters
         .map(
           (filter) => StatusFilterOption(
             id: filter.key,
             label: filter.label.isEmpty ? filter.key : filter.label,
-            icon: iconFor(filter.key),
+            icon: iconFor(filter.iconKey ?? filter.key),
           ),
         )
         .toList(growable: false);
-
-    return [StatusFilterOption.all, ...mapped];
   }
 
   static String iconFor(String key) {

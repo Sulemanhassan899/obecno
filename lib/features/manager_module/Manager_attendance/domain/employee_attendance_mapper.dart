@@ -20,7 +20,7 @@ class EmployeeAttendanceMapper {
 
     final timeline =
         details
-            .map(_toEvent)
+            .map((detail) => _toEvent(detail, day: day))
             .whereType<ManagerAttendanceTimelineEvent>()
             .where((event) => _isSameDay(event.sortTime, day))
             .toList()
@@ -30,23 +30,30 @@ class EmployeeAttendanceMapper {
             return right.compareTo(left);
           });
 
+    final sessionOpen = isSessionOpen(record);
+    // Open day (re-check-in after checkout): show the live session, not the
+    // first check-in paired with an earlier checkout (that made duration look
+    // like "still working since 2:38").
     final checkInEvent = _chronological(
       timeline,
       ManagerAttendanceEventType.checkIn,
-      latest: false,
+      latest: sessionOpen,
     );
-    final checkOutEvent = _chronological(
-      timeline,
-      ManagerAttendanceEventType.checkOut,
-      latest: true,
-    );
+    final checkOutEvent = sessionOpen
+        ? null
+        : _chronological(
+            timeline,
+            ManagerAttendanceEventType.checkOut,
+            latest: true,
+          );
 
     final checkIn =
         checkInEvent?.timeLabel ??
         TeamAttendanceMapper.formatTime(record?.checkin);
-    final checkOut =
-        checkOutEvent?.timeLabel ??
-        TeamAttendanceMapper.formatTime(record?.checkout);
+    final checkOut = sessionOpen
+        ? null
+        : (checkOutEvent?.timeLabel ??
+              TeamAttendanceMapper.formatTime(record?.checkout));
 
     return ManagerAttendanceDetailsData(
       day: day,
@@ -65,15 +72,59 @@ class EmployeeAttendanceMapper {
       checkInLon: checkInEvent?.lon,
       checkOutLat: checkOutEvent?.lat,
       checkOutLon: checkOutEvent?.lon,
-      durationLabel: formatDuration(
+      durationLabel: durationFromTimeline(
+        day: day,
+        timeline: timeline,
+        fallbackCheckIn: checkIn,
+        fallbackCheckOut: checkOut,
         hoursWorked: record?.hoursWorked,
         actualHours: data.actualHours,
         actualMinutes: data.actualMinutes,
-        checkIn: checkIn,
-        checkOut: checkOut,
-        day: day,
       ),
       timeline: timeline,
+    );
+  }
+
+  /// Prefer timeline segments so gaps between sessions are not counted.
+  static String durationFromTimeline({
+    required DateTime day,
+    required List<ManagerAttendanceTimelineEvent> timeline,
+    String? fallbackCheckIn,
+    String? fallbackCheckOut,
+    String? hoursWorked,
+    String? actualHours,
+    int? actualMinutes,
+    DateTime? now,
+  }) {
+    final punches = <({AttendancePunchKind kind, DateTime time})>[];
+    for (final event in timeline) {
+      final time = _punchDateTime(event, day);
+      if (time == null) continue;
+      final kind = switch (event.type) {
+        ManagerAttendanceEventType.checkIn => AttendancePunchKind.checkIn,
+        ManagerAttendanceEventType.checkOut => AttendancePunchKind.checkOut,
+        ManagerAttendanceEventType.breakStart => AttendancePunchKind.breakStart,
+        ManagerAttendanceEventType.breakEnd => AttendancePunchKind.breakEnd,
+        ManagerAttendanceEventType.reminder => null,
+      };
+      if (kind == null) continue;
+      punches.add((kind: kind, time: time));
+    }
+    if (punches.isNotEmpty) {
+      return AttendanceDuration.fromWorkSegments(
+        day: day,
+        punches: punches,
+        now: now,
+      );
+    }
+    return formatDuration(
+      hoursWorked: hoursWorked,
+      actualHours: actualHours,
+      actualMinutes: actualMinutes,
+      checkIn: fallbackCheckIn,
+      checkOut: fallbackCheckOut,
+      day: day,
+      now: now,
     );
   }
 
@@ -206,12 +257,15 @@ class EmployeeAttendanceMapper {
   }
 
   static ManagerAttendanceTimelineEvent? _toEvent(
-    ManagerEmployeeAttendanceDetail detail,
-  ) {
+    ManagerEmployeeAttendanceDetail detail, {
+    DateTime? day,
+  }) {
     final type = eventType(detail.type);
     if (type == null) return null;
 
-    final time = detail.occurredAt ?? _timeFrom(detail.attendanceTime);
+    final anchor = day ?? detail.occurredAt ?? DateTime.now();
+    final time =
+        detail.occurredAt ?? _timeFrom(detail.attendanceTime, day: anchor);
     final timeLabel = time != null
         ? TeamAttendanceMapper.formatTime(
             '${time.hour.toString().padLeft(2, '0')}:'
@@ -222,15 +276,41 @@ class EmployeeAttendanceMapper {
 
     if (timeLabel == null || timeLabel.isEmpty) return null;
 
+    final sortTime =
+        time ??
+        _timeFrom(timeLabel, day: anchor) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+
     return ManagerAttendanceTimelineEvent(
       type: type,
       timeLabel: timeLabel,
       id: detail.id?.toString(),
-      sortTime: time ?? DateTime.fromMillisecondsSinceEpoch(0),
+      sortTime: sortTime,
       location: detail.currentLocation,
       lat: detail.lat,
       lon: detail.lon,
     );
+  }
+
+  /// Resolve a timeline punch onto [day] even when sortTime is epoch / 1970
+  /// or only a display label like "2:38 PM" is available.
+  static DateTime? _punchDateTime(
+    ManagerAttendanceTimelineEvent event,
+    DateTime day,
+  ) {
+    final raw = event.sortTime;
+    if (raw != null && raw.millisecondsSinceEpoch != 0 && raw.year > 1970) {
+      return DateTime(
+        day.year,
+        day.month,
+        day.day,
+        raw.hour,
+        raw.minute,
+        raw.second,
+      );
+    }
+    return _timeFrom(event.timeLabel, day: day) ??
+        AttendanceDuration.combine(day, event.timeLabel);
   }
 
   static ManagerAttendanceEventType? eventType(String raw) {
@@ -279,17 +359,32 @@ class EmployeeAttendanceMapper {
     return found;
   }
 
-  static DateTime _detailTime(ManagerEmployeeAttendanceDetail detail) {
-    return detail.occurredAt ??
-        _timeFrom(detail.attendanceTime) ??
+  static DateTime _detailTime(
+    ManagerEmployeeAttendanceDetail detail,
+    DateTime day,
+  ) {
+    final occurred = detail.occurredAt;
+    if (occurred != null) {
+      return DateTime(
+        day.year,
+        day.month,
+        day.day,
+        occurred.hour,
+        occurred.minute,
+        occurred.second,
+      );
+    }
+    return _timeFrom(detail.attendanceTime, day: day) ??
         DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   static List<ManagerEmployeeAttendanceDetail> _sortedDetails(
     ManagerEmployeeAttendanceDay day,
   ) {
-    return [...day.details]
-      ..sort((a, b) => _detailTime(a).compareTo(_detailTime(b)));
+    final anchor = day.date ?? DateTime.now();
+    return [
+      ...day.details,
+    ]..sort((a, b) => _detailTime(a, anchor).compareTo(_detailTime(b, anchor)));
   }
 
   static ManagerAttendanceEventType? _lastPunchType(
@@ -311,17 +406,41 @@ class EmployeeAttendanceMapper {
     return last;
   }
 
-  static DateTime? _timeFrom(String? raw) {
+  static DateTime? _timeFrom(String? raw, {DateTime? day}) {
     if (raw == null) return null;
     final value = raw.trim();
     if (value.isEmpty) return null;
+
+    final minutes = AttendanceDuration.parseMinutes(value);
+    if (minutes != null) {
+      final anchor = day ?? DateTime(1970, 1, 1);
+      return DateTime(
+        anchor.year,
+        anchor.month,
+        anchor.day,
+        minutes ~/ 60,
+        minutes % 60,
+      );
+    }
+
     final parts = value.split(':');
     if (parts.length < 2) return null;
     final hour = int.tryParse(parts[0].trim());
-    final minute = int.tryParse(parts[1].trim());
-    final second = parts.length > 2 ? int.tryParse(parts[2].trim()) ?? 0 : 0;
+    final minute = int.tryParse(parts[1].trim().split(RegExp(r'\s+')).first);
+    final secondToken = parts.length > 2
+        ? parts[2].trim().split(RegExp(r'\s+')).first
+        : '0';
+    final second = int.tryParse(secondToken) ?? 0;
     if (hour == null || minute == null) return null;
-    return DateTime(1970, 1, 1, hour, minute, second);
+    final anchor = day ?? DateTime(1970, 1, 1);
+    return DateTime(
+      anchor.year,
+      anchor.month,
+      anchor.day,
+      hour,
+      minute,
+      second,
+    );
   }
 
   static bool _isSameDay(DateTime? time, DateTime day) {
@@ -331,4 +450,5 @@ class EmployeeAttendanceMapper {
         time.month == day.month &&
         time.day == day.day;
   }
+
 }

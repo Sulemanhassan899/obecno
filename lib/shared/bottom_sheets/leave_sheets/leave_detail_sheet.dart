@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/apply_leave_sheet.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_format.dart';
@@ -13,17 +16,27 @@ import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/main.dart';
 
 class LeaveDetailSheet extends StatefulWidget {
-  const LeaveDetailSheet({super.key, required this.requestId, this.headerDate});
+  const LeaveDetailSheet({
+    super.key,
+    required this.requestId,
+    this.headerDate,
+    this.fallbackNote,
+  });
 
   final String requestId;
   final DateTime? headerDate;
+
+  /// Used when the list API omits the note but Alerts still has it.
+  final String? fallbackNote;
 
   static Future<void> show(
     BuildContext context, {
     required String requestId,
     DateTime? headerDate,
+    String? fallbackNote,
   }) {
     return AppSheet.show(
       context: context,
@@ -35,7 +48,11 @@ class LeaveDetailSheet extends StatefulWidget {
       builder: (_) {
         return ConstrainedBox(
           constraints: AppSheetSize.constraintsOf(context),
-          child: LeaveDetailSheet(requestId: requestId, headerDate: headerDate),
+          child: LeaveDetailSheet(
+            requestId: requestId,
+            headerDate: headerDate,
+            fallbackNote: fallbackNote,
+          ),
         );
       },
     );
@@ -46,12 +63,54 @@ class LeaveDetailSheet extends StatefulWidget {
 }
 
 class _LeaveDetailSheetState extends State<LeaveDetailSheet> {
-  LeaveRequest? get _request =>
-      LeavesMockStore.instance.requestById(widget.requestId);
+  final LeavesStore _store = bindings.leavesStore;
+
+  LeaveRequest? get _request => _store.requestById(widget.requestId);
+
+  @override
+  void initState() {
+    super.initState();
+    _store.addListener(_refresh);
+    bindings.profileProvider.addListener(_refresh);
+    _store.watchPendingStatuses();
+    // Defer past this frame — refresh() notifies LeavesStore immediately, which
+    // must not run while the sheet is still mounting (setState during build).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Profile carries reports_to (manager name) when leave API omits reviewer.
+      unawaited(bindings.profileProvider.loadProfile());
+      // Always refresh so note + reviewer name stay current after approve/reject.
+      if (_request != null && !_request!.isLocal) {
+        unawaited(_store.refresh());
+      } else {
+        unawaited(_store.ensureLoaded());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _store.unwatchPendingStatuses();
+    bindings.profileProvider.removeListener(_refresh);
+    _store.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   Future<void> _delete() async {
-    final ok = LeavesMockStore.instance.deleteLeave(widget.requestId);
-    if (ok && mounted) Navigator.pop(context);
+    final ok = await _store.deleteLeave(widget.requestId);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+      return;
+    }
+    ToastHelper.error(
+      context,
+      message: _store.lastError ?? 'Unable to cancel this leave',
+    );
   }
 
   Future<void> _edit() async {
@@ -286,25 +345,25 @@ class _LeaveDetailSheetState extends State<LeaveDetailSheet> {
               align: TextAlign.left,
             ),
           ),
-          const Divider(height: 1, color: kBorderColor),
-          row(
-            'Document',
-            Row(
-              children: [
-                Expanded(
-                  child: AppText.p2(
-                    color: kGreyColor,
-
-                    request.documentName ?? '--',
-                    weight: FontWeight.w400,
-                    align: TextAlign.left,
+          if ((request.documentName ?? '').trim().isNotEmpty) ...[
+            const Divider(height: 1, color: kBorderColor),
+            row(
+              'Document',
+              Row(
+                children: [
+                  Expanded(
+                    child: AppText.p2(
+                      color: kGreyColor,
+                      request.documentName!.trim(),
+                      weight: FontWeight.w400,
+                      align: TextAlign.left,
+                    ),
                   ),
-                ),
-                if (request.documentName != null)
                   AppText.p2('View', color: kBlack, weight: FontWeight.w400),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
           const Divider(height: 1, color: kBorderColor),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -319,9 +378,13 @@ class _LeaveDetailSheetState extends State<LeaveDetailSheet> {
                 ),
                 const SizedBox(height: 6),
                 AppText.p2(
-                  request.note,
+                  () {
+                    final note = request.note.trim();
+                    if (note.isNotEmpty) return note;
+                    final fallback = (widget.fallbackNote ?? '').trim();
+                    return fallback.isNotEmpty ? fallback : '--';
+                  }(),
                   color: kGreyColor,
-
                   weight: FontWeight.w400,
                   align: TextAlign.left,
                 ),

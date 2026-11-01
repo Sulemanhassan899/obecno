@@ -13,10 +13,18 @@ class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});
 
   @override
-  State<OverviewScreen> createState() => _OverviewScreenState();
+  State<OverviewScreen> createState() => OverviewScreenState();
 }
 
-class _OverviewScreenState extends State<OverviewScreen> {
+class OverviewScreenState extends State<OverviewScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  final List<CurvedAnimation> _entranceAnimations = [];
+
   @override
   void initState() {
     super.initState();
@@ -25,6 +33,58 @@ class _OverviewScreenState extends State<OverviewScreen> {
       context.read<ManagerLocationsProvider>().load();
       context.read<ManagerEmployeesProvider>().load();
     });
+    _entranceController.forward();
+  }
+
+  void playEntranceAnimation() {
+    if (!mounted) return;
+    _entranceController
+      ..reset()
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    for (final animation in _entranceAnimations) {
+      animation.dispose();
+    }
+    _entranceController.dispose();
+    super.dispose();
+  }
+
+  CurvedAnimation _curveFor(int index, int total) {
+    final safeTotal = total <= 1 ? 1 : total;
+    final start = (index / safeTotal) * 0.6;
+    final end = (start + 0.4).clamp(0.0, 1.0);
+    return CurvedAnimation(
+      parent: _entranceController,
+      curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
+    );
+  }
+
+  Widget _staggered(int index, int total, Widget child) {
+    if (_entranceAnimations.length != total) {
+      for (final animation in _entranceAnimations) {
+        animation.dispose();
+      }
+      _entranceAnimations
+        ..clear()
+        ..addAll(List.generate(total, (i) => _curveFor(i, total)));
+    }
+    final animation = _entranceAnimations[index];
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animation.value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - animation.value) * 18),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -32,6 +92,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final provider = context.watch<ManagerOverviewProvider>();
     final summary = provider.summary;
     final isInitialLoad = provider.isLoading && summary == null;
+    // 0 header, then loading placeholder or stats + actions
+    final total = isInitialLoad ? 2 : 3;
 
     return Scaffold(
       backgroundColor: kbackground1,
@@ -39,6 +101,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
         context: context,
         removeBottom: true,
         child: ShimmerRefreshIndicator(
+          instagramStyle: true,
+          triggerFraction: 0.40,
+          showOrb: false,
           onRefresh: () async {
             await Future.wait([
               provider.refresh(),
@@ -51,21 +116,37 @@ class _OverviewScreenState extends State<OverviewScreen> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                const SliverToBoxAdapter(child: OverviewHeader()),
+                SliverToBoxAdapter(
+                  child: _staggered(0, total, const OverviewHeader()),
+                ),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 if (isInitialLoad)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
-                    child: Center(child: ShimmerProgress()),
+                    child: _staggered(
+                      1,
+                      total,
+                      const Center(child: ShimmerProgress()),
+                    ),
                   )
                 else ...[
                   SliverToBoxAdapter(
-                    child: OverviewStatsCard(
-                      summary: summary ?? OverviewSummary.empty,
+                    child: _staggered(
+                      1,
+                      total,
+                      OverviewStatsCard(
+                        summary: summary ?? OverviewSummary.empty,
+                      ),
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  const SliverToBoxAdapter(child: OverviewActionsGrid()),
+                  SliverToBoxAdapter(
+                    child: _staggered(
+                      2,
+                      total,
+                      const OverviewActionsGrid(),
+                    ),
+                  ),
                   const SliverToBoxAdapter(child: SizedBox(height: 32)),
                 ],
               ],

@@ -10,6 +10,7 @@ import 'package:obecno/core/utils/maps_launcher.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/attendance_duration.dart';
+import 'package:obecno/features/manager_module/Manager_attendance/domain/employee_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
@@ -448,12 +449,22 @@ class _ManagerAttendanceDetailsSheetBodyState
     return checkIn.isNotEmpty && checkOut.isEmpty;
   }
 
-  String get _durationLabel => AttendanceDuration.label(
-    day: _data.day,
-    checkIn: _data.checkIn,
-    checkOut: _data.checkOut,
-    hoursWorked: _data.durationLabel == '0h 00m' ? null : _data.durationLabel,
-  );
+  String get _durationLabel {
+    if (_punchEvents.isNotEmpty) {
+      return EmployeeAttendanceMapper.durationFromTimeline(
+        day: _data.day,
+        timeline: _punchEvents,
+        fallbackCheckIn: _data.checkIn,
+        fallbackCheckOut: _data.checkOut,
+      );
+    }
+    return AttendanceDuration.label(
+      day: _data.day,
+      checkIn: _data.checkIn,
+      checkOut: _data.checkOut,
+      hoursWorked: _data.durationLabel == '0h 00m' ? null : _data.durationLabel,
+    );
+  }
 
   void _syncHoursTimer() {
     _hoursTimer?.cancel();
@@ -668,10 +679,6 @@ class _ManagerAttendanceDetailsSheetBodyState
       breakEndDetailId: breakEnd?.id,
     );
     if (saved != null && mounted) {
-      debugPrint(
-        '[ManagerAttendance] details saved ${_data.name}/${_data.userId} '
-        'in=${saved.checkIn} out=${saved.checkOut}',
-      );
       _savedResult = saved;
       setState(() {
         _data = _data.withSavedTimes(saved);

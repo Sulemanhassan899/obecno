@@ -476,19 +476,7 @@ class ClockScreenController extends ChangeNotifier {
 
       final restored = <AttendanceEvent>[];
       for (final key in keys) {
-        final raw = prefs.getString(key);
-        if (raw == null || raw.isEmpty) continue;
-        final decoded = jsonDecode(raw);
-        if (decoded is! List) continue;
-        for (final item in decoded) {
-          if (item is Map<String, dynamic>) {
-            restored.add(AttendanceEvent.fromJson(item));
-          } else if (item is Map) {
-            restored.add(
-              AttendanceEvent.fromJson(Map<String, dynamic>.from(item)),
-            );
-          }
-        }
+        restored.addAll(_eventsFromPrefsKey(prefs, key));
       }
       if (_disposed) return;
       // Server reconcile already won — do not revive a ghost check-in.
@@ -503,6 +491,76 @@ class ClockScreenController extends ChangeNotifier {
       }
 
       restoreEvents(restored);
+    } catch (_) {}
+  }
+
+  List<AttendanceEvent> _eventsFromPrefsKey(
+    SharedPreferences prefs,
+    String key,
+  ) {
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) return const [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return const [];
+    final out = <AttendanceEvent>[];
+    for (final item in decoded) {
+      if (item is Map<String, dynamic>) {
+        out.add(AttendanceEvent.fromJson(item));
+      } else if (item is Map) {
+        out.add(AttendanceEvent.fromJson(Map<String, dynamic>.from(item)));
+      }
+    }
+    return out;
+  }
+
+  /// Open sessions still stored under calendar-day prefs (offline fallback).
+  List<AttendanceEvent> openSessionsFromDayMirrorsWithPrefs(
+    SharedPreferences prefs, [
+    DateTime? at,
+  ]) => _openSessionEventsFromDayMirrors(prefs, at ?? clockNow);
+
+  List<AttendanceEvent> _openSessionEventsFromDayMirrors(
+    SharedPreferences prefs,
+    DateTime now,
+  ) {
+    final fromDays = <AttendanceEvent>[
+      ..._eventsFromPrefsKey(prefs, _prefsKeyForCalendarDay(now)),
+      ..._eventsFromPrefsKey(
+        prefs,
+        _prefsKeyForCalendarDay(now.subtract(const Duration(days: 1))),
+      ),
+    ];
+    if (fromDays.isEmpty) return const [];
+
+    final kept = <AttendanceEvent>[];
+    for (final session in _sessionsFrom(fromDays)) {
+      if (_sessionIsOpenWithinLimit(session, now) ||
+          _isOpenSessionPastLimit(session, now)) {
+        kept.addAll(session.events);
+      }
+    }
+    return kept;
+  }
+
+  /// Drop open (no check-out) sessions from today/yesterday day mirrors so a
+  /// later offline/align path cannot revive a ghost check-in the server closed.
+  Future<void> discardOpenSessionsFromDayMirrors([DateTime? at]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = at ?? clockNow;
+      for (final day in [now, now.subtract(const Duration(days: 1))]) {
+        final key = _prefsKeyForCalendarDay(day);
+        final stored = _eventsFromPrefsKey(prefs, key);
+        if (stored.isEmpty) continue;
+        final closedOnly = <AttendanceEvent>[];
+        for (final session in _sessionsFrom(stored)) {
+          if (session.isClosed) closedOnly.addAll(session.events);
+        }
+        await prefs.setString(
+          key,
+          jsonEncode(closedOnly.map((e) => e.toJson()).toList()),
+        );
+      }
     } catch (_) {}
   }
 
@@ -645,7 +703,7 @@ class ClockScreenController extends ChangeNotifier {
     // chronologically — hold it to close a later evening open session.
     final orphanEarlyCheckOuts = <AttendanceEvent>[];
 
-    DateTime _effectiveOut(DateTime raw, DateTime openStart) {
+    DateTime effectiveOut(DateTime raw, DateTime openStart) {
       if (raw.isAfter(openStart)) return raw;
       return raw.add(const Duration(days: 1));
     }
@@ -669,7 +727,7 @@ class ClockScreenController extends ChangeNotifier {
           _ClockPunchSession(
             checkInTime: checkInTime,
             events: List<AttendanceEvent>.unmodifiable(current),
-            checkOutTime: _effectiveOut(event.effectiveTime, checkInTime),
+            checkOutTime: effectiveOut(event.effectiveTime, checkInTime),
           ),
         );
         current = <AttendanceEvent>[];
@@ -685,7 +743,7 @@ class ClockScreenController extends ChangeNotifier {
           _ClockPunchSession(
             checkInTime: checkInTime,
             events: List<AttendanceEvent>.unmodifiable(current),
-            checkOutTime: _effectiveOut(orphan.effectiveTime, checkInTime),
+            checkOutTime: effectiveOut(orphan.effectiveTime, checkInTime),
           ),
         );
       } else {
@@ -969,8 +1027,16 @@ class ClockScreenController extends ChangeNotifier {
 
   /// Public entry-point used by the Clock details sheet after it fetches the
   /// full today timeline from the attendance API.
+  ///
+  /// API today is authoritative — replace that calendar day's punches instead
+  /// of unioning with local phantoms (keeps card / sheet Check-In correct).
   void mergeTodayEvents(List<AttendanceEvent> todayEvents) {
-    restoreEvents(todayEvents);
+    if (todayEvents.isEmpty) return;
+    final day = todayEvents.first.effectiveTime;
+    final otherDays = _events
+        .where((e) => !_isSameCalendarDay(e.effectiveTime, day))
+        .toList();
+    replaceLiveEvents([...otherDays, ...todayEvents]);
   }
 
   Future<AttendanceActionResult> handleMainTap() async {

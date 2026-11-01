@@ -183,11 +183,23 @@ class HistoryAttendanceRepository {
 
     final history = attendanceResponse.data!;
     final calendar = calendarResponse.success ? calendarResponse.data : null;
+    final leaves = leavesResponse.success ? leavesResponse.data : null;
+    final rejectedLeaveDates = leaves == null
+        ? const <DateTime>{}
+        : EmployeeLeaveDates.rejectedDates(leaves);
+    final pendingLeaveDates = leaves == null
+        ? const <DateTime>{}
+        : EmployeeLeaveDates.pendingDates(leaves);
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
     final leaveDates = <DateTime>{
       ...?calendar?.leaveDates,
-      if (leavesResponse.success && leavesResponse.data != null)
-        ...EmployeeLeaveDates.approvedDates(leavesResponse.data!),
-    };
+      if (leaves != null) ...EmployeeLeaveDates.approvedDates(leaves),
+    }..removeWhere(
+      (d) =>
+          rejectedLeaveDates.any((r) => sameDay(r, d)) ||
+          pendingLeaveDates.any((p) => sameDay(p, d)),
+    );
 
     final days = List<AttendanceDay>.from(history.history)
       ..sort((a, b) => b.date.compareTo(a.date)); // latest first
@@ -195,7 +207,11 @@ class HistoryAttendanceRepository {
     final today = history.today ?? DateTime.now();
     final joiningDate = _joiningDate;
 
-    final daysWithLeave = EmployeeLeaveDates.overlay(days, leaveDates);
+    final daysWithLeave = EmployeeLeaveDates.overlay(
+      days,
+      leaveDates,
+      rejectedDates: {...rejectedLeaveDates, ...pendingLeaveDates},
+    );
 
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
     // latest-first so records match the original display order.
@@ -216,6 +232,7 @@ class HistoryAttendanceRepository {
       stampedDays,
       calendar,
       extraLeaveDates: leaveDates,
+      blockedLeaveDates: {...rejectedLeaveDates, ...pendingLeaveDates},
     );
     final summary = _buildSummary(
       records: records,
@@ -403,6 +420,9 @@ class HistoryAttendanceRepository {
           break;
       }
 
+      // Weekend punches stay visible but do not inflate Mon–Fri totals.
+      if (record.isWeekendContext) continue;
+
       totalWorkingDays++;
       workingDays++;
 
@@ -516,15 +536,23 @@ class HistoryAttendanceRepository {
     List<AttendanceDay> days,
     AttendanceCalendarData? calendar, {
     Set<DateTime> extraLeaveDates = const {},
+    Set<DateTime> blockedLeaveDates = const {},
   }) {
     final holidays = _holidaysFor(days, calendar);
+    final blocked = {
+      for (final date in blockedLeaveDates)
+        DateTime(date.year, date.month, date.day),
+    };
+    bool isBlocked(DateTime date) => blocked.any(
+      (b) => b.year == date.year && b.month == date.month && b.day == date.day,
+    );
     final leaveDates = {
       ..._leaveDatesFor(days),
       ...extraLeaveDates,
       ...?calendar?.leaveDates.map(
         (date) => DateTime(date.year, date.month, date.day),
       ),
-    };
+    }..removeWhere(isBlocked);
     return days
         .map(
           (day) =>
@@ -570,6 +598,10 @@ class HistoryAttendanceRepository {
         break;
       case DayCardType.weekend:
         status = AttendanceDayStatus.weekend;
+        if (_hasCountablePunch(day)) {
+          checkInLabel = _formatTime12h(day.firstCheckIn);
+          checkOutLabel = _formatTime12h(day.lastCheckOut);
+        }
         break;
       case DayCardType.onLeave:
         checkInLabel = 'Leave';
@@ -590,6 +622,8 @@ class HistoryAttendanceRepository {
         break;
     }
 
+    final isWeekendContext = !_workingWeekdays.contains(dateOnly.weekday);
+
     return AttendanceDayRecord(
       day: day.date.day,
       weekday: _weekdayNames[day.date.weekday - 1],
@@ -599,6 +633,7 @@ class HistoryAttendanceRepository {
       status: status,
       weekendLabel: weekendLabel,
       hasEditedTime: day.isEdited,
+      isWeekendContext: isWeekendContext,
     );
   }
 

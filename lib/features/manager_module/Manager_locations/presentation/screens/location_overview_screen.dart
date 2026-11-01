@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/animations/button_animations.dart';
@@ -23,6 +25,7 @@ import 'package:obecno/features/manager_module/Manager_overview/domain/overview_
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/leave_sheets/manager_leave_detail_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/location_deactivated_banner.dart';
@@ -70,10 +73,6 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   void initState() {
     super.initState();
     _location = widget.location;
-    debugPrint(
-      '[LocationStatus] overview.init '
-      'id=${_location.id} name=${_location.name} isActive=${_location.isActive}',
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncLocationFromProvider();
@@ -87,10 +86,6 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
       _location.id,
     );
     if (refreshed == null) return;
-    debugPrint(
-      '[LocationStatus] overview.syncFromProvider '
-      'id=${_location.id} was=${_location.isActive} now=${refreshed.isActive}',
-    );
     _location = refreshed;
   }
 
@@ -129,11 +124,6 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
             .join(','),
         'is_active': location.isActive,
       },
-    );
-    debugPrint(
-      '[LocationStatus] overview.load.done '
-      'id=${location.id} isActive=${location.isActive} '
-      'showBanner=${!location.isActive}',
     );
     setState(() => _locationReady = true);
   }
@@ -213,11 +203,6 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
     );
     if (!mounted) return;
     _syncLocationFromProvider();
-    debugPrint(
-      '[LocationStatus] overview.backFromSettings '
-      'id=${location.id} isActive=${location.isActive} '
-      'showBanner=${!location.isActive}',
-    );
     setState(() {});
     await _load();
   }
@@ -225,6 +210,22 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
   void _openDetails(BuildContext context, ManagerAttendanceModel employee) {
     final provider = context.read<ManagerAttendanceProvider>();
     final day = provider.selectedDate;
+    final status = employee.status.toLowerCase().trim();
+    final isOnLeave = status == 'leave' || status == 'on leave';
+    if (isOnLeave) {
+      unawaited(
+        ManagerLeaveDetailSheet.showForDay(
+          context: context,
+          day: day,
+          userId: employee.userId,
+          employeeName: employee.name,
+          employeeRole: employee.role,
+          employeePhoto: employee.photo,
+        ),
+      );
+      return;
+    }
+
     ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(
@@ -299,6 +300,9 @@ class _LocationOverviewScreenState extends State<LocationOverviewScreen> {
                     const SizedBox(height: 20),
                     Expanded(
                       child: ShimmerRefreshIndicator(
+                  instagramStyle: true,
+                  triggerFraction: 0.40,
+                  showOrb: false,
                   onRefresh: _load,
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(

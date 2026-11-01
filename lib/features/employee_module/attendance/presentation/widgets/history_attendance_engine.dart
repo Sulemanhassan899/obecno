@@ -1,8 +1,6 @@
 import 'package:obecno/core/constants/app_enums.dart';
-import 'package:obecno/features/clock/data/models/clock_attendence_event.dart'
-    show AttendanceFormat;
-import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart'
-    hide AttendanceFormat;
+import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
+import 'package:obecno/features/shared_attendance/attendance_display_times.dart';
 
 class HistoryAttendanceSummary {
   final DateTime? firstCheckIn;
@@ -34,17 +32,28 @@ class HistoryAttendanceSummary {
     openSessionStart: null,
   );
 
+  /// Closed segments in [totalWorkingDuration], plus live open work only
+  /// (not first-check-in → now across gaps after an earlier checkout).
   Duration liveWorkingDuration({DateTime? now}) {
-    return AttendanceFormat.workedDuration(
-      start: firstCheckIn,
-      end: isOnBreak
-          ? openSessionStart
-          : isCheckedIn
-          ? (now ?? DateTime.now())
-          : lastCheckOut,
-      breaks: totalBreakDuration,
-    );
+    final clock = now ?? DateTime.now();
+    var live = totalWorkingDuration;
+    if (isOnBreak) return live;
+    if (isCheckedIn && openSessionStart != null) {
+      final extra = clock.difference(openSessionStart!);
+      if (!extra.isNegative) live += extra;
+    }
+    return live;
   }
+
+  /// Shared rule with Clock — see [AttendanceDisplayTimes].
+  DateTime? get displayCheckIn =>
+      AttendanceDisplayTimes.displayCheckIn(firstCheckIn: firstCheckIn);
+
+  /// Shared rule: hide checkout while the day is still open.
+  DateTime? get displayCheckOut => AttendanceDisplayTimes.displayCheckOut(
+    dayStillOpen: isCheckedIn || isOnBreak,
+    lastCheckOut: lastCheckOut,
+  );
 
   Duration liveBreakDuration({DateTime? now}) {
     if (!isOnBreak || openSessionStart == null) {
@@ -73,16 +82,27 @@ class HistoryAttendanceEngine {
     bool isCheckedIn = false;
     bool isOnBreak = false;
     Duration breaks = Duration.zero;
+    // Closed work only — open segment is added by [liveWorkingDuration].
+    var working = Duration.zero;
     final orphanEarlyCheckOuts = <DateTime>[];
 
+    DateTime spanEnd(DateTime start, DateTime rawEnd) {
+      if (rawEnd.isAfter(start)) return rawEnd;
+      return rawEnd.add(const Duration(days: 1));
+    }
+
     void considerCheckOut(DateTime raw, {required DateTime openStart}) {
-      var out = raw;
-      if (!out.isAfter(openStart)) {
-        out = out.add(const Duration(days: 1));
-      }
+      final out = spanEnd(openStart, raw);
       if (lastCheckOut == null || out.isAfter(lastCheckOut!)) {
         lastCheckOut = out;
       }
+    }
+
+    void closeWork(DateTime rawEnd) {
+      final start = openWorkStart;
+      if (start == null) return;
+      working += spanEnd(start, rawEnd).difference(start);
+      openWorkStart = null;
     }
 
     for (final e in sorted) {
@@ -98,9 +118,10 @@ class HistoryAttendanceEngine {
           break;
 
         case AttendanceHisotryEventType.checkOut:
-          if (openWorkStart != null) {
-            considerCheckOut(e.time, openStart: openWorkStart);
-            openWorkStart = null;
+          final workStart = openWorkStart;
+          if (workStart != null) {
+            considerCheckOut(e.time, openStart: workStart);
+            closeWork(e.time);
             isCheckedIn = false;
             isOnBreak = false;
             openBreakStart = null;
@@ -117,7 +138,7 @@ class HistoryAttendanceEngine {
           break;
 
         case AttendanceHisotryEventType.breakStart:
-          openWorkStart = null;
+          closeWork(e.time);
           openBreakStart = e.time;
           isOnBreak = true;
           break;
@@ -134,10 +155,11 @@ class HistoryAttendanceEngine {
       }
     }
 
-    if (openWorkStart != null && orphanEarlyCheckOuts.isNotEmpty) {
+    final orphanOpen = openWorkStart;
+    if (orphanOpen != null && orphanEarlyCheckOuts.isNotEmpty) {
       final rawOut = orphanEarlyCheckOuts.removeLast();
-      considerCheckOut(rawOut, openStart: openWorkStart);
-      openWorkStart = null;
+      considerCheckOut(rawOut, openStart: orphanOpen);
+      closeWork(rawOut);
       isCheckedIn = false;
       isOnBreak = false;
       openBreakStart = null;
@@ -150,19 +172,6 @@ class HistoryAttendanceEngine {
     }
 
     final openSessionStart = openBreakStart ?? openWorkStart;
-
-    var working = Duration.zero;
-    if (firstCheckIn != null) {
-      working = AttendanceFormat.workedDuration(
-        start: firstCheckIn,
-        end: isOnBreak
-            ? openBreakStart
-            : isCheckedIn
-            ? openWorkStart
-            : lastCheckOut,
-        breaks: breaks,
-      );
-    }
 
     return HistoryAttendanceSummary(
       firstCheckIn: firstCheckIn,

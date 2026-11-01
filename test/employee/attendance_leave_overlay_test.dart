@@ -33,6 +33,57 @@ void main() {
       final dates = EmployeeLeaveDates.approvedDates(leaves);
       expect(dates, {DateTime(2026, 9, 8), DateTime(2026, 9, 9)});
     });
+
+    test('rejected and pending leaves never enter attendance overlay dates', () {
+      final leaves = EmployeeLeave.listFrom({
+        'data': {
+          'leaves': [
+            {
+              'id': 10,
+              'leave_type': 'Casual',
+              'status': 'approved',
+              'from_date': '2026-10-20',
+              'to_date': '2026-10-20',
+            },
+            {
+              'id': 11,
+              'leave_type': 'Casual',
+              'status': 'rejected',
+              'from_date': '2026-10-21',
+              'to_date': '2026-10-21',
+            },
+            {
+              'id': 12,
+              'leave_type': 'Sick',
+              'status': 'pending',
+              'from_date': '2026-10-22',
+              'to_date': '2026-10-22',
+            },
+            {
+              'id': 13,
+              'leave_type': 'Annual',
+              'status': 'denied',
+              'from_date': '2026-10-23',
+              'to_date': '2026-10-23',
+            },
+          ],
+        },
+      });
+
+      expect(leaves[0].isApproved, isTrue);
+      expect(leaves[1].isApproved, isFalse);
+      expect(leaves[2].isApproved, isFalse);
+      expect(leaves[3].isApproved, isFalse);
+
+      final dates = EmployeeLeaveDates.approvedDates(leaves);
+      expect(dates, {DateTime(2026, 10, 20)});
+      expect(dates.contains(DateTime(2026, 10, 21)), isFalse);
+      expect(dates.contains(DateTime(2026, 10, 22)), isFalse);
+      expect(dates.contains(DateTime(2026, 10, 23)), isFalse);
+
+      final pending = EmployeeLeaveDates.pendingDates(leaves);
+      expect(pending, {DateTime(2026, 10, 22)});
+    });
   });
 
   group('EmployeeLeaveDates.overlay', () {

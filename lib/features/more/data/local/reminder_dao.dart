@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:obecno/features/employee_module/attendance/data/local/attendance_db.dart';
 import 'package:obecno/features/more/data/models/reminder_log.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
+import 'package:obecno/features/more/services/reminder_notification_plan.dart';
 
 class ReminderDao {
   ReminderDao({AttendanceDb? db}) : _db = db ?? AttendanceDb.instance;
@@ -160,28 +161,64 @@ class ReminderDao {
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
 
-  Future<void> insertLogIfAbsent({
+  /// Strip seconds/millis so native "fired now" and Flutter's planned clock
+  /// land on the same identity for a given reminder minute.
+  static DateTime normalizeFiredAt(DateTime firedAt) {
+    final local = firedAt.toLocal();
+    return DateTime(
+      local.year,
+      local.month,
+      local.day,
+      local.hour,
+      local.minute,
+    );
+  }
+
+  static bool _sameLocalMinute(DateTime a, DateTime b) {
+    final left = a.toLocal();
+    final right = b.toLocal();
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day &&
+        left.hour == right.hour &&
+        left.minute == right.minute;
+  }
+
+  /// Returns `true` when a new row was inserted (not an update of an existing
+  /// type+fireAt). Callers use this so the Alerts red-dot only rises for new
+  /// reminders, not leftover re-persists.
+  Future<bool> insertLogIfAbsent({
     required String userId,
     required DateTime date,
     required ReminderLog log,
   }) async {
-    if (userId.isEmpty) return;
+    if (userId.isEmpty) return false;
     final db = await _db.database;
-    final firedAt = log.firedAt.toIso8601String();
-    // Same type + same fire time → keep one. A later firing of the same
-    // type (second break, another check-in day-part, etc.) is inserted.
-    final existing = await db.query(
+    final normalized = normalizeFiredAt(log.firedAt);
+    final firedAt = normalized.toIso8601String();
+    // Same type + same clock minute → keep one. A later firing of the same
+    // type at a different minute (second break, etc.) is still inserted.
+    final candidates = await db.query(
       AttendanceDb.reminderLogsTable,
-      columns: ['id'],
-      where:
-          'user_id = ? AND date = ? AND reminder_type = ? AND fired_at = ?',
-      whereArgs: [userId, _dateKey(date), log.type.storageKey, firedAt],
-      limit: 1,
+      columns: ['id', 'fired_at'],
+      where: 'user_id = ? AND date = ? AND reminder_type = ?',
+      whereArgs: [userId, _dateKey(date), log.type.storageKey],
     );
-    if (existing.isNotEmpty) {
+    int? existingId;
+    for (final row in candidates) {
+      final raw = row['fired_at']?.toString() ?? '';
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) continue;
+      if (raw == firedAt || _sameLocalMinute(parsed, normalized)) {
+        existingId = row['id'] as int?;
+        break;
+      }
+    }
+    if (existingId != null) {
       await db.update(
         AttendanceDb.reminderLogsTable,
         {
+          'fired_at': firedAt,
           'title': log.title,
           'message': log.message,
           'clock_status': log.clockStatus,
@@ -189,10 +226,22 @@ class ReminderDao {
           'synced': 0,
         },
         where: 'id = ?',
-        whereArgs: [existing.first['id']],
+        whereArgs: [existingId],
       );
-      await _archiveShownNotification(userId: userId, date: date, log: log);
-      return;
+      await _archiveShownNotification(
+        userId: userId,
+        date: date,
+        log: ReminderLog(
+          type: log.type,
+          firedAt: normalized,
+          title: log.title,
+          message: log.message,
+          clockStatus: log.clockStatus,
+          deliveredAt: log.deliveredAt,
+          synced: log.synced,
+        ),
+      );
+      return false;
     }
 
     await db.insert(AttendanceDb.reminderLogsTable, {
@@ -206,7 +255,20 @@ class ReminderDao {
       'delivered_at': log.deliveredAt?.toIso8601String(),
       'synced': log.synced ? 1 : 0,
     });
-    await _archiveShownNotification(userId: userId, date: date, log: log);
+    await _archiveShownNotification(
+      userId: userId,
+      date: date,
+      log: ReminderLog(
+        type: log.type,
+        firedAt: normalized,
+        title: log.title,
+        message: log.message,
+        clockStatus: log.clockStatus,
+        deliveredAt: log.deliveredAt,
+        synced: log.synced,
+      ),
+    );
+    return true;
   }
 
   /// Offline copy of a reminder that was shown. Date is the calendar day and
@@ -217,7 +279,7 @@ class ReminderDao {
     required ReminderLog log,
   }) async {
     if (userId.isEmpty) return;
-    final firedAt = log.firedAt.toIso8601String();
+    final firedAt = normalizeFiredAt(log.firedAt).toIso8601String();
     if (firedAt.isEmpty) return;
     final db = await _db.database;
     await db.insert(
@@ -526,13 +588,36 @@ class ReminderDao {
   }) async {
     if (userId.isEmpty) return;
     final db = await _db.database;
+    final scheduled = normalizeFiredAt(log.firedAt);
+    // Drop any prior delivery rows for this type on the same clock minute
+    // (native import + Flutter persist used to write two scheduled_at values).
+    final prior = await db.query(
+      AttendanceDb.reminderDeliveriesTable,
+      columns: ['scheduled_at'],
+      where: 'user_id = ? AND date = ? AND reminder_type = ?',
+      whereArgs: [userId, _dateKey(date), log.type.storageKey],
+    );
+    for (final row in prior) {
+      final raw = row['scheduled_at']?.toString() ?? '';
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) continue;
+      if (raw == scheduled.toIso8601String() ||
+          _sameLocalMinute(parsed, scheduled)) {
+        await db.delete(
+          AttendanceDb.reminderDeliveriesTable,
+          where:
+              'user_id = ? AND date = ? AND reminder_type = ? AND scheduled_at = ?',
+          whereArgs: [userId, _dateKey(date), log.type.storageKey, raw],
+        );
+      }
+    }
     await db.insert(
       AttendanceDb.reminderDeliveriesTable,
       {
         'user_id': userId,
         'date': _dateKey(date),
         'reminder_type': log.type.storageKey,
-        'scheduled_at': log.firedAt.toIso8601String(),
+        'scheduled_at': scheduled.toIso8601String(),
         'delivered_at': deliveredAt.toIso8601String(),
         'clock_status': log.clockStatus,
         'title': log.title,
@@ -541,7 +626,19 @@ class ReminderDao {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-    await _archiveShownNotification(userId: userId, date: date, log: log);
+    await _archiveShownNotification(
+      userId: userId,
+      date: date,
+      log: ReminderLog(
+        type: log.type,
+        firedAt: scheduled,
+        title: log.title,
+        message: log.message,
+        clockStatus: log.clockStatus,
+        deliveredAt: deliveredAt,
+        synced: log.synced,
+      ),
+    );
   }
 
   Future<void> clearDelivered({
@@ -573,10 +670,12 @@ class ReminderDao {
     );
     final keys = <String>{};
     for (final row in rows) {
-      final type = row['reminder_type']?.toString() ?? '';
+      final type = ReminderType.fromStorageKey(
+        row['reminder_type']?.toString() ?? '',
+      );
       final scheduled = DateTime.tryParse(row['scheduled_at']?.toString() ?? '');
-      if (type.isEmpty || scheduled == null) continue;
-      keys.add('$type|${scheduled.millisecondsSinceEpoch}');
+      if (type == null || scheduled == null) continue;
+      keys.add(ReminderNotificationPlan.firedKey(type, scheduled));
     }
     return keys;
   }

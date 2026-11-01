@@ -20,6 +20,8 @@ import 'package:obecno/shared/bottom_sheets/employee_sheet/account_information_s
 import 'package:obecno/shared/bottom_sheets/employee_sheet/deactivate_account_dialog.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/employee_default_locations_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_attendance_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_holidays_sheet.dart';
+import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_employee_leaves_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/employee_sheet/manager_linked_devices_sheet.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
@@ -536,6 +538,39 @@ class _ManagerEmployeeProfileSheetBodyState
                             }
                           },
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _settingsGroup(
+                    children: [
+                      _settingsTile(
+                        iconAsset: Assets.imagesLeavesFilledIcon,
+                        title: "Holidays",
+                        onTap: () {
+                          final userId = _data.userId;
+                          if (userId == null) return;
+                          ManagerEmployeeHolidaysSheet.show(
+                            context: context,
+                            userId: userId,
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, color: kDividerColor),
+                      _settingsTile(
+                        iconAsset: Assets.imagesCalendarDay,
+                        title: "Leaves",
+                        onTap: () {
+                          final userId = _data.userId;
+                          if (userId == null) return;
+                          ManagerEmployeeLeavesSheet.show(
+                            context: context,
+                            userId: userId,
+                            employeeName: _data.name,
+                            employeeRole: _data.role,
+                            employeePhoto: _data.photo,
+                          );
+                        },
                       ),
                     ],
                   ),

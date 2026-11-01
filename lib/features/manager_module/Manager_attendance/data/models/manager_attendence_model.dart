@@ -13,6 +13,8 @@ class ManagerAttendanceModel {
   final bool infoalert;
   final bool warning;
   final bool warningred;
+  /// Late check-in: red triangle + red check-in time on the list tile.
+  final bool isLate;
 
   const ManagerAttendanceModel({
     required this.name,
@@ -29,5 +31,6 @@ class ManagerAttendanceModel {
     this.locationalert = false,
     this.infoalert = false,
     this.warningred = false,
+    this.isLate = false,
   });
 }

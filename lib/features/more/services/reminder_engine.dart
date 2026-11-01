@@ -40,8 +40,13 @@ class ReminderEngine {
     required int longAttendanceHours,
     required List<ReminderPunch> punches,
     String locationName = 'work',
+    bool onLeave = false,
   }) async {
     if (userId.isEmpty) return const [];
+    // Leave / rest day: do not write reminder timeline rows for this day.
+    if (onLeave) {
+      return dao.loadLogs(userId: userId, date: day);
+    }
 
     final status = ReminderClockStatus.fromPunches(punches);
     final policyIn = policyCheckInTime ?? checkInTime;

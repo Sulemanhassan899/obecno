@@ -14,6 +14,7 @@ import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/core/services/permission_helper.dart';
+import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/providers/device_provider.dart';
@@ -413,6 +414,7 @@ class _EnablePermissionsScreenState extends State<EnablePermissionsScreen>
     _waitingOnSettings = false;
     ToastHelper.allPermissionsGranted(context);
     AppGuard.permissionOnboardingPending = false;
+    unawaited(TokenService().markPermissionsSetupCompleted());
 
     final authProvider = context.read<AuthProvider>();
     final homeTarget = authProvider.homeTarget;

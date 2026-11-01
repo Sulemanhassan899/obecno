@@ -27,21 +27,19 @@ void main() {
   test('S1 link invite stays pending until manager approves and assigns office',
       () async {
     final link = await provider.prepareLinkShare(companyName: 'Acme');
-    final message = provider.buildShareMessage(
-      email: link.contact,
-      password: link.password,
-      companyName: 'Acme',
-    );
+    final message = provider.buildShareMessage(companyName: 'Acme');
     expect(message, contains(JoinShareLinks.downloadApk));
-    expect(message, contains('Email: ${link.contact}'));
-    expect(message, contains('Password: ${link.password}'));
+    expect(message, contains(JoinShareLinks.displayInviteLink));
+    expect(message, isNot(contains('Password:')));
+    expect(message, isNot(contains('Email: ${link.contact}')));
 
+    // Local invite passwords are no longer stored — credentials match fails.
     expect(
       provider.matchCredentials(
         contact: link.contact,
-        password: link.password,
+        password: 'any',
       ),
-      isNotNull,
+      isNull,
     );
 
     final joined = await provider.completeJoin(link.id);
@@ -103,19 +101,19 @@ void main() {
     expect(provider.byId(link.id)?.status, JoinInviteStatus.rejected);
     expect(provider.showUnverifiedBanner, isFalse);
 
-    // Credentials still match after reject (no invalidation).
+    // Local passwords are not stored — match never succeeds.
     expect(
       provider.matchCredentials(
         contact: link.contact,
-        password: link.password,
+        password: 'any',
       ),
-      isNotNull,
+      isNull,
     );
   });
 
-  /// Scenario 4 — wrong password on invite contact
-  test('S4 wrong password does not match invite credentials', () async {
-    final created = await provider.sendManualInvites(
+  /// Scenario 4 — local invite credentials are never matched
+  test('S4 invite credentials are not stored locally', () async {
+    await provider.sendManualInvites(
       rows: [
         (
           contact: 'worker@acme.com',
@@ -136,9 +134,9 @@ void main() {
     expect(
       provider.matchCredentials(
         contact: 'worker@acme.com',
-        password: created.first.password,
+        password: '',
       ),
-      isNotNull,
+      isNull,
     );
   });
 
@@ -183,18 +181,13 @@ void main() {
   });
 
   /// Scenario 8 — share payload shape for WhatsApp handoff
-  test('S8 share message has apk + credentials and no join deep-link line',
-      () {
-    final email = JoinShareLinks.generateTempEmail();
-    final message = JoinShareLinks.shareMessage(
-      email: email,
-      password: 'Pass9x',
-      companyName: 'TheDemo',
-    );
+  test('S8 share message has apk + invite links and no credentials', () {
+    final message = JoinShareLinks.shareMessage(companyName: 'TheDemo');
     expect(message, contains(JoinShareLinks.downloadApk));
-    expect(message, contains('Email: $email'));
-    expect(message, contains('Password: Pass9x'));
-    expect(message, isNot(contains('Join link:')));
+    expect(message, contains(JoinShareLinks.displayInviteLink));
+    expect(message, contains(JoinShareLinks.appDeepLink));
+    expect(message, isNot(contains('Password:')));
+    expect(message, isNot(contains('Email:')));
     expect(message, contains("You're invited to join TheDemo on Obecno."));
   });
 }

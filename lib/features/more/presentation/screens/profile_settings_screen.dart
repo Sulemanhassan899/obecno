@@ -296,7 +296,8 @@ class ProfileSettingsScreenState extends State<ProfileSettingsScreen>
 
                       if (!context.mounted) return;
 
-                      context.go('/onboarding');
+                      // Logged-out users go to login, not onboarding again.
+                      context.go('/login');
                     },
 
                     barrierDismissible: true,

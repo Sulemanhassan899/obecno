@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:obecno/core/animations/button_animations.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
@@ -5,8 +7,10 @@ import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/responsive/responsive.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/employee_module/leaves/presentation/screens/leaves_screen.dart';
 import 'package:obecno/features/manager_module/Manager_employees/presentation/screens/all_employees_screen.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
+import 'package:obecno/features/manager_module/Manager_leaves/presentation/screens/team_leaves_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/presentation/screens/all_locations_screen.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/features/manager_module/Manager_overview/domain/overview_summary.dart';
@@ -80,7 +84,7 @@ class OverviewHeader extends StatelessWidget {
   }
 }
 
-class OverviewStatsCard extends StatelessWidget {
+class OverviewStatsCard extends StatefulWidget {
   final OverviewSummary summary;
 
   const OverviewStatsCard({super.key, required this.summary});
@@ -88,8 +92,63 @@ class OverviewStatsCard extends StatelessWidget {
   /// Stack only on very tight widths; phones keep the 2-column design.
   static const double _narrowBreakpoint = 280;
 
+  /// Keep counts fresh while the card is on screen (no pull-to-refresh).
+  static const Duration _pollInterval = Duration(seconds: 12);
+
+  @override
+  State<OverviewStatsCard> createState() => _OverviewStatsCardState();
+}
+
+class _OverviewStatsCardState extends State<OverviewStatsCard>
+    with WidgetsBindingObserver {
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startPolling();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshSilent();
+      _startPolling();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(
+      OverviewStatsCard._pollInterval,
+      (_) => _refreshSilent(),
+    );
+  }
+
+  void _refreshSilent() {
+    if (!mounted) return;
+    unawaited(context.read<ManagerOverviewProvider>().refreshSilent());
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Live summary from the provider so counts paint as soon as data arrives,
+    // without waiting for a full-screen rebuild / pull-to-refresh.
+    final summary =
+        context.watch<ManagerOverviewProvider>().summary ?? widget.summary;
+
     final items = <_StatData>[
       _StatData(
         value: "${summary.presentToday}",
@@ -97,6 +156,9 @@ class OverviewStatsCard extends StatelessWidget {
         valueColor: kPrimaryColor,
         label: "Present Today",
         showShare: false,
+        // Present Today = checked in today (working / late / on break),
+        // not On Leave or Absent.
+        statusFilter: "Present",
       ),
       _StatData(
         value: summary.active.toString().padLeft(2, '0'),
@@ -120,6 +182,13 @@ class OverviewStatsCard extends StatelessWidget {
         statusFilter: "Late",
       ),
       _StatData(
+        value: summary.onLeave.toString().padLeft(2, '0'),
+        valueColor: const Color(0xFF6B9EFF),
+        label: "On Leave",
+        showShare: true,
+        statusFilter: "On Leave",
+      ),
+      _StatData(
         value: summary.absent.toString().padLeft(2, '0'),
         valueColor: kBlack,
         label: "Absent",
@@ -130,7 +199,8 @@ class OverviewStatsCard extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < _narrowBreakpoint;
+        final isNarrow =
+            constraints.maxWidth < OverviewStatsCard._narrowBreakpoint;
         final horizontalPad = isNarrow ? 14.0 : 20.0;
         final verticalPad = isNarrow ? 14.0 : 18.0;
 
@@ -205,7 +275,16 @@ class _GridStats extends StatelessWidget {
           ),
         ),
         const _HorizontalStatDivider(),
-        _StatItem(data: items[4]),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _StatItem(data: items[4])),
+              const _VerticalStatDivider(),
+              Expanded(child: _StatItem(data: items[5])),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -259,7 +338,7 @@ class _StatItem extends StatelessWidget {
   final _StatData data;
 
   void _onTap(BuildContext context) {
-    if (!data.showShare || data.statusFilter == null) return;
+    if (data.statusFilter == null) return;
     final overview = context.read<ManagerOverviewProvider>();
     ManagerBottomNavBar.goToAttendance(
       context,
@@ -273,6 +352,7 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final valueSize = width < 360 ? 20.0 : (width < 600 ? 24.0 : 28.0);
+    final canOpen = data.statusFilter != null;
 
     final content = Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -328,7 +408,7 @@ class _StatItem extends StatelessWidget {
       ),
     );
 
-    if (!data.showShare) return content;
+    if (!canOpen) return content;
 
     return ButtonAnimations.press(onTap: () => _onTap(context), child: content);
   }
@@ -379,6 +459,23 @@ class OverviewActionsGrid extends StatelessWidget {
               "Add Employee",
               Assets.imagesAddEmployee,
               () => AddEmployeeSheet.show(context),
+            ),
+            ActionTile("Team Leaves", Assets.imagesLeaveIcon, () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TeamLeavesScreen()),
+              );
+            }),
+            ActionTile(
+              "My Leaves",
+              height: 26,
+              Assets.imagesLeavesFilledIcon,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LeavesScreen()),
+                );
+              },
             ),
           ],
         ),
@@ -519,9 +616,16 @@ class _DirectoryRow extends StatelessWidget {
 class ActionTile extends StatelessWidget {
   final String title;
   final String icon;
+  final double? height;
   final VoidCallback? onTap;
 
-  const ActionTile(this.title, this.icon, this.onTap, {super.key});
+  const ActionTile(
+    this.title,
+    this.icon,
+    this.onTap, {
+    super.key,
+    this.height = 20,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -536,7 +640,7 @@ class ActionTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CommonImageView(imagePath: icon, height: 20),
+            CommonImageView(imagePath: icon, height: height ?? 20),
             const SizedBox(height: 10),
             AppText.p2(title, color: kSubText, weight: FontWeight.w500),
           ],

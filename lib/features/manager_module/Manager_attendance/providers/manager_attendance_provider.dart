@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/api/base_provider.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/data/models/manager_attendence_model.dart';
@@ -8,6 +7,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/pending
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/services/manager_attendance_service.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
+import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_overview/data/models/manager_overview_models.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/detail_sheets/manager_attendance_details_sheet.dart';
@@ -25,29 +25,78 @@ class ManagerAttendanceProvider extends BaseProvider {
   String? locationName;
   List<ManagerTeamAttendanceItem> items = const [];
   List<ManagerEmployeeModel> members = const [];
+  List<ManagerLocationModel> offices = const [];
   int total = 0;
+  String? holidayName;
 
   final Map<String, PendingAttendanceSave> _pendingSaves = {};
 
+  /// Leave rows from overview seed / prior stamp. Re-applied after every
+  /// reload so On Leave people do not vanish when team-leaves is slow/empty.
+  List<ManagerTeamAttendanceItem> _leaveOverlay = const [];
+
   List<ManagerTeamAttendanceItem>? _tilesItems;
   List<ManagerEmployeeModel>? _tilesMembers;
+  List<ManagerLocationModel>? _tilesOffices;
   String? _tilesStatus;
   String? _tilesLocationId;
   String? _tilesLocationName;
   String? _tilesUserId;
   String? _tilesUserName;
+  bool? _tilesNonWorkingOnly;
   List<ManagerAttendanceModel>? _tilesCache;
 
   bool get isAllStatus => ManagerAttendanceFilters.isAllStatus(statusFilterId);
 
+  bool get isHoliday => holidayName != null && holidayName!.trim().isNotEmpty;
+
+  /// Sat / Sun — same empty / punched-in list treatment as holidays.
+  bool get isWeekend =>
+      selectedDate.weekday == DateTime.saturday ||
+      selectedDate.weekday == DateTime.sunday;
+
+  /// Holiday or weekend: calendar-star screen (+ punched-in people if any).
+  bool get isNonWorkingDay => isHoliday || isWeekend;
+
+  /// Lines under calendar-star: holiday name, or Sat + Sun dates in a column.
+  List<String> get nonWorkingDayLabels {
+    if (isHoliday) {
+      final name = holidayName?.trim() ?? '';
+      return [name.isEmpty ? 'Public Holiday' : name];
+    }
+    if (isWeekend) return _weekendPairLabels(selectedDate);
+    return const [];
+  }
+
+  /// Back-compat single line (first label).
+  String get nonWorkingDayLabel {
+    final labels = nonWorkingDayLabels;
+    return labels.isEmpty ? '' : labels.first;
+  }
+
   List<ManagerTeamAttendanceItem> get filteredItems {
-    return ManagerAttendanceFilters.applyItems(
+    var list = ManagerAttendanceFilters.applyItems(
       source: items,
       selectedStatus: statusFilterId,
       selectedLocation: locationId,
       locationName: locationName,
       members: members,
     );
+    // Holiday / weekend: punch activity OR anyone on leave (leave is not
+    // weekend-gated — overview On Leave must still list them).
+    if (isNonWorkingDay) {
+      list = list
+          .where(
+            (item) =>
+                item.isOnLeave ||
+                item.hasCheckIn ||
+                item.isActive ||
+                item.isOpen ||
+                item.isCurrentlyOnBreak,
+          )
+          .toList(growable: false);
+    }
+    return list;
   }
 
   List<ManagerAttendanceModel> get tiles {
@@ -57,11 +106,13 @@ class ManagerAttendanceProvider extends BaseProvider {
     if (cached != null &&
         identical(items, _tilesItems) &&
         identical(members, _tilesMembers) &&
+        identical(offices, _tilesOffices) &&
         statusFilterId == _tilesStatus &&
         locationId == _tilesLocationId &&
         locationName == _tilesLocationName &&
         userId == _tilesUserId &&
-        userName == _tilesUserName) {
+        userName == _tilesUserName &&
+        isNonWorkingDay == _tilesNonWorkingOnly) {
       return cached;
     }
 
@@ -69,14 +120,17 @@ class ManagerAttendanceProvider extends BaseProvider {
       filteredItems,
       currentUserId: userId,
       currentUserName: userName,
+      offices: offices,
     );
     _tilesItems = items;
     _tilesMembers = members;
+    _tilesOffices = offices;
     _tilesStatus = statusFilterId;
     _tilesLocationId = locationId;
     _tilesLocationName = locationName;
     _tilesUserId = userId;
     _tilesUserName = userName;
+    _tilesNonWorkingOnly = isNonWorkingDay;
     _tilesCache = next;
     return next;
   }
@@ -94,7 +148,15 @@ class ManagerAttendanceProvider extends BaseProvider {
       ),
       currentUserId: _service.currentUserId,
       currentUserName: _currentUserName,
+      offices: offices,
     );
+  }
+
+  void setOffices(List<ManagerLocationModel> next) {
+    if (identical(offices, next)) return;
+    offices = List<ManagerLocationModel>.from(next);
+    _tilesCache = null;
+    notifyListeners();
   }
 
   String? get _currentUserName {
@@ -106,8 +168,9 @@ class ManagerAttendanceProvider extends BaseProvider {
     return null;
   }
 
-  Future<bool> load() {
-    return safeCall<ManagerTeamAttendanceData>(
+  Future<bool> load() async {
+    final holidayFuture = _service.holidayForDate(selectedDate);
+    final ok = await safeCall<ManagerTeamAttendanceData>(
       operationKey: 'manager_attendance_load',
       guardAgainstDuplicate: false,
       request: (cancelToken) => _service.loadTeamAttendance(
@@ -119,12 +182,24 @@ class ManagerAttendanceProvider extends BaseProvider {
           'load() API returned ${data.attendance.length} rows: '
           '${data.attendance.map((e) => '${e.employeeName}/${e.userId}=${e.checkin}').join(', ')}',
         );
-        items = data.attendance;
+        final stamped = data.attendance;
+        _rememberLeaveOverlay(stamped);
+        items = _mergeLeaveOverlay(stamped);
         members = data.members;
-        total = data.total;
+        total = items.length;
         _applyPendingToItems();
       },
     );
+    try {
+      final holiday = await holidayFuture;
+      holidayName = holiday?.name.trim().isEmpty == true
+          ? 'Public Holiday'
+          : holiday?.name;
+    } catch (_) {
+      holidayName = null;
+    }
+    notifyListeners();
+    return ok;
   }
 
   Future<ManagerAttendanceDetailsData> loadEmployeeDay({
@@ -290,9 +365,7 @@ class ManagerAttendanceProvider extends BaseProvider {
     return 'name:${(name ?? '').trim().toLowerCase()}';
   }
 
-  static void _log(String message) {
-    debugPrint('[ManagerAttendance] $message');
-  }
+  static void _log(String message) {}
 
   static String _clock(TimeOfDay time) {
     return '${time.hour.toString().padLeft(2, '0')}:'
@@ -325,11 +398,13 @@ class ManagerAttendanceProvider extends BaseProvider {
       items = const [];
       members = const [];
       total = 0;
+      _leaveOverlay = const [];
       _pendingSaves.clear();
     }
 
     if (seedItems != null && seedItems.isNotEmpty) {
-      items = List<ManagerTeamAttendanceItem>.from(seedItems);
+      _rememberLeaveOverlay(seedItems);
+      items = _mergeLeaveOverlay(seedItems);
       total = items.length;
       notifyListeners();
     }
@@ -344,10 +419,57 @@ class ManagerAttendanceProvider extends BaseProvider {
     items = const [];
     members = const [];
     total = 0;
+    holidayName = null;
+    _leaveOverlay = const [];
     _pendingSaves.clear();
     _log('setDate $selectedDate — cleared pending saves');
     notifyListeners();
     return load();
+  }
+
+  void _rememberLeaveOverlay(List<ManagerTeamAttendanceItem> source) {
+    final byUser = <int, ManagerTeamAttendanceItem>{
+      for (final item in _leaveOverlay)
+        if (item.userId != null) item.userId!: item,
+    };
+    for (final item in source) {
+      if (!item.isOnLeave || item.userId == null) continue;
+      byUser[item.userId!] = item;
+    }
+    _leaveOverlay = byUser.values.toList(growable: false);
+  }
+
+  List<ManagerTeamAttendanceItem> _mergeLeaveOverlay(
+    List<ManagerTeamAttendanceItem> source,
+  ) {
+    if (_leaveOverlay.isEmpty) return source;
+
+    final leaveByUser = <int, ManagerTeamAttendanceItem>{
+      for (final leave in _leaveOverlay)
+        if (leave.userId != null) leave.userId!: leave,
+    };
+    if (leaveByUser.isEmpty) return source;
+
+    final result = <ManagerTeamAttendanceItem>[];
+    final seen = <int>{};
+    for (final item in source) {
+      final userId = item.userId;
+      if (userId != null && leaveByUser.containsKey(userId)) {
+        seen.add(userId);
+        result.add(
+          item.isOnLeave
+              ? item
+              : item.copyWith(status: 'leave', statusLabel: 'On Leave'),
+        );
+      } else {
+        result.add(item);
+      }
+    }
+    for (final entry in leaveByUser.entries) {
+      if (seen.contains(entry.key)) continue;
+      result.add(entry.value);
+    }
+    return result;
   }
 
   void setStatus(String? status) {
@@ -370,13 +492,58 @@ class ManagerAttendanceProvider extends BaseProvider {
     locationName = null;
     items = const [];
     members = const [];
+    offices = const [];
+    holidayName = null;
     total = 0;
+    _leaveOverlay = const [];
     _pendingSaves.clear();
     notifyListeners();
   }
 
   static DateTime _dateOnly(DateTime date) =>
       DateTime(date.year, date.month, date.day);
+
+  static const _weekdaysShort = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
+
+  static const _monthsShort = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  /// e.g. Sat, 10 Oct 2025
+  static String _shortDateLabel(DateTime date) {
+    final weekday = _weekdaysShort[date.weekday - 1];
+    final month = _monthsShort[date.month - 1];
+    return '$weekday, ${date.day} $month ${date.year}';
+  }
+
+  /// Both days of the weekend, Sat then Sun — shown as a column.
+  static List<String> _weekendPairLabels(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    final saturday = day.weekday == DateTime.saturday
+        ? day
+        : day.subtract(const Duration(days: 1));
+    final sunday = saturday.add(const Duration(days: 1));
+    return [_shortDateLabel(saturday), _shortDateLabel(sunday)];
+  }
 
   static String? _networkPhoto(String? photo) {
     if (photo == null) return null;

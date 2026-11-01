@@ -1,4 +1,5 @@
 import 'package:obecno/core/api/api_response.dart';
+import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/features/auth/data/models/auth_company_model.dart';
 import 'package:obecno/features/auth/data/models/auth_location_model.dart';
@@ -186,6 +187,44 @@ class AuthService {
       newPassword: newPassword,
       newPasswordConfirmation: newPasswordConfirmation,
     );
+  }
+
+  Future<bool>? _refreshInFlight;
+
+  /// Tries `POST /auth/refresh`. Returns true only when a new token was saved.
+  /// Safe when the backend has no refresh route (treated as failure, not logout).
+  /// Parallel 401s share one in-flight refresh so we do not stampede the API.
+  Future<bool> refreshAccessToken() {
+    return _refreshInFlight ??= _refreshAccessTokenOnce().whenComplete(
+      () => _refreshInFlight = null,
+    );
+  }
+
+  Future<bool> _refreshAccessTokenOnce() async {
+    final current = await _tokenService.accessToken;
+    if (current == null) return false;
+
+    final response = await _repository.refreshAccessToken(
+      refreshToken: current.refreshToken,
+      accessToken: current.accessToken,
+    );
+
+    if (!response.success || response.data == null) {
+      AppLogger.info(
+        'AuthService: refresh failed '
+        '(status=${response.statusCode}, msg=${response.message})',
+      );
+      return false;
+    }
+
+    final next = response.data!;
+    // Keep prior refresh_token when the server only returns a new access token.
+    final merged = next.copyWith(
+      refreshToken: next.refreshToken ?? current.refreshToken,
+    );
+    await _tokenService.saveToken(merged);
+    AppLogger.info('AuthService: access token refreshed.');
+    return true;
   }
 
   // ================= LOGOUT =================

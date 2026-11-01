@@ -6,6 +6,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/presentation/w
 import 'package:obecno/features/manager_module/Manager_attendance/providers/manager_status_filters_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/providers/manager_locations_provider.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/shared/bottom_sheets/edit_sheets/date_picker.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/locations_filter_sheet.dart';
@@ -362,6 +363,15 @@ class _ManagerFiltersState extends State<ManagerFilters> {
     final filtersProvider = context.read<ManagerStatusFiltersProvider>();
     await filtersProvider.ensureLoaded();
     if (!mounted) return;
+    if (filtersProvider.options.isEmpty) {
+      ToastHelper.error(
+        context,
+        message:
+            filtersProvider.errorMessage ??
+            'Could not load status filters.',
+      );
+      return;
+    }
     final result = await StatusFilterSheet.show(
       context,
       selectedId: StatusFilterOption.idFromLabel(
@@ -489,14 +499,16 @@ class ManagerAttendanceTile extends StatelessWidget {
       case "onleave":
         return true;
       default:
-        return _isLateStatus;
+        return _isLate;
     }
   }
 
+  /// No punches and not leave/working → circular dash Absent mark.
   bool get _showEmptyState =>
       !_hasCheckIn && !_hasCheckOut && !_isRecognizedStatus;
 
-  bool get _isLate => _isLateStatus;
+  /// Late = API flag and/or status text. Shown as red triangle + red time.
+  bool get _isLate => data.isLate || _isLateStatus;
 
   bool get _isLeave => _statusKey == "leave" || _statusKey == "onleave";
 
@@ -578,25 +590,51 @@ class ManagerAttendanceTile extends StatelessWidget {
   }
 
   Widget? _alertIcon() {
+    final icons = <Widget>[];
+
+    // Pen: check-in / break / check-out edited or edit requested.
     if (data.editIcon) {
-      return CommonImageView(imagePath: Assets.imagesPen, height: 18);
+      icons.add(
+        CommonImageView(imagePath: Assets.imagesPen, height: 18),
+      );
     }
-    if (data.warningred) {
-      return CommonImageView(
-        imagePath: Assets.imagesTriangleExclamation,
-        height: 18,
+    // Location: check-in or check-out outside office.
+    if (data.locationalert) {
+      icons.add(
+        CommonImageView(imagePath: Assets.imagesLocationAlert, height: 20),
+      );
+    }
+    // Late uses the triangle beside check-in time — skip a second center icon.
+    if (data.warningred && !_isLate) {
+      icons.add(
+        CommonImageView(
+          imagePath: Assets.imagesTriangleExclamation,
+          height: 18,
+        ),
       );
     }
     if (data.warning) {
-      return CommonImageView(imagePath: Assets.imagesWarningAlert, height: 20);
-    }
-    if (data.locationalert) {
-      return CommonImageView(imagePath: Assets.imagesLocationAlert, height: 20);
+      icons.add(
+        CommonImageView(imagePath: Assets.imagesWarningAlert, height: 20),
+      );
     }
     if (data.infoalert) {
-      return CommonImageView(imagePath: Assets.imagesInfoAlert, height: 20);
+      icons.add(
+        CommonImageView(imagePath: Assets.imagesInfoAlert, height: 20),
+      );
     }
-    return null;
+
+    if (icons.isEmpty) return null;
+    if (icons.length == 1) return icons.first;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < icons.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          icons[i],
+        ],
+      ],
+    );
   }
 
   Widget _statusBadge() {
@@ -656,11 +694,27 @@ class ManagerAttendanceTile extends StatelessWidget {
     }
   }
 
+  Widget _lateCheckInLeading() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CommonImageView(
+          imagePath: Assets.imagesTriangleExclamation,
+          height: 18,
+        ),
+        const SizedBox(width: 6),
+        _timeText(data.checkIn!, forceRed: true),
+      ],
+    );
+  }
+
   /// Right-side: times and/or status badge.
-  /// Leave rows: `5 Days` / `09:05 AM` —●——●— `On Leave`
+  /// Late: red triangle immediately before red check-in time.
+  /// Leave rows: `On Leave` pill. Absent / no-punch: circular dash mark.
   /// A later re-check-in keeps the Working / On Break badge even if an
   /// earlier checkout is still on the record.
   Widget _trailing() {
+    // Absent (no punch, not on leave) → circular grey dash badge.
     if (_showEmptyState) return _emptyState();
 
     final statusLabel = _statusText();
@@ -668,10 +722,16 @@ class ManagerAttendanceTile extends StatelessWidget {
     final showBadgeInsteadOfCheckout =
         statusLabel.isNotEmpty && (!_hasCheckOut || hideCheckout);
 
+    // On Leave with no punches — leave pill only.
+    if (!_hasCheckIn && !_hasCheckOut && _isLeave) {
+      return _statusBadge();
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_hasCheckIn) _timeText(data.checkIn!, forceRed: _isLate),
+        if (_hasCheckIn)
+          _isLate ? _lateCheckInLeading() : _timeText(data.checkIn!),
         // No connector on leave rows — just duration + "On Leave" badge.
         if (_hasCheckIn &&
             ((_hasCheckOut && !hideCheckout) || showBadgeInsteadOfCheckout) &&
@@ -687,6 +747,17 @@ class ManagerAttendanceTile extends StatelessWidget {
     );
   }
 
+  Widget _avatar() {
+    return ClipOval(
+      child: CommonImageView(
+        imagePath: data.photo ?? Assets.imagesUserimage,
+        height: 44,
+        width: 44,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+
   /// ---------------- UI ----------------
 
   @override
@@ -694,15 +765,17 @@ class ManagerAttendanceTile extends StatelessWidget {
     final icon = _alertIcon();
     final textScaler = MediaQuery.textScalerOf(context);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return ButtonAnimations.press(
       onTap: onTap,
+      pressedScale: 0.97,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: textScaler.scale(8)),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            /// LEFT — name / role / team
+            /// LEFT — avatar + name / role
+            _avatar(),
+            SizedBox(width: textScaler.scale(12)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

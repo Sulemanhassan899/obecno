@@ -29,6 +29,7 @@ import 'package:obecno/features/clock/services/sync_toast_listener.dart';
 import 'package:obecno/core/routes/app_routes.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/alerts/services/alert_navigation.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
 import 'package:obecno/features/join/services/join_deep_link_service.dart';
 import 'package:obecno/features/more/services/reminder_notification_service.dart';
@@ -168,6 +169,10 @@ class _MyAppState extends State<MyApp> {
         ),
         (child) => ChangeNotifierProvider<AlertsProvider>(
           notifier: bindings.alertsProvider,
+          child: child,
+        ),
+        (child) => ChangeNotifierProvider<LeavesStore>(
+          notifier: bindings.leavesStore,
           child: child,
         ),
         (child) => ChangeNotifierProvider<JoinInviteProvider>(

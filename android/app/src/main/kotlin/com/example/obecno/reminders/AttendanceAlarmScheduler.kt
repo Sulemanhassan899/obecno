@@ -18,6 +18,7 @@ internal object AttendanceAlarmScheduler {
     const val EXTRA_PAYLOAD = "payload"
     const val EXTRA_TYPE = "type"
     const val EXTRA_IS_TEST = "isTest"
+    const val EXTRA_FIRE_AT = "fireAt"
 
     fun replaceAll(context: Context, alarms: List<StoredAlarm>) {
         val app = context.applicationContext
@@ -276,6 +277,8 @@ internal object AttendanceAlarmScheduler {
                 intent.putExtra(EXTRA_PAYLOAD, alarm.payload)
                 intent.putExtra(EXTRA_TYPE, alarm.type)
                 intent.putExtra(EXTRA_IS_TEST, alarm.isTest)
+                // Keep the planned clock so Alerts can dedupe against Flutter logs.
+                intent.putExtra(EXTRA_FIRE_AT, alarm.fireAt)
             },
         )
 

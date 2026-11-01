@@ -55,6 +55,8 @@ class JoinInviteStore {
     }
   }
 
+  /// Kept for debug tooling only. Release flows must not rely on local passwords.
+  @visibleForTesting
   String generatePassword({int length = 8}) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
     final random = Random.secure();
@@ -84,7 +86,8 @@ class JoinInviteStore {
         contact: row.contact.trim(),
         channel: row.channel,
         source: JoinInviteSource.manual,
-        password: generatePassword(),
+        // Credentials live on the server invite email — not on-device.
+        password: '',
         status: JoinInviteStatus.invited,
         createdAt: now,
         locationId: row.locationId,
@@ -108,7 +111,7 @@ class JoinInviteStore {
       contact: JoinShareLinks.generateTempEmail(),
       channel: JoinInviteChannel.email,
       source: JoinInviteSource.link,
-      password: generatePassword(),
+      password: '',
       status: JoinInviteStatus.invited,
       createdAt: now,
       companyName: companyName,
@@ -124,7 +127,10 @@ class JoinInviteStore {
   }) {
     final c = contact.trim().toLowerCase();
     final p = password.trim();
+    // Empty passwords never match (no local credential login).
+    if (p.isEmpty) return null;
     for (final record in _records) {
+      if (record.password.isEmpty) continue;
       if (record.password != p) continue;
       if (record.contact.trim().toLowerCase() == c) return record;
     }

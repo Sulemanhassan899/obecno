@@ -17,15 +17,28 @@ class EmployeeLeave {
   final DateTime? fromDate;
   final DateTime? toDate;
 
-  bool get isApproved {
+  bool get isRejected {
     final value = (status ?? '').trim().toLowerCase().replaceAll(' ', '_');
-    if (value.contains('pend') ||
-        value.contains('reject') ||
+    return value.contains('reject') ||
         value.contains('cancel') ||
         value.contains('denied') ||
-        value.contains('decline')) {
-      return false;
-    }
+        value.contains('decline');
+  }
+
+  bool get isPending {
+    final value = (status ?? '').trim().toLowerCase().replaceAll(' ', '_');
+    return value.contains('pend') ||
+        value.contains('await') ||
+        value.contains('request') ||
+        value.contains('submit') ||
+        value == 'new' ||
+        value == '0' ||
+        value == 'false';
+  }
+
+  /// On Leave overlay — anything not rejected/pending (blank = approved).
+  bool get isApproved {
+    if (isRejected || isPending) return false;
     return true;
   }
 
@@ -93,26 +106,51 @@ class EmployeeLeaveDates {
     };
   }
 
+  static Set<DateTime> rejectedDates(Iterable<EmployeeLeave> leaves) {
+    return {
+      for (final leave in leaves)
+        if (leave.isRejected) ...leave.datesInRange,
+    };
+  }
+
+  /// Pending leave days stay Absent on attendance until approved.
+  static Set<DateTime> pendingDates(Iterable<EmployeeLeave> leaves) {
+    return {
+      for (final leave in leaves)
+        if (leave.isPending) ...leave.datesInRange,
+    };
+  }
+
   /// Marks matching days as leave and inserts leave-only placeholders so
   /// the month list can show On Leave even when there is no punch record.
+  ///
+  /// [rejectedDates] are never shown as On Leave (cleared back to normal /
+  /// absent classification).
   static List<AttendanceDay> overlay(
     List<AttendanceDay> days,
-    Set<DateTime> leaveDates,
-  ) {
-    if (leaveDates.isEmpty) return days;
-
+    Set<DateTime> leaveDates, {
+    Set<DateTime> rejectedDates = const {},
+  }) {
+    final rejected = {
+      for (final date in rejectedDates)
+        DateTime(date.year, date.month, date.day),
+    };
     final normalized = {
       for (final date in leaveDates) DateTime(date.year, date.month, date.day),
-    };
+    }..removeAll(rejected);
 
     bool sameDay(DateTime a, DateTime b) =>
         a.year == b.year && a.month == b.month && a.day == b.day;
 
     final result = <AttendanceDay>[
       for (final day in days)
-        normalized.any((date) => sameDay(date, day.date)) && !day.isLeave
-            ? day.copyWith(isLeave: true)
-            : day,
+        if (rejected.any((date) => sameDay(date, day.date)) && day.isLeave)
+          day.copyWith(isLeave: false)
+        else if (normalized.any((date) => sameDay(date, day.date)) &&
+            !day.isLeave)
+          day.copyWith(isLeave: true)
+        else
+          day,
     ];
 
     for (final date in normalized) {

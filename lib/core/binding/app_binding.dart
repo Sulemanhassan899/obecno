@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:obecno/core/api/api_client.dart';
 import 'package:obecno/core/api/session_manager.dart';
 import 'package:obecno/core/services/logger.dart';
 import 'package:obecno/core/services/network_checker.dart';
+import 'package:obecno/core/services/network_image_auth.dart';
 import 'package:obecno/core/services/token_service.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/auth/providers/permission_provider.dart';
@@ -32,6 +35,7 @@ import 'package:obecno/features/employee_module/attendance/data/local/attendance
 import 'package:obecno/features/employee_module/attendance/data/local/attendance_db.dart';
 import 'package:obecno/features/employee_module/attendance/repositories/attendance_repository.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 
 import 'package:obecno/features/clock/repositories/clock_attendance_repository.dart';
 import 'package:obecno/features/clock/services/employee_trusted_time.dart';
@@ -123,6 +127,8 @@ class AppBindings {
   late final ManagerAttendanceProvider managerAttendanceProvider;
   late final AlertsProvider alertsProvider;
   late final JoinInviteProvider joinInviteProvider;
+  /// Injected leaves store (same object as [LeavesStore.instance] for now).
+  late final LeavesStore leavesStore;
 
   VoidCallback? _authListener;
   VoidCallback? _locationSyncListener;
@@ -132,6 +138,12 @@ class AppBindings {
   Future<void> init() async {
     networkChecker = NetworkCheckerImpl();
     token = TokenService();
+
+    NetworkImageAuth.configure(() async {
+      final authHeader = await token.authorizationHeader;
+      if (authHeader == null || authHeader.isEmpty) return const {};
+      return {'Authorization': authHeader};
+    });
 
     sessionManager = SessionManager(
       tokenService: token,
@@ -144,13 +156,14 @@ class AppBindings {
     ApihttpClient = ApiClient(
       networkChecker: networkChecker,
       tokenService: token,
-      onUnauthorized: () => authProvider.validateSessionOnUnauthorized(),
       sessionManager: sessionManager,
     );
 
     authRepository = AuthRepository(ApihttpClient);
     authService = AuthService(authRepository, token);
     authProvider = AuthProvider(authService);
+    // Quiet token renew on local expiry / 401 recovery (no-op if API missing).
+    token.networkRefresher = authService.refreshAccessToken;
     companyPolicyService = CompanyPolicyService(token, authRepository);
     permissionProvider = PermissionProvider(companyPolicyService, authService);
 
@@ -199,12 +212,16 @@ class AppBindings {
       deviceInfoService,
     );
 
+    leavesStore = LeavesStore.instance;
+
     reminderDao = ReminderDao();
     reminderSettingsProvider = ReminderSettingsProvider(
       dao: reminderDao,
       policyService: companyPolicyService,
       userIdProvider: () => authProvider.user?.id ?? '',
       locationNameProvider: () => authProvider.selectedLocation?.name ?? '',
+      isOnLeaveDay: leavesStore.isOnApprovedLeave,
+      ensureLeaveData: () => leavesStore.ensureLoaded(),
     );
 
     termsService = TermsService(ApihttpClient);
@@ -219,12 +236,6 @@ class AppBindings {
     );
     managerEmployeesProvider = ManagerEmployeesProvider(
       managerEmployeesService,
-    );
-    alertsProvider = AlertsProvider(
-      auth: authProvider,
-      devices: deviceProvider,
-      employees: managerEmployeesProvider,
-      employeesService: managerEmployeesService,
     );
     joinInviteProvider = JoinInviteProvider();
     unawaited(joinInviteProvider.ensureLoaded());
@@ -247,6 +258,15 @@ class AppBindings {
       attendanceService: managerAttendanceService,
     );
     managerOverviewProvider = ManagerOverviewProvider(managerOverviewService);
+
+    alertsProvider = AlertsProvider(
+      auth: authProvider,
+      devices: deviceProvider,
+      employees: managerEmployeesProvider,
+      employeesService: managerEmployeesService,
+      overviewService: managerOverviewService,
+      overviewProvider: managerOverviewProvider,
+    );
 
     managerLocationsRepository = ManagerLocationsRepository(ApihttpClient);
     managerLocationsService = ManagerLocationsService(
@@ -299,6 +319,7 @@ class AppBindings {
     _authListener = () {
       final isAuthenticatedNow = authProvider.isAuthenticated;
       if (isAuthenticatedNow && !_wasAuthenticated) {
+        sessionManager.markValid();
         unawaited(termsProvider.preloadOnLogin());
         unawaited(privacyProvider.preloadOnLogin());
         unawaited(reminderSettingsProvider.load());
@@ -309,6 +330,7 @@ class AppBindings {
           );
         }
       } else if (!isAuthenticatedNow && _wasAuthenticated) {
+        sessionManager.markInvalid();
         // Logged out: drop cached device state so a different user logging
         // in on this device doesn't inherit stale approval/blocked flags.
         smartAttendanceService.stop();
@@ -460,7 +482,52 @@ class AppBindings {
           await profileProvider.clearLocal(userId: loggedOutUserId);
         }
       });
+
+      await _guardedCleanupStep('clearLeaveCache', () async {
+        await leavesStore.clearLocal(userId: loggedOutUserId);
+      });
     });
+  }
+
+  /// Minimal DI for widget/screenshot tests — no sync listeners or background jobs.
+  @visibleForTesting
+  Future<void> initForWidgetTests() async {
+    networkChecker = NetworkCheckerImpl();
+    token = TokenService();
+    sessionManager = SessionManager(
+      tokenService: token,
+      validateWithBackend: () async => false,
+    );
+    ApihttpClient = ApiClient(
+      networkChecker: networkChecker,
+      tokenService: token,
+      sessionManager: sessionManager,
+    );
+    authRepository = AuthRepository(ApihttpClient);
+    authService = AuthService(authRepository, token);
+    authProvider = AuthProvider(authService);
+    token.networkRefresher = authService.refreshAccessToken;
+    companyPolicyService = CompanyPolicyService(token, authRepository);
+    permissionProvider = PermissionProvider(companyPolicyService, authService);
+    leavesStore = LeavesStore.instance;
+    attendanceService = AttendanceService(ApihttpClient);
+    employeeTrustedTime = EmployeeTrustedTime();
+    managerEmployeesRepository = ManagerEmployeesRepository(ApihttpClient);
+    managerEmployeesService = ManagerEmployeesService(
+      managerEmployeesRepository,
+      currentUserIdProvider: () => authProvider.user?.id,
+    );
+    managerOverviewRepository = ManagerOverviewRepository(ApihttpClient);
+    managerOverviewService = ManagerOverviewService(
+      managerOverviewRepository,
+      employeesRepository: managerEmployeesRepository,
+      attendanceService: ManagerAttendanceService(
+        ManagerAttendanceRepository(ApihttpClient),
+        employeesRepository: managerEmployeesRepository,
+        overviewRepository: managerOverviewRepository,
+        currentUserIdProvider: () => authProvider.user?.id,
+      ),
+    );
   }
 
   Future<void> _logoutAfterMonotonicReboot(String message) async {

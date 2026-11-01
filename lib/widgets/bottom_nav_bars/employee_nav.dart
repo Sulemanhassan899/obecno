@@ -6,6 +6,7 @@ import 'package:obecno/core/responsive/responsive.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
 import 'package:obecno/features/alerts/presentation/screens/alerts_screen.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
+import 'package:obecno/features/alerts/services/alert_navigation.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/clock/presentation/screens/clock_screen.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/screens/attendence_screen.dart';
@@ -24,7 +25,15 @@ class EmployeeBottomNavBar extends StatefulWidget {
   static final ValueNotifier<int> _alertsTick = ValueNotifier(0);
   static bool openAlertsOnBuild = false;
 
-  static void goToAlerts() {
+  /// Optional Alerts chip: `reminder`, `device`, `check_in`, …
+  static String? pendingAlertsFilter;
+
+  /// Optional leave alert key to scroll/highlight on Alerts (Leaves filter).
+  static String? pendingAlertsLeaveKey;
+
+  static void goToAlerts({String? filter, String? leaveKey}) {
+    pendingAlertsFilter = filter;
+    pendingAlertsLeaveKey = leaveKey;
     openAlertsOnBuild = true;
     _alertsTick.value++;
   }
@@ -54,13 +63,32 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
   @override
   void initState() {
     super.initState();
-    if (EmployeeBottomNavBar.openAlertsOnBuild) {
+    final openAlerts =
+        EmployeeBottomNavBar.openAlertsOnBuild || AlertNavigation.pendingOpen;
+    final pendingFilter = EmployeeBottomNavBar.pendingAlertsFilter;
+    final pendingLeaveKey = EmployeeBottomNavBar.pendingAlertsLeaveKey;
+    if (openAlerts) {
       selectedIndex = 2;
       EmployeeBottomNavBar.openAlertsOnBuild = false;
+      EmployeeBottomNavBar.pendingAlertsFilter = null;
+      EmployeeBottomNavBar.pendingAlertsLeaveKey = null;
+      AlertNavigation.pendingOpen = false;
     }
     EmployeeBottomNavBar._alertsTick.addListener(_openAlerts);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Cold-start openAlertsOnBuild only sets the tab index; clear the red
+      // dot once the nav (and AlertsProvider) are actually mounted.
+      if (openAlerts || selectedIndex == 2) {
+        context.read<AlertsProvider>().setAlertsTabVisible(true);
+      }
+      if (openAlerts && (pendingFilter != null || pendingLeaveKey != null)) {
+        _alertsKey.currentState?.applyFilter(
+          pendingFilter ?? 'leaves',
+          leaveKey: pendingLeaveKey,
+        );
+      }
+      unawaited(context.read<AlertsProvider>().syncLeaveAlerts());
       _join = context.read<JoinInviteProvider>();
       _join!.addListener(_syncJoinDeviceApproval);
       unawaited(
@@ -83,11 +111,26 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
 
   void _openAlerts() {
     if (!mounted) return;
+    final filter = EmployeeBottomNavBar.pendingAlertsFilter;
+    final leaveKey = EmployeeBottomNavBar.pendingAlertsLeaveKey;
+    EmployeeBottomNavBar.pendingAlertsFilter = null;
+    EmployeeBottomNavBar.pendingAlertsLeaveKey = null;
     setState(() {
       selectedIndex = 2;
       EmployeeBottomNavBar.openAlertsOnBuild = false;
     });
-    context.read<AlertsProvider>().markAlertsSeen();
+    context.read<AlertsProvider>().setAlertsTabVisible(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (filter != null || leaveKey != null) {
+        _alertsKey.currentState?.applyFilter(
+          filter ?? (leaveKey != null ? 'leaves' : null),
+          leaveKey: leaveKey,
+        );
+      } else {
+        _alertsKey.currentState?.playEntranceAnimation();
+      }
+    });
   }
 
   @override
@@ -181,8 +224,11 @@ class _EmployeeBottomNavBarState extends State<EmployeeBottomNavBar> {
                     setState(() {
                       selectedIndex = index;
                     });
+                    final alerts = context.read<AlertsProvider>();
                     if (index == 2) {
-                      context.read<AlertsProvider>().markAlertsSeen();
+                      alerts.setAlertsTabVisible(true);
+                    } else if (previousIndex == 2) {
+                      alerts.setAlertsTabVisible(false);
                     }
                     if (index == previousIndex) return;
                     switch (index) {

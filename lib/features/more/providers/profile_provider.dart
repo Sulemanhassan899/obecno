@@ -125,6 +125,7 @@ class ProfileProvider extends BaseProvider {
                 cityId: current.cityId,
                 departmentId: current.departmentId,
                 department: current.department,
+                reportsToName: current.reportsToName ?? data.reportsToName,
                 countries: data.countries.isNotEmpty
                     ? data.countries
                     : current.countries,

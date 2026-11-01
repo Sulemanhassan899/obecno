@@ -64,7 +64,11 @@ class ManagerAttendanceFilters {
     if (isAllStatus(selectedStatus)) return true;
     final id = StatusFilterOption.idFromLabel(selectedStatus);
 
-    if (StatusFilterOption.sameFamily(id, 'present')) return item.hasCheckIn;
+    // Present Today: anyone who checked in (working, late, on break).
+    // Exclude On Leave / Absent even if a leave row somehow has a punch.
+    if (StatusFilterOption.sameFamily(id, 'present')) {
+      return item.hasCheckIn && !item.isOnLeave && !item.isAbsent;
+    }
     if (StatusFilterOption.sameFamily(id, 'working')) return item.isActive;
     if (StatusFilterOption.sameFamily(id, 'break')) {
       return item.isCurrentlyOnBreak;

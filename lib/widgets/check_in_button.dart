@@ -78,7 +78,8 @@ class CheckInButton extends StatelessWidget {
                     ),
                   ],
                 ),
-                // ✅ swap content for a spinner while loading
+                // Stack keeps label inside the circle — a tall icon Column was
+                // clipping "Check Out" / "Check In" to a blank red/green disc.
                 child: isLoading
                     ? const Center(
                         child: SizedBox(
@@ -90,27 +91,35 @@ class CheckInButton extends StatelessWidget {
                           ),
                         ),
                       )
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Center(
-                            child: Padding(
-                              padding: EdgeInsets.only(left: isOnBreak ? 4 : 0),
-                              child: CommonImageView(
-                                imagePath: isOnBreak
-                                    ? Assets.imagesMugHotWhite
-                                    : Assets.imagesCheckInHand,
-                                height: isOnBreak ? 64 : 106,
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  left: isOnBreak ? 4 : 0,
+                                ),
+                                child: CommonImageView(
+                                  imagePath: isOnBreak
+                                      ? Assets.imagesMugHotWhite
+                                      : Assets.imagesCheckInHand,
+                                  height: isOnBreak ? 56 : 88,
+                                  width: isOnBreak ? 56 : 88,
+                                  fit: BoxFit.contain,
+                                ),
                               ),
-                            ),
+                              SizedBox(height: isOnBreak ? 6 : 8),
+                              AppText.h5(
+                                text,
+                                color: kWhite,
+                                weight: FontWeight.w600,
+                                align: TextAlign.center,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 12),
-                          AppText.h5(
-                            text,
-                            color: kWhite,
-                            weight: FontWeight.w600,
-                          ),
-                        ],
+                        ),
                       ),
               ),
             ),

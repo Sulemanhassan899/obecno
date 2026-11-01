@@ -130,12 +130,17 @@ class ReminderFireSchedule {
       final breakDue = status.breakStart!.add(Duration(minutes: minutes));
       var endedAt = breakDue;
       if (breakEndedReminderTime != null) {
-        var selected = punched == null
-            ? place(breakEndedReminderTime)
-            : ReminderNotificationPlan.clockOnOrAfter(
-                status.breakStart!,
-                breakEndedReminderTime,
-              );
+        // Same calendar day as the open break only. A policy clock earlier
+        // than the punch (e.g. 2:30 vs a 3:28 break) must not roll to
+        // tomorrow via clockOnOrAfter — duration from the open break wins.
+        final sameDay = DateTime(
+          status.breakStart!.year,
+          status.breakStart!.month,
+          status.breakStart!.day,
+          breakEndedReminderTime.hour,
+          breakEndedReminderTime.minute,
+        );
+        var selected = sameDay;
         if (overnight && selected.isBefore(status.breakStart!)) {
           selected = selected.add(const Duration(days: 1));
         }
@@ -147,9 +152,26 @@ class ReminderFireSchedule {
       longerBreakAt = endedAt.add(longerAfter);
     }
 
+    // Keep the same-day reminder clock even when it falls before check-in so
+    // prune can drop pre-punch break catch-ups (do not roll to tomorrow).
     final breakAt = punched == null
         ? place(breakReminderTime)
-        : ReminderNotificationPlan.clockOnOrAfter(punched, breakReminderTime);
+        : () {
+            final sameDay = DateTime(
+              punched.year,
+              punched.month,
+              punched.day,
+              breakReminderTime.hour,
+              breakReminderTime.minute,
+            );
+            if (sameDay.isBefore(punched) && !overnight) {
+              return sameDay;
+            }
+            return ReminderNotificationPlan.clockOnOrAfter(
+              punched,
+              breakReminderTime,
+            );
+          }();
 
     return ReminderFireSchedule(
       checkInAt: checkInAt,
@@ -189,6 +211,10 @@ class ReminderNotificationPlan {
   static const lookaheadDays = 14;
   static const idStride = 100;
 
+  /// If AlarmManager / Doze misses the exact minute, still post when the app
+  /// resyncs within this window. Hours-later dumps stay blocked.
+  static const lateCatchUpWindow = Duration(minutes: 10);
+
   static int idFor(ReminderType type, {int dayOffset = 0, int slot = 0}) =>
       notificationIdBase + type.index * idStride + dayOffset + slot;
 
@@ -208,8 +234,19 @@ class ReminderNotificationPlan {
     return {for (final type in alreadyFired) idFor(type), ...activeIds};
   }
 
-  static String firedKey(ReminderType type, DateTime fireAt) =>
-      '${type.storageKey}|${fireAt.millisecondsSinceEpoch}';
+  /// Identity for "already posted" — minute precision so a native fire a few
+  /// seconds late still matches the Flutter planned clock.
+  static String firedKey(ReminderType type, DateTime fireAt) {
+    final local = fireAt.toLocal();
+    final minute = DateTime(
+      local.year,
+      local.month,
+      local.day,
+      local.hour,
+      local.minute,
+    );
+    return '${type.storageKey}|${minute.millisecondsSinceEpoch}';
+  }
 
   /// Slot keeps same-type firings (e.g. two breaks) on distinct notification ids.
   static int slotFor(DateTime fireAt) =>
@@ -245,6 +282,17 @@ class ReminderNotificationPlan {
         fireAt.day == now.day &&
         fireAt.hour == now.hour &&
         fireAt.minute == now.minute;
+  }
+
+  /// True when [now] is after [fireAt] but still inside [lateCatchUpWindow].
+  static bool isWithinLateCatchUp(
+    DateTime fireAt,
+    DateTime now, {
+    Duration window = lateCatchUpWindow,
+  }) {
+    if (!fireAt.isBefore(now)) return false;
+    final lateBy = now.difference(fireAt);
+    return !lateBy.isNegative && lateBy <= window;
   }
 
   static int minutesOf(TimeOfDay time) => time.hour * 60 + time.minute;
@@ -328,12 +376,15 @@ class ReminderNotificationPlan {
     Set<String> alreadyFiredKeys = const {},
     String locationName = 'work',
     bool allowCatchUp = false,
+    bool Function(DateTime day)? isOnLeaveDay,
   }) {
     final items = <ScheduledReminderNotification>[];
     final weekdays = workingWeekdays.isEmpty
         ? defaultWorkingWeekdays
         : workingWeekdays;
     final place = locationName.trim().isEmpty ? 'work' : locationName.trim();
+    bool leaveOn(DateTime day) => isOnLeaveDay?.call(day) == true;
+    bool restOn(DateTime day) => !weekdays.contains(day.weekday);
 
     final policyIn = policyCheckInTime ?? checkInTime;
     final policyOut = policyCheckOutTime ?? checkOutTime;
@@ -359,7 +410,12 @@ class ReminderNotificationPlan {
       if (!applicable) return;
       if (!(enabled[type] ?? false)) return;
       final onMinute = isOnReminderMinute(fireAt, now);
-      if (fireAt.isBefore(now) && !onMinute && !allowCatchUp && !catchUp) {
+      final lateCatchUp = isWithinLateCatchUp(fireAt, now);
+      if (fireAt.isBefore(now) &&
+          !onMinute &&
+          !allowCatchUp &&
+          !catchUp &&
+          !lateCatchUp) {
         return;
       }
       final dueNow = onMinute || !fireAt.isAfter(now);
@@ -418,6 +474,7 @@ class ReminderNotificationPlan {
     for (var i = 0; i < lookaheadDays; i++) {
       final day = today.add(Duration(days: i));
       if (!weekdays.contains(day.weekday)) continue;
+      if (leaveOn(day)) continue;
       final daySchedule = i == 0 ? todaySchedule : scheduleFor(day);
       final notStartedToday = i == 0 ? status.hasNotStarted : true;
       add(
@@ -425,17 +482,20 @@ class ReminderNotificationPlan {
         daySchedule.checkInAt,
         applicable: notStartedToday,
         dayOffset: i,
-        // Same-day catch-up when still not checked in past the clock.
-        catchUp: i == 0,
+        // Never dump a missed check-in hours later — only the exact minute.
+        catchUp: false,
       );
       add(
         ReminderType.checkInMissed,
         daySchedule.checkInMissedAt,
         applicable: notStartedToday,
         dayOffset: i,
-        catchUp: i == 0,
+        catchUp: false,
       );
     }
+
+    // Leave or rest day: no check-out / break / long-attendance banners.
+    if (leaveOn(today) || restOn(today)) return items;
 
     add(
       ReminderType.checkOut,
@@ -443,8 +503,7 @@ class ReminderNotificationPlan {
       applicable:
           status.isCheckedIn &&
           !todaySchedule.checkOutAt.isBefore(status.firstCheckIn!),
-      // Still checked in past check-out → show the banner when the app runs.
-      catchUp: true,
+      catchUp: false,
     );
     add(
       ReminderType.checkOutMissed,
@@ -452,7 +511,7 @@ class ReminderNotificationPlan {
       applicable:
           status.isCheckedIn &&
           !todaySchedule.checkOutMissedAt.isBefore(status.firstCheckIn!),
-      catchUp: true,
+      catchUp: false,
     );
 
     final longAt = todaySchedule.veryLongAttendanceAt;
@@ -460,6 +519,7 @@ class ReminderNotificationPlan {
       ReminderType.veryLongAttendance,
       longAt ?? now,
       applicable: status.isCheckedIn && longAt != null,
+      // Still working past the duration → notify when the app opens.
       catchUp: true,
     );
 
@@ -470,7 +530,7 @@ class ReminderNotificationPlan {
           status.isCheckedIn &&
           !status.isOnBreak &&
           !todaySchedule.breakAt.isBefore(status.firstCheckIn!),
-      catchUp: true,
+      catchUp: false,
     );
 
     final endedAt = todaySchedule.breakEndedAt;
@@ -479,13 +539,13 @@ class ReminderNotificationPlan {
       ReminderType.breakTimeEnded,
       endedAt ?? now,
       applicable: status.isOnBreak && endedAt != null,
-      catchUp: true,
+      catchUp: false,
     );
     add(
       ReminderType.longerBreak,
       longerAt ?? now,
       applicable: status.isOnBreak && longerAt != null,
-      catchUp: true,
+      catchUp: false,
     );
 
     return items;

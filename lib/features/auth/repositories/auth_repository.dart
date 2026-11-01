@@ -4,6 +4,7 @@ import 'package:obecno/core/api/api_error.dart';
 import 'package:obecno/core/api/api_response.dart';
 import 'package:obecno/features/auth/data/models/auth_user_model.dart';
 import 'package:obecno/features/auth/data/models/permission_item_model.dart';
+import 'package:obecno/features/auth/data/models/token_model.dart';
 
 class AuthRepository {
   AuthRepository(this._client);
@@ -101,6 +102,67 @@ class AuthRepository {
         response.data,
         response.statusCode,
         fallbackMessage: 'Failed to load current user.',
+      );
+    } on ApiError catch (e) {
+      return ApiResponse.failure(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResponse.failure('Something went wrong. Please try again.');
+    }
+  }
+
+  /// Renews the access token. Uses [skipAuthInterceptor] so a 401 here
+  /// does not recurse into SessionManager.
+  Future<ApiResponse<TokenModel>> refreshAccessToken({
+    String? refreshToken,
+    String? accessToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        body['refresh_token'] = refreshToken;
+      }
+      if (accessToken != null && accessToken.isNotEmpty) {
+        body['access_token'] = accessToken;
+      }
+
+      final response = await _client.post(
+        EmployeeApiEndpoints.refresh,
+        data: body,
+        skipAuthInterceptor: true,
+      );
+
+      final decoded = _asMap(response.data);
+      if (decoded == null) {
+        return ApiResponse.failure(
+          'Unexpected refresh response.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final success = decoded['success'] != false;
+      if (!success) {
+        return ApiResponse.failure(
+          (decoded['message'] as String?) ?? 'Session refresh failed.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final data = decoded['data'];
+      final Map<String, dynamic> tokenJson = data is Map<String, dynamic>
+          ? data
+          : decoded;
+      final token = TokenModel.fromJson(tokenJson);
+      if (token == null) {
+        return ApiResponse.failure(
+          'Refresh response missing access_token.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      return ApiResponse.success(
+        token,
+        message: decoded['message'] as String?,
+        statusCode: response.statusCode,
       );
     } on ApiError catch (e) {
       return ApiResponse.failure(e.message, statusCode: e.statusCode);

@@ -16,13 +16,16 @@ class _MemoryReminderDao extends Fake implements ReminderDao {
   }
 
   @override
-  Future<void> insertLogIfAbsent({
+  Future<bool> insertLogIfAbsent({
     required String userId,
     required DateTime date,
     required ReminderLog log,
   }) async {
-    if (userId.isEmpty) return;
-    logs.putIfAbsent(_key(userId, date, log.type), () => log);
+    if (userId.isEmpty) return false;
+    final key = _key(userId, date, log.type);
+    if (logs.containsKey(key)) return false;
+    logs[key] = log;
+    return true;
   }
 
   @override

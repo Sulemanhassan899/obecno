@@ -496,7 +496,7 @@ void main() {
       api.calls.clear();
     });
 
-    Future<LocationSchedule> _patch(LocationSchedule next) async {
+    Future<LocationSchedule> patch(LocationSchedule next) async {
       final result = await service.updateLocationSchedule(
         locationId: locationId,
         schedule: next,
@@ -512,7 +512,7 @@ void main() {
     }
 
     test('check in only', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(checkIn: const TimeOfDay(hour: 7, minute: 45)),
       );
       expect(saved.checkIn, const TimeOfDay(hour: 7, minute: 45));
@@ -522,7 +522,7 @@ void main() {
     });
 
     test('check out only', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(checkOut: const TimeOfDay(hour: 19, minute: 0)),
       );
       expect(saved.checkOut, const TimeOfDay(hour: 19, minute: 0));
@@ -530,13 +530,13 @@ void main() {
     });
 
     test('grace period only', () async {
-      final saved = await _patch(current.copyWith(graceMinutes: 25));
+      final saved = await patch(current.copyWith(graceMinutes: 25));
       expect(saved.graceMinutes, 25);
       expect(saved.checkIn, const TimeOfDay(hour: 9, minute: 0));
     });
 
     test('break duration only', () async {
-      final saved = await _patch(current.copyWith(maxBreakMinutes: 90));
+      final saved = await patch(current.copyWith(maxBreakMinutes: 90));
       expect(saved.maxBreakMinutes, 90);
       expect(saved.breakLabel, '90:00 mins');
       expect(saved.checkIn, const TimeOfDay(hour: 9, minute: 0));
@@ -544,7 +544,7 @@ void main() {
     });
 
     test('break location tracking only', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(breakLocationTracking: false),
       );
       expect(saved.breakLocationTracking, isFalse);
@@ -552,7 +552,7 @@ void main() {
     });
 
     test('working days only', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(workingDays: {'Tuesday', 'Thursday'}),
       );
       expect(saved.workingDays, {'Tuesday', 'Thursday'});
@@ -561,7 +561,7 @@ void main() {
     });
 
     test('week start and hours only', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(
           weekStartDay: 'Sunday',
           hoursPerDay: '06:00',
@@ -574,7 +574,7 @@ void main() {
     });
 
     test('check in + check out together', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(
           checkIn: const TimeOfDay(hour: 10, minute: 0),
           checkOut: const TimeOfDay(hour: 16, minute: 30),
@@ -587,7 +587,7 @@ void main() {
     });
 
     test('break duration + working days together', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(
           maxBreakMinutes: 15,
           workingDays: {'Monday', 'Saturday'},
@@ -599,7 +599,7 @@ void main() {
     });
 
     test('all timing fields together', () async {
-      final saved = await _patch(
+      final saved = await patch(
         current.copyWith(
           checkIn: const TimeOfDay(hour: 6, minute: 0),
           checkOut: const TimeOfDay(hour: 14, minute: 0),
@@ -624,11 +624,11 @@ void main() {
     });
 
     test('separate edits stack in order: check in, then break, then days', () async {
-      await _patch(
+      await patch(
         current.copyWith(checkIn: const TimeOfDay(hour: 11, minute: 0)),
       );
-      await _patch(current.copyWith(maxBreakMinutes: 12));
-      final saved = await _patch(
+      await patch(current.copyWith(maxBreakMinutes: 12));
+      final saved = await patch(
         current.copyWith(workingDays: {'Friday', 'Sunday'}),
       );
 

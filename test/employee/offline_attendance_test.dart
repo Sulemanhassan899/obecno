@@ -144,6 +144,7 @@ void main() {
       expect(OverviewSummary.empty.onBreak, 0);
       expect(OverviewSummary.empty.lateCheckIn, 0);
       expect(OverviewSummary.empty.absent, 0);
+      expect(OverviewSummary.empty.onLeave, 0);
     });
   });
 }

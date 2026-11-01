@@ -3,11 +3,13 @@ class ManagerStatusFilter {
     required this.key,
     required this.label,
     this.description,
+    this.iconKey,
   });
 
   final String key;
   final String label;
   final String? description;
+  final String? iconKey;
 
   factory ManagerStatusFilter.fromJson(Map<String, dynamic> json) {
     return ManagerStatusFilter(
@@ -17,6 +19,9 @@ class ManagerStatusFilter {
               .toString()
               .trim(),
       description: (json['description'] as String?)?.trim(),
+      iconKey: (json['icon_key'] ?? json['iconKey'] ?? json['icon'])
+          ?.toString()
+          .trim(),
     );
   }
 

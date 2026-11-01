@@ -268,20 +268,16 @@ class DateMonthYearContentState extends State<DateMonthYearContent> {
                     buttonText: "Reset",
                     fontColor: kBlack,
                     onTap: () async {
+                      // Jump to today and apply so Attendance (and any
+                      // other caller) reloads the current day.
+                      final today = _nowDay;
                       setState(() {
-                        _selected = DateTime(
-                          widget.initialDate.year,
-                          widget.initialDate.month,
-                          widget.initialDate.day,
-                        );
-                        _visibleMonth = DateTime(
-                          _selected.year,
-                          _selected.month,
-                        );
+                        _selected = today;
+                        _visibleMonth = DateTime(today.year, today.month);
                         _clampSelection();
                       });
-                      _goToMonth(_visibleMonth);
-                      Navigator.pop(context);
+                      widget.onSelected(_selected);
+                      if (context.mounted) Navigator.pop(context);
                     },
                   ),
                 ),

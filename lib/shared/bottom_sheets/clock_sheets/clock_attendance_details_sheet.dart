@@ -90,6 +90,9 @@ class _ClockAttendanceDetailsSheetBodyState
   late AttendanceSummary _summary;
   late Duration _workingDuration;
   bool _loadingTimeline = true;
+  /// After a successful API load, ignore parent clock unions that would
+  /// re-introduce stale local check-in times into the header/timeline.
+  bool _timelineFromServer = false;
   int? _attendanceId;
   List<ReminderLog> _reminderLogs = const [];
   List<AttendanceEvent> _pendingAddEvents = const [];
@@ -109,6 +112,8 @@ class _ClockAttendanceDetailsSheetBodyState
   @override
   void didUpdateWidget(covariant _ClockAttendanceDetailsSheetBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Server timeline already won — do not union stale controller events back in.
+    if (_timelineFromServer) return;
     final incoming = _todayOnly(widget.events, widget.day);
     if (incoming.isEmpty) return;
 
@@ -192,6 +197,7 @@ class _ClockAttendanceDetailsSheetBodyState
             _events = apiEvents;
             _attendanceId = data.attendanceId;
             _loadingTimeline = false;
+            _timelineFromServer = true;
             _recompute();
           });
           widget.onTodayEventsLoaded?.call(apiEvents);
@@ -219,6 +225,7 @@ class _ClockAttendanceDetailsSheetBodyState
           setState(() {
             _events = todayEvents;
             _loadingTimeline = false;
+            _timelineFromServer = true;
             _recompute();
           });
           widget.onTodayEventsLoaded?.call(todayEvents);
@@ -316,8 +323,8 @@ class _ClockAttendanceDetailsSheetBodyState
     super.dispose();
   }
 
-  String? get _firstCheckInLocation {
-    final target = _summary.firstCheckIn;
+  String? get _displayCheckInLocation {
+    final target = _summary.displayCheckIn;
     for (final e in AttendanceEngine.sortedOldestFirst(_events)) {
       if (e.type != AttendanceEventType.checkIn) continue;
       if (target != null &&
@@ -330,13 +337,13 @@ class _ClockAttendanceDetailsSheetBodyState
     return null;
   }
 
-  String? get _lastCheckOutLocation {
-    final target = _summary.lastCheckOut;
+  String? get _displayCheckOutLocation {
+    final target = _summary.displayCheckOut;
+    if (target == null) return null;
     String? location;
     for (final e in AttendanceEngine.sortedOldestFirst(_events)) {
       if (e.type != AttendanceEventType.checkOut) continue;
-      if (target != null &&
-          e.effectiveTime.hour == target.hour &&
+      if (e.effectiveTime.hour == target.hour &&
           e.effectiveTime.minute == target.minute) {
         return e.location;
       }
@@ -449,7 +456,7 @@ class _ClockAttendanceDetailsSheetBodyState
                                     const SizedBox(height: 6),
                                     AppText.h3(
                                       AttendanceFormat.time(
-                                        _summary.firstCheckIn,
+                                        _summary.displayCheckIn,
                                       ),
                                       align: TextAlign.left,
                                       color: kPrimaryColor,
@@ -490,7 +497,7 @@ class _ClockAttendanceDetailsSheetBodyState
                                     const SizedBox(height: 6),
                                     AppText.h3(
                                       AttendanceFormat.time(
-                                        _summary.lastCheckOut,
+                                        _summary.displayCheckOut,
                                       ),
                                       align: TextAlign.right,
                                       color: kredColor,
@@ -509,10 +516,10 @@ class _ClockAttendanceDetailsSheetBodyState
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                child: _summary.firstCheckIn == null
+                                child: _summary.displayCheckIn == null
                                     ? _location("--")
                                     : ResolvedLocationText(
-                                        rawLocation: _firstCheckInLocation,
+                                        rawLocation: _displayCheckInLocation,
                                         knownLocations: knownLocations,
                                         onlyKnownLocations: true,
                                         builder: (context, text) =>
@@ -520,10 +527,10 @@ class _ClockAttendanceDetailsSheetBodyState
                                       ),
                               ),
                               Expanded(
-                                child: _summary.lastCheckOut == null
+                                child: _summary.displayCheckOut == null
                                     ? _location("--", isRight: true)
                                     : ResolvedLocationText(
-                                        rawLocation: _lastCheckOutLocation,
+                                        rawLocation: _displayCheckOutLocation,
                                         knownLocations: knownLocations,
                                         onlyKnownLocations: true,
                                         builder: (context, text) =>

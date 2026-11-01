@@ -5,7 +5,7 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/routes/app_routes.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/apply_leave_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
@@ -16,6 +16,7 @@ import 'package:obecno/shared/bottom_sheets/app_sheet_size.dart';
 import 'package:obecno/shared/bottom_sheets/attendance_sheet/add_attendance_bottom_sheet.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/main.dart';
 
 /// Day overview for absent days. Empty days show the calendar actions.
 /// Days with leave keep the summary card and timeline.
@@ -26,6 +27,9 @@ class AttendanceDayOverviewSheet extends StatefulWidget {
     required this.apiClient,
     required this.userEmail,
     this.attendanceId,
+    this.employeeUserId,
+    this.employeeName,
+    this.applyImmediately = false,
   });
 
   final DateTime day;
@@ -33,14 +37,26 @@ class AttendanceDayOverviewSheet extends StatefulWidget {
   final String userEmail;
   final int? attendanceId;
 
-  static Future<void> show(
+  /// When set (manager viewing an employee), Add Attendance targets this user.
+  final int? employeeUserId;
+  final String? employeeName;
+
+  /// Manager path applies attendance immediately (approved); employee requests.
+  final bool applyImmediately;
+
+  /// Returns [AddAttendanceSaveResult] after add-attendance, or the leave
+  /// [DateTime] after manager assign-leave, otherwise null.
+  static Future<Object?> show(
     BuildContext context, {
     required DateTime day,
     required ApiClient apiClient,
     required String userEmail,
     int? attendanceId,
+    int? employeeUserId,
+    String? employeeName,
+    bool applyImmediately = false,
   }) {
-    return AppSheet.show(
+    return AppSheet.show<Object>(
       context: context,
       backgroundColor: kWhite,
       isScrollControlled: true,
@@ -55,6 +71,9 @@ class AttendanceDayOverviewSheet extends StatefulWidget {
             apiClient: apiClient,
             userEmail: userEmail,
             attendanceId: attendanceId,
+            employeeUserId: employeeUserId,
+            employeeName: employeeName,
+            applyImmediately: applyImmediately,
           ),
         );
       },
@@ -68,16 +87,24 @@ class AttendanceDayOverviewSheet extends StatefulWidget {
 
 class _AttendanceDayOverviewSheetState
     extends State<AttendanceDayOverviewSheet> {
-  final LeavesMockStore _store = LeavesMockStore.instance;
+  final LeavesStore _store = bindings.leavesStore;
 
   @override
   void initState() {
     super.initState();
     _store.addListener(_onStoreChanged);
+    bindings.profileProvider.addListener(_onStoreChanged);
+    _store.ensureLoaded();
+    // Manager name for "Rejected by" when leave API omits reviewer.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bindings.profileProvider.loadProfile();
+    });
   }
 
   @override
   void dispose() {
+    bindings.profileProvider.removeListener(_onStoreChanged);
     _store.removeListener(_onStoreChanged);
     super.dispose();
   }
@@ -88,6 +115,28 @@ class _AttendanceDayOverviewSheetState
 
   Future<void> _openApplyLeave() async {
     final day = widget.day;
+    final employeeUserId = widget.employeeUserId;
+    final employeeName = widget.employeeName;
+
+    // Manager: assign leave for this employee — keep overview until done.
+    if (employeeUserId != null) {
+      await WidgetsBinding.instance.endOfFrame;
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted) return;
+      final result = await ApplyLeaveSheet.show(
+        context,
+        initialDate: day,
+        employeeUserId: employeeUserId,
+        employeeName: employeeName,
+      );
+      if (!mounted) return;
+      if (result != null) {
+        // Signal the attendance list to stamp On Leave + reload.
+        Navigator.pop(context, day);
+      }
+      return;
+    }
+
     Navigator.pop(context);
     // Wait a frame so this sheet is gone and AppSheet's lock is free.
     await WidgetsBinding.instance.endOfFrame;
@@ -98,24 +147,23 @@ class _AttendanceDayOverviewSheetState
   }
 
   Future<void> _openAddAttendance() async {
-    final day = widget.day;
-    final apiClient = widget.apiClient;
-    final userEmail = widget.userEmail;
-    final attendanceId = widget.attendanceId;
-    Navigator.pop(context);
-    // Wait a frame so this sheet is gone and AppSheet's lock is free.
+    // Wait a frame so AppSheet's open-lock is free for a nested sheet.
     await WidgetsBinding.instance.endOfFrame;
     await Future<void>.delayed(Duration.zero);
-    final host = rootNavigatorKey.currentContext;
-    if (host == null || !host.mounted) return;
-    await AddAttendanceBottomSheet.show(
-      host,
-      day: day,
-      apiClient: apiClient,
-      userEmail: userEmail,
-      attendanceId: attendanceId,
+    if (!mounted) return;
+    final saved = await AddAttendanceBottomSheet.show(
+      context,
+      day: widget.day,
+      apiClient: widget.apiClient,
+      userEmail: widget.userEmail,
+      attendanceId: widget.attendanceId,
+      employeeUserId: widget.employeeUserId,
+      employeeName: widget.employeeName,
+      applyImmediately: widget.applyImmediately,
       isCreating: true,
     );
+    if (!mounted) return;
+    Navigator.pop(context, saved);
   }
 
   Future<void> _openLeaveDetail(LeaveTimelineEvent event) async {
@@ -170,10 +218,7 @@ class _AttendanceDayOverviewSheetState
           children: [
             _header(),
             const SizedBox(height: 36),
-            CommonImageView(
-              imagePath: Assets.imagesLeavesFilledIcon,
-              height: 112,
-            ),
+            CommonImageView(imagePath: Assets.imagesCalendarStar, height: 112),
             const SizedBox(height: 30),
             AppText.h4(_emptyDateLabel, weight: FontWeight.w500),
             const SizedBox(height: 30),
@@ -204,7 +249,7 @@ class _AttendanceDayOverviewSheetState
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 20, 20, 14 + bottom),
       child: Column(
-        mainAxisSize: MainAxisSize.max,
+        mainAxisSize: MainAxisSize.min,
         children: [
           _header(),
           const SizedBox(height: 16),
@@ -221,31 +266,22 @@ class _AttendanceDayOverviewSheetState
             ],
           ),
           const SizedBox(height: 12),
-          Flexible(
-            child: SingleChildScrollView(
-              child: LeaveTimelineCards(
-                events: events,
-                onTapRequested: _openLeaveDetail,
-              ),
-            ),
-          ),
+          LeaveTimelineCards(events: events, onTapRequested: _openLeaveDetail),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               MyButton(
-                width: 100,
+                width: 150,
                 height: 44,
-
                 size: MyButtonSize.normal,
                 buttonText: 'Apply Leave',
                 backgroundColor: kBlack,
                 fontColor: kWhite,
                 onTap: _openApplyLeave,
               ),
-
               MyButton(
-                width: 130,
+                width: 150,
                 height: 44,
                 size: MyButtonSize.normal,
                 buttonText: 'Add Attendance',

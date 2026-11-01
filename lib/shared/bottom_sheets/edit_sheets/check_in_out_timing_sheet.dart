@@ -342,7 +342,7 @@ class _CheckInOutTimingSheetBodyState
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       checkIn: _checkIn,
       checkOut: _checkOut,
       graceMinutes: _graceMinutes,
@@ -415,7 +415,7 @@ class _CheckInOutTimingSheetBodyState
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       checkIn: _checkIn,
       checkOut: _checkOut,
       graceMinutes: _graceMinutes,

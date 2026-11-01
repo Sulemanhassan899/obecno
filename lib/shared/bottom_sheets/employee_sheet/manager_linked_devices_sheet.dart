@@ -403,6 +403,9 @@ class _ManagerLinkedDevicesSheetBodyState
                         child: ShimmerProgress(),
                       )
                     : ShimmerRefreshIndicator(
+                        instagramStyle: true,
+                        triggerFraction: 0.40,
+                        showOrb: false,
                         onRefresh: () => _load(showSpinner: false),
                         child: _error != null
                             ? ListView(

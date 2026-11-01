@@ -112,10 +112,12 @@ class LocationFlagMonitorHost extends StatefulWidget {
     if (userId == null || userId.isEmpty) return;
 
     await permissions.refresh();
+    if (!context.mounted) return;
+    final offices = officesFromContext(context);
     final checkedIn = await _readCheckedIn();
     await controller.refreshFlags(
       policyWindow: policyFromPermissions(permissions),
-      offices: officesFromContext(context),
+      offices: offices,
       checkedIn: checkedIn,
     );
   }
@@ -219,10 +221,13 @@ class _LocationFlagMonitorHostState extends State<LocationFlagMonitorHost>
         current.graceMinutes == next.graceMinutes) {
       return;
     }
+    if (!mounted) return;
+    final offices = LocationFlagMonitorHost.officesFromContext(context);
+    final checkedIn = await LocationFlagMonitorHost._readCheckedIn();
     await LocationFlagMonitorHost.controller.refreshFlags(
       policyWindow: next,
-      offices: LocationFlagMonitorHost.officesFromContext(context),
-      checkedIn: await LocationFlagMonitorHost._readCheckedIn(),
+      offices: offices,
+      checkedIn: checkedIn,
     );
   }
 
@@ -261,10 +266,13 @@ class _LocationFlagMonitorHostState extends State<LocationFlagMonitorHost>
       await permissions.refresh();
     }
     if (!mounted) return;
+    final offices = LocationFlagMonitorHost.officesFromContext(context);
+    final checkedIn = await LocationFlagMonitorHost._readCheckedIn();
+    if (!mounted) return;
     await LocationFlagMonitorHost.controller.followClock(
       employeeId: userId,
-      offices: LocationFlagMonitorHost.officesFromContext(context),
-      checkedIn: await LocationFlagMonitorHost._readCheckedIn(),
+      offices: offices,
+      checkedIn: checkedIn,
       policyWindow: LocationFlagMonitorHost.policyFromPermissions(permissions),
     );
     bindings.smartAttendanceService.syncWithToggles();

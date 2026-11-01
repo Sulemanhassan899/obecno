@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:obecno/core/constants/all_colors.dart';
-import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/responsive/responsive.dart';
 

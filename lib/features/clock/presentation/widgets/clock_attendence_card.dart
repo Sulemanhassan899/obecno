@@ -83,17 +83,30 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   String formatDuration(Duration d) => AttendanceFormat.duration(d);
 
-  String? get _firstCheckInLocation {
+  String? get _displayCheckInLocation {
+    final target = _summary.displayCheckIn;
+    if (target == null) return null;
+    for (final e in AttendanceEngine.sortedOldestFirst(widget.events)) {
+      if (e.type == AttendanceEventType.checkIn &&
+          e.effectiveTime == target) {
+        return e.location;
+      }
+    }
     for (final e in AttendanceEngine.sortedOldestFirst(widget.events)) {
       if (e.type == AttendanceEventType.checkIn) return e.location;
     }
     return null;
   }
 
-  String? get _lastCheckOutLocation {
+  String? get _displayCheckOutLocation {
+    final target = _summary.displayCheckOut;
+    if (target == null) return null;
     String? location;
     for (final e in AttendanceEngine.sortedOldestFirst(widget.events)) {
-      if (e.type == AttendanceEventType.checkOut) location = e.location;
+      if (e.type == AttendanceEventType.checkOut &&
+          e.effectiveTime == target) {
+        location = e.location;
+      }
     }
     return location;
   }
@@ -113,8 +126,8 @@ class _AttendanceCardState extends State<AttendanceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final firstCheckIn = _summary.firstCheckIn;
-    final lastCheckOut = _summary.lastCheckOut;
+    final displayCheckIn = _summary.displayCheckIn;
+    final displayCheckOut = _summary.displayCheckOut;
     final knownLocations = bindings.authProvider.locations
         .map((loc) => KnownLocation(name: loc.name, latLon: loc.latLon))
         .toList();
@@ -133,7 +146,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                /// FIRST CHECK-IN
+                /// LIVE / FIRST CHECK-IN
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +154,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       AppText.p2("Check-In", color: kPrimaryColor),
                       const SizedBox(height: 4),
                       AppText.h4(
-                        formatTime(firstCheckIn),
+                        formatTime(displayCheckIn),
                         color: kPrimaryColor,
                         align: TextAlign.left,
                       ),
@@ -154,7 +167,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                           ),
                           const SizedBox(width: 6),
                           Expanded(
-                            child: firstCheckIn == null
+                            child: displayCheckIn == null
                                 ? AppText.p2(
                                     "--",
                                     color: kGreyColor,
@@ -163,7 +176,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                                     align: TextAlign.left,
                                   )
                                 : ResolvedLocationText(
-                                    rawLocation: _firstCheckInLocation,
+                                    rawLocation: _displayCheckInLocation,
                                     knownLocations: knownLocations,
                                     onlyKnownLocations: true,
                                     builder: (context, text) => AppText.p2(
@@ -183,7 +196,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                   ),
                 ),
 
-                /// TOTAL WORKING DURATION
+                /// TOTAL WORKING DURATION (closed segments + open session)
                 Row(
                   children: [
                     Icon(
@@ -198,7 +211,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                     ),
                     const SizedBox(width: 6),
                     AppText.p2(
-                      firstCheckIn == null ? "--" : formatDuration(_elapsed),
+                      displayCheckIn == null ? "--" : formatDuration(_elapsed),
                       weight: FontWeight.w600,
                     ),
                     const SizedBox(width: 6),
@@ -215,7 +228,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                   ],
                 ),
 
-                /// LAST CHECK-OUT
+                /// CHECK-OUT (hidden while re-checked-in / open)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -223,7 +236,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                       AppText.p2("Check-Out", color: kredColor),
                       const SizedBox(height: 4),
                       AppText.h4(
-                        formatTime(lastCheckOut),
+                        formatTime(displayCheckOut),
                         color: kredColor,
                         align: TextAlign.right,
                       ),
@@ -232,7 +245,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Expanded(
-                            child: lastCheckOut == null
+                            child: displayCheckOut == null
                                 ? AppText.p2(
                                     "--",
                                     color: kGreyColor,
@@ -241,7 +254,7 @@ class _AttendanceCardState extends State<AttendanceCard> {
                                     align: TextAlign.right,
                                   )
                                 : ResolvedLocationText(
-                                    rawLocation: _lastCheckOutLocation,
+                                    rawLocation: _displayCheckOutLocation,
                                     knownLocations: knownLocations,
                                     onlyKnownLocations: true,
                                     builder: (context, text) => AppText.p2(

@@ -7,6 +7,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/manager
 import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_attendance_repository.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
@@ -458,7 +459,8 @@ void main() {
       expect(details.name, 'Employee3');
       expect(details.checkIn, '11:33 AM');
       expect(details.checkOut, isNull);
-      expect(details.durationLabel, '0h 00m');
+      // Open session: work from check-in until first break (~1m 41s → 0h 01m).
+      expect(details.durationLabel, '0h 01m');
       expect(details.timeline.length, 3);
       expect(details.timeline.map((e) => e.type).toList(), [
         ManagerAttendanceEventType.breakEnd,
@@ -653,6 +655,35 @@ void main() {
       expect(events, [
         {'type': 'checkin', 'time': '09:00:00', 'id': 1001},
       ]);
+    });
+
+    test('open-shift checkout uses §4.1 simple body without orphan events', () {
+      final body = ManagerAttendanceRepository.employeeAttendanceSaveBody(
+        attendanceId: 415,
+        userId: 30,
+        date: '2026-10-20',
+        deviceDetails: 'iPhone',
+        lat: 33.73,
+        lon: 73.17,
+        checkIn: '14:09:00',
+        checkInDetailId: '1504',
+        checkOut: '19:00:00',
+        checkOutDetailId: null,
+        changes: [
+          AttendanceChangeRequestPayload(
+            attendanceDetailId: null,
+            oldValue: '17:00:00',
+            newValue: '19:00:00',
+            type: 'check out',
+          ),
+        ],
+      );
+
+      expect(body['attendance_id'], 415);
+      expect(body['check_in'], '14:09:00');
+      expect(body['check_out'], '19:00:00');
+      expect(body.containsKey('events'), isFalse);
+      expect(body.containsKey('changes'), isFalse);
     });
   });
 
@@ -1074,6 +1105,19 @@ void main() {
         ),
         'leave',
       );
+      // Approved leave must win over a stale open-session signal.
+      expect(
+        TeamAttendanceMapper.uiStatus(
+          const ManagerTeamAttendanceItem(
+            employeeName: 'Owner',
+            status: 'leave',
+            statusLabel: 'On Leave',
+            isOpen: true,
+            checkin: '09:00:00',
+          ),
+        ),
+        'leave',
+      );
     });
 
     test('treats an open breakout as on break even without is_on_break', () {
@@ -1390,6 +1434,60 @@ void main() {
         members: members,
       );
       expect(stamped.single.present, 2);
+    });
+
+    test('keeps On Leave on assigned members for overview card + list', () {
+      const location = ManagerLocationModel(
+        id: '12',
+        name: 'Head Office',
+        address: 'Islamabad',
+      );
+      // Leave stamp as a separate row (directory row may not share userId).
+      const attendance = [
+        ManagerTeamAttendanceItem(
+          userId: 3,
+          employeeName: 'Employee3',
+          locationId: '12',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 99,
+          employeeName: 'Employee3',
+          status: 'leave',
+          statusLabel: 'On Leave',
+        ),
+        ManagerTeamAttendanceItem(
+          userId: 1,
+          employeeName: 'Owner',
+          locationId: '12',
+        ),
+      ];
+      const members = [
+        ManagerEmployeeModel(
+          id: '3',
+          name: 'Employee3',
+          role: 'Sales',
+          locationId: '12',
+        ),
+        ManagerEmployeeModel(
+          id: '1',
+          name: 'Owner',
+          role: 'Owner',
+          locationId: '12',
+        ),
+      ];
+
+      final merged = LocationAttendanceStats.merge(
+        location: location,
+        attendance: attendance,
+        members: members,
+      );
+      final onLeave = merged.where((e) => e.isOnLeave).toList();
+      expect(onLeave, hasLength(1));
+      expect(onLeave.single.employeeName, 'Employee3');
+      expect(
+        merged.where((e) => !e.hasCheckIn && !e.isOnLeave),
+        hasLength(1),
+      );
     });
   });
 

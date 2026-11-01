@@ -13,7 +13,6 @@ import 'package:obecno/features/employee_module/attendance/services/attendance_s
 import 'package:obecno/shared/location/service/attendance_connectivity_service.dart';
 import 'package:obecno/shared/location/service/attendance_payload_model.dart';
 import 'package:obecno/shared/location/service/local_queue_service.dart';
-import 'package:flutter/foundation.dart';
 
 class AttendanceApiException implements Exception {
   AttendanceApiException(this.message);
@@ -109,12 +108,7 @@ class AttendanceRepository {
       rethrow;
     } on AttendanceCancelledException {
       rethrow;
-    } catch (e) {
-      debugPrint(
-        '[AttendanceRepository] submitAttendance: online send failed ($e) '
-        '-> falling back to local queue for "${payload.action}" '
-        '(${payload.date} ${payload.time})',
-      );
+    } catch (_) {
       final queued = await _queueService.insert(payload);
       if (!queued) {
         throw AttendanceQueueException(
@@ -158,19 +152,9 @@ class AttendanceRepository {
                   )
                   .toList()
                 ..sort((a, b) => a.effectiveTime.compareTo(b.effectiveTime));
-          if (events.isNotEmpty) {
-            debugPrint(
-              '[AttendanceRepository] fetchTodayEvents: parsed '
-              '${events.length} today event(s) from attendance/details',
-            );
-            return events;
-          }
+          if (events.isNotEmpty) return events;
         }
       } catch (e) {
-        debugPrint(
-          '[AttendanceRepository] fetchTodayEvents: details endpoint '
-          'failed ($e) — falling back to attendance list',
-        );
         // A timeout / dead network will also fail the fallback. Skip it so
         // the clock's 10s reconcile timeout is not stacked on a second hang.
         if (e is TimeoutException ||
@@ -189,13 +173,7 @@ class AttendanceRepository {
       );
 
       final container = _findTodayAttendanceContainer(response.data);
-      if (container == null) {
-        debugPrint(
-          '[AttendanceRepository] fetchTodayEvents: no attendance '
-          'container found in response',
-        );
-        return null;
-      }
+      if (container == null) return null;
 
       final todayAttendance = container['today_attendance'];
       final todayAttendanceMap = todayAttendance is Map
@@ -213,33 +191,18 @@ class AttendanceRepository {
 
       if (detailsRaw != null && detailsRaw.isNotEmpty) {
         final events = _parseAndDedupeDetails(detailsRaw, todayDate);
-        debugPrint(
-          '[AttendanceRepository] fetchTodayEvents: parsed '
-          '${events.length} today event(s) from attendance_details '
-          '(${detailsRaw.length} raw row(s))',
-        );
         // Portal/overview often exposes live open sessions via top-level
         // checkin while details rows use unrecognized type/time keys.
         // Never return an empty parse here — fall through to summary fields.
         if (events.isNotEmpty) return events;
-        debugPrint(
-          '[AttendanceRepository] fetchTodayEvents: details rows did not '
-          'parse — falling through to summary checkin/checkout',
-        );
       }
 
-      final events = _eventsFromSummarySessions(
+      return _eventsFromSummarySessions(
         container: container,
         todayAttendance: todayAttendanceMap,
         todayDate: todayDate,
       );
-      debugPrint(
-        '[AttendanceRepository] fetchTodayEvents: parsed ${events.length} '
-        'event(s) from summary sessions',
-      );
-      return events;
-    } catch (e) {
-      debugPrint('[AttendanceRepository] fetchTodayEvents: failed -> $e');
+    } catch (_) {
       return null;
     }
   }
@@ -557,7 +520,6 @@ class AttendanceRepository {
     ApiCancelToken? cancelToken,
   }) async {
     final body = payload.toApiJson();
-    debugPrint('[ATTENDANCE_PAYLOAD] ${jsonEncode(body)}');
 
     late final RawApiResponse response;
     try {

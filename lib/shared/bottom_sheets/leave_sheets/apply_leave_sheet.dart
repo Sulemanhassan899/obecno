@@ -5,8 +5,12 @@ import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/core/helpers/toast_helper.dart';
+import 'package:obecno/core/routes/app_routes.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
+import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_resources.dart';
+import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_type_picker_sheet.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_format.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
@@ -15,15 +19,28 @@ import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 
 class ApplyLeaveSheet extends StatefulWidget {
-  const ApplyLeaveSheet({super.key, this.existing, this.initialDate});
+  const ApplyLeaveSheet({
+    super.key,
+    this.existing,
+    this.initialDate,
+    this.employeeUserId,
+    this.employeeName,
+  });
 
   final LeaveRequest? existing;
   final DateTime? initialDate;
+
+  /// When set, manager assigns leave for this employee via
+  /// `POST /manager/employees/{id}/leaves` (not employee self-apply).
+  final int? employeeUserId;
+  final String? employeeName;
 
   static Future<LeaveRequest?> show(
     BuildContext context, {
     LeaveRequest? existing,
     DateTime? initialDate,
+    int? employeeUserId,
+    String? employeeName,
   }) {
     return AppSheet.show<LeaveRequest>(
       context: context,
@@ -35,7 +52,12 @@ class ApplyLeaveSheet extends StatefulWidget {
       builder: (_) {
         return ConstrainedBox(
           constraints: AppSheetSize.constraintsOf(context),
-          child: ApplyLeaveSheet(existing: existing, initialDate: initialDate),
+          child: ApplyLeaveSheet(
+            existing: existing,
+            initialDate: initialDate,
+            employeeUserId: employeeUserId,
+            employeeName: employeeName,
+          ),
         );
       },
     );
@@ -52,8 +74,15 @@ class _ApplyLeaveSheetState extends State<ApplyLeaveSheet> {
   late final TextEditingController _noteController;
   String? _documentName;
   String? _editingField; // 'start' | 'end' | null
+  bool _submitting = false;
+  List<LeaveTypeInfo> _managerTypes = const [];
+  bool _loadingManagerTypes = false;
 
   bool get _isEdit => widget.existing != null;
+
+  bool get _isManagerAssign => widget.employeeUserId != null;
+
+  LeavesStore get _store => bindings.leavesStore;
 
   int get _days {
     final start = DateTime(_start.year, _start.month, _start.day);
@@ -76,21 +105,91 @@ class _ApplyLeaveSheetState extends State<ApplyLeaveSheet> {
     if (existing != null) {
       _start = existing.startDate;
       _end = existing.endDate;
-      _type = LeavesMockStore.instance.typeById(existing.typeId);
+      _type =
+          _store.typeById(existing.typeId) ??
+          _store.typeByNameHint(existing.typeName);
       _noteController = TextEditingController(text: existing.note);
       _documentName = existing.documentName;
     } else {
       _start = DateTime(seed.year, seed.month, seed.day);
-      _end = _start.add(const Duration(days: 2));
+      _end = _isManagerAssign
+          ? _start
+          : _start.add(const Duration(days: 2));
       _type =
-          LeavesMockStore.instance.typeById('casual') ??
-          (LeavesMockStore.instance.types.isNotEmpty
-              ? LeavesMockStore.instance.types.first
-              : null);
+          _store.typeByNameHint('casual') ??
+          (_store.types.isNotEmpty ? _store.types.first : null);
       _noteController = TextEditingController(
         text: "I've been feeling unwell due to frequent business trips.",
       );
     }
+    if (_isManagerAssign) {
+      _loadManagerLeaveTypes();
+    } else {
+      _store.ensureLoaded().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _type ??=
+              _store.typeByNameHint('casual') ??
+              (_store.types.isNotEmpty ? _store.types.first : null);
+        });
+      });
+    }
+  }
+
+  Future<void> _loadManagerLeaveTypes() async {
+    final userId = widget.employeeUserId;
+    if (userId == null) return;
+    setState(() => _loadingManagerTypes = true);
+    try {
+      final response = await bindings.managerEmployeesService
+          .loadEmployeeLeaveBalances(userId: userId);
+      // Catalog has human labels when balances only return numeric type ids.
+      await _store.ensureLoaded();
+      if (!mounted) return;
+      final types = _typesFromBalances(response.data ?? const []);
+      setState(() {
+        _managerTypes = types;
+        _loadingManagerTypes = false;
+        _type = _preferCasual(types);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingManagerTypes = false);
+    }
+  }
+
+  List<LeaveTypeInfo> _typesFromBalances(
+    List<ManagerEmployeeLeaveBalance> balances,
+  ) {
+    return balances.map((b) {
+      final total = int.tryParse(b.entitled ?? '') ?? 0;
+      final available = int.tryParse(b.remaining ?? '') ??
+          (total - (int.tryParse(b.used ?? '') ?? 0));
+      final id = (b.typeId ?? '').trim().isNotEmpty
+          ? b.typeId!.trim()
+          : b.type.trim();
+      final rawName = b.type.trim();
+      final catalog = _store.typeById(id);
+      final name = (rawName.isNotEmpty && int.tryParse(rawName) == null)
+          ? rawName
+          : (catalog?.name ??
+                (rawName.isEmpty ? 'Leave' : rawName));
+      return LeaveTypeInfo(
+        id: id.isEmpty ? b.type : id,
+        name: name,
+        available: available < 0 ? 0 : available,
+        total: total > 0 ? total : (available > 0 ? available : 0),
+      );
+    }).toList(growable: false);
+  }
+
+  LeaveTypeInfo? _preferCasual(List<LeaveTypeInfo> types) {
+    if (types.isEmpty) return null;
+    for (final t in types) {
+      final key = '${t.name} ${t.id}'.toLowerCase();
+      if (key.contains('casual')) return t;
+    }
+    return types.first;
   }
 
   @override
@@ -103,12 +202,16 @@ class _ApplyLeaveSheetState extends State<ApplyLeaveSheet> {
     final seed = widget.initialDate ?? DateTime.now();
     setState(() {
       _start = DateTime(seed.year, seed.month, seed.day);
-      _end = _start.add(const Duration(days: 2));
-      _type =
-          LeavesMockStore.instance.typeById('casual') ??
-          (LeavesMockStore.instance.types.isNotEmpty
-              ? LeavesMockStore.instance.types.first
-              : null);
+      _end = _isManagerAssign
+          ? _start
+          : _start.add(const Duration(days: 2));
+      if (_isManagerAssign) {
+        _type = _preferCasual(_managerTypes);
+      } else {
+        _type =
+            _store.typeByNameHint('casual') ??
+            (_store.types.isNotEmpty ? _store.types.first : null);
+      }
       _noteController.text =
           "I've been feeling unwell due to frequent business trips.";
       _documentName = null;
@@ -127,39 +230,139 @@ class _ApplyLeaveSheetState extends State<ApplyLeaveSheet> {
       context,
       selectedTypeId: _type?.id,
       requestedDays: _days <= 0 ? 1 : _days,
+      types: _isManagerAssign ? _managerTypes : null,
     );
     if (selected == null || !mounted) return;
     setState(() => _type = selected);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final type = _type;
-    if (type == null || _days <= 0) return;
-
-    final store = LeavesMockStore.instance;
-    final LeaveRequest result;
-    if (_isEdit) {
-      final updated = store.updateLeave(
-        requestId: widget.existing!.id,
-        typeId: type.id,
-        startDate: _start,
-        endDate: _end,
-        note: _noteController.text,
-        documentName: _documentName,
-        clearDocument: _documentName == null,
+    if (type == null) {
+      ToastHelper.leaveApplyFailed(
+        context,
+        message: _loadingManagerTypes
+            ? 'Loading leave types…'
+            : 'Please select a leave type',
       );
-      if (updated == null) return;
-      result = updated;
-    } else {
-      result = store.applyLeave(
-        typeId: type.id,
-        startDate: _start,
-        endDate: _end,
-        note: _noteController.text,
-        documentName: _documentName,
-      );
+      return;
     }
-    Navigator.pop(context, result);
+    if (_days <= 0 || _submitting) return;
+
+    if (_isManagerAssign) {
+      await _submitManagerAssign(type);
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final LeaveRequest? result;
+      if (_isEdit) {
+        result = await _store.updateLeave(
+          requestId: widget.existing!.id,
+          typeId: type.id,
+          startDate: _start,
+          endDate: _end,
+          note: _noteController.text,
+          documentName: _documentName,
+          clearDocument: _documentName == null,
+        );
+      } else {
+        result = await _store.applyLeave(
+          typeId: type.id,
+          startDate: _start,
+          endDate: _end,
+          note: _noteController.text,
+          documentName: _documentName,
+        );
+      }
+      if (!mounted) return;
+      if (result == null) {
+        final message = _store.lastError ?? 'Could not submit leave request';
+        ToastHelper.leaveApplyFailed(context, message: message);
+        return;
+      }
+
+      final successMessage =
+          _store.lastSuccessMessage ?? 'Leave request submitted';
+      Navigator.pop(context, result);
+      // Show toast on the root overlay so it survives the sheet closing
+      // (same pattern as clock check-in toasts).
+      final host = rootNavigatorKey.currentContext;
+      if (host != null && host.mounted) {
+        ToastHelper.leaveApplied(host, message: successMessage);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ToastHelper.leaveApplyFailed(
+        context,
+        message: e.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitManagerAssign(LeaveTypeInfo type) async {
+    final userId = widget.employeeUserId;
+    if (userId == null) return;
+    final leaveTypeId = int.tryParse(type.id);
+    if (leaveTypeId == null) {
+      ToastHelper.leaveApplyFailed(
+        context,
+        message: 'Please select a leave type allocated by your company.',
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final response = await bindings.managerEmployeesService.createEmployeeLeave(
+        userId: userId,
+        leaveTypeId: leaveTypeId,
+        startDate: _start,
+        endDate: _end,
+        note: _noteController.text,
+        typeName: type.name,
+      );
+      if (!mounted) return;
+      if (!response.success || !response.isHttpOk) {
+        final message =
+            response.message ?? 'Could not assign leave for this employee';
+        ToastHelper.leaveApplyFailed(context, message: message);
+        return;
+      }
+
+      final created = response.data;
+      final result = LeaveRequest(
+        id: (created?.id ?? '').isEmpty
+            ? 'mgr_${userId}_${_start.millisecondsSinceEpoch}'
+            : created!.id,
+        typeId: type.id,
+        typeName: created?.type ?? type.name,
+        startDate: _start,
+        endDate: _end,
+        status: LeaveRequestStatus.approved,
+        note: _noteController.text.trim(),
+        createdAt: DateTime.now(),
+        timeline: const [],
+      );
+      final successMessage =
+          response.message ?? 'Leave assigned successfully';
+      Navigator.pop(context, result);
+      final host = rootNavigatorKey.currentContext;
+      if (host != null && host.mounted) {
+        ToastHelper.leaveApplied(host, message: successMessage);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ToastHelper.leaveApplyFailed(
+        context,
+        message: e.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -217,26 +420,36 @@ class _ApplyLeaveSheetState extends State<ApplyLeaveSheet> {
         Padding(
           padding: EdgeInsets.fromLTRB(20, 14, 20, 14 + bottom),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              MyButton(
-                compact: true,
-                height: 44,
-                size: MyButtonSize.normal,
-                buttonText: 'Clear',
-                backgroundColor: kWhite,
-                fontColor: kBlack,
-                outlineColor: kBorderColor,
-                onTap: () async => _clear(),
+              Expanded(
+                child: MyButton(
+                  height: 48,
+                  size: MyButtonSize.normal,
+                  buttonText: _isEdit ? 'Cancel' : 'Clear',
+                  backgroundColor: kWhite,
+                  fontColor: kBlack,
+                  outlineColor: kBorderColor,
+                  onTap: () async {
+                    if (_isEdit) {
+                      Navigator.pop(context);
+                      return;
+                    }
+                    _clear();
+                  },
+                ),
               ),
-              MyButton(
-                compact: true,
-                height: 44,
-                size: MyButtonSize.normal,
-                buttonText: 'Submit',
-                backgroundColor: kBlack,
-                fontColor: kWhite,
-                onTap: () async => _submit(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: MyButton(
+                  height: 48,
+                  size: MyButtonSize.normal,
+                  buttonText: _submitting
+                      ? 'Saving...'
+                      : (_isEdit ? 'Save Change' : 'Submit'),
+                  backgroundColor: kBlack,
+                  fontColor: kWhite,
+                  onTap: _submitting ? null : () async => _submit(),
+                ),
               ),
             ],
           ),
@@ -604,20 +817,10 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
     _monthCtrl = FixedExtentScrollController(initialItem: _month - 1);
     _dayCtrl = FixedExtentScrollController(initialItem: _day - 1);
     _yearCtrl = FixedExtentScrollController(initialItem: _year - _minYear);
-    _monthCtrl.addListener(_onScroll);
-    _dayCtrl.addListener(_onScroll);
-    _yearCtrl.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _monthCtrl.removeListener(_onScroll);
-    _dayCtrl.removeListener(_onScroll);
-    _yearCtrl.removeListener(_onScroll);
     _monthCtrl.dispose();
     _dayCtrl.dispose();
     _yearCtrl.dispose();
@@ -631,7 +834,11 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
     if (day != _day) {
       _day = day;
       if (_dayCtrl.hasClients) {
-        _dayCtrl.jumpToItem(_day - 1);
+        _dayCtrl.animateToItem(
+          _day - 1,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+        );
       }
     }
     widget.onChanged(DateTime(_year, _month, _day));
@@ -648,26 +855,22 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
     };
   }
 
-  int _selectedIndex(FixedExtentScrollController controller, int fallback) {
-    if (!controller.hasClients) return fallback;
-    return controller.selectedItem;
-  }
-
   Widget _column({
     required FixedExtentScrollController controller,
     required int childCount,
-    required int selectedFallback,
+    required int selectedIndex,
     required String Function(int index) labelAt,
     required ValueChanged<int> onSelected,
   }) {
-    final selected = _selectedIndex(controller, selectedFallback);
-
     return ListWheelScrollView.useDelegate(
       controller: controller,
       itemExtent: _itemExtent,
       perspective: 0.0025,
       diameterRatio: 1.4,
-      physics: const FixedExtentScrollPhysics(),
+      // Bouncy parent keeps flings smooth; FixedExtent snaps to a row.
+      physics: const FixedExtentScrollPhysics(
+        parent: BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+      ),
       onSelectedItemChanged: (index) {
         HapticFeedback.selectionClick();
         onSelected(index);
@@ -677,7 +880,7 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
         builder: (context, index) {
           return Center(
             child: Opacity(
-              opacity: _opacityFor(index, selected),
+              opacity: _opacityFor(index, selectedIndex),
               child: Text(
                 labelAt(index),
                 style: const TextStyle(
@@ -739,7 +942,7 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
                   child: _column(
                     controller: _monthCtrl,
                     childCount: 12,
-                    selectedFallback: _month - 1,
+                    selectedIndex: _month - 1,
                     labelAt: (i) => _months[i],
                     onSelected: (i) {
                       setState(() => _month = i + 1);
@@ -752,7 +955,7 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
                   child: _column(
                     controller: _dayCtrl,
                     childCount: dayCount,
-                    selectedFallback: _day - 1,
+                    selectedIndex: _day - 1,
                     labelAt: (i) => '${i + 1}',
                     onSelected: (i) {
                       setState(() => _day = i + 1);
@@ -765,7 +968,7 @@ class _LeaveDateWheelState extends State<_LeaveDateWheel> {
                   child: _column(
                     controller: _yearCtrl,
                     childCount: _maxYear - _minYear + 1,
-                    selectedFallback: _year - _minYear,
+                    selectedIndex: _year - _minYear,
                     labelAt: (i) => '${_minYear + i}',
                     onSelected: (i) {
                       setState(() => _year = _minYear + i);

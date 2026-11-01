@@ -171,6 +171,10 @@ class LocationServiceImpl implements LocationService {
   }
 
   GpsReading _readingFrom(Position position, {required bool enforceAccuracy}) {
+    if (position.isMocked) {
+      throw const MockLocationDetectedException();
+    }
+
     if (enforceAccuracy && position.accuracy > maxAcceptableAccuracyMeters) {
       throw LocationAccuracyTooLowException(position.accuracy);
     }
@@ -178,7 +182,7 @@ class LocationServiceImpl implements LocationService {
     return GpsReading(
       location: LocationModel(lat: position.latitude, lon: position.longitude),
       accuracyMeters: position.accuracy,
-      isMocked: position.isMocked,
+      isMocked: false,
     );
   }
 

@@ -24,7 +24,11 @@ class TokenService {
       if (value == 'Data has been reset') return null;
       return value;
     } catch (e) {
-      AppLogger.error('TokenService: read failed ($key): $e', e.toString(), StackTrace.current.toString());
+      AppLogger.error(
+        'TokenService: read failed ($key): $e',
+        e.toString(),
+        StackTrace.current.toString(),
+      );
       try {
         await _storage.deleteAll();
       } catch (_) {}
@@ -36,12 +40,20 @@ class TokenService {
     try {
       await _storage.write(key: key, value: value);
     } catch (e) {
-      AppLogger.error('TokenService: write failed ($key): $e', e.toString(), StackTrace.current.toString());
+      AppLogger.error(
+        'TokenService: write failed ($key): $e',
+        e.toString(),
+        StackTrace.current.toString(),
+      );
       try {
         await _storage.deleteAll();
         await _storage.write(key: key, value: value);
       } catch (e2) {
-        AppLogger.error('TokenService: write retry failed ($key): $e2', e2.toString(), StackTrace.current.toString());
+        AppLogger.error(
+          'TokenService: write retry failed ($key): $e2',
+          e2.toString(),
+          StackTrace.current.toString(),
+        );
       }
     }
   }
@@ -50,7 +62,11 @@ class TokenService {
     try {
       await _storage.delete(key: key);
     } catch (e) {
-      AppLogger.error('TokenService: delete failed ($key): $e', e.toString(), StackTrace.current.toString());
+      AppLogger.error(
+        'TokenService: delete failed ($key): $e',
+        e.toString(),
+        StackTrace.current.toString(),
+      );
     }
   }
 
@@ -72,11 +88,20 @@ class TokenService {
   Future<String?> get userRole => _read(AppConstants.keyUserRole);
 
   Future<void> markOnboardingCompleted() async {
-    await _write('onboarding_completed', 'true');
+    await _write(AppConstants.keyOnboardingCompleted, 'true');
   }
 
   Future<bool> get isOnboardingCompleted async {
-    final flag = await _read('onboarding_completed');
+    final flag = await _read(AppConstants.keyOnboardingCompleted);
+    return flag == 'true';
+  }
+
+  Future<void> markPermissionsSetupCompleted() async {
+    await _write(AppConstants.keyPermissionsSetupCompleted, 'true');
+  }
+
+  Future<bool> get isPermissionsSetupCompleted async {
+    final flag = await _read(AppConstants.keyPermissionsSetupCompleted);
     return flag == 'true';
   }
 
@@ -144,10 +169,7 @@ class TokenService {
 
   Future<void> cachePermissionLocation(Map<String, dynamic>? location) async {
     if (location == null) return;
-    await _write(
-      AppConstants.keyPermissionLocationJson,
-      jsonEncode(location),
-    );
+    await _write(AppConstants.keyPermissionLocationJson, jsonEncode(location));
   }
 
   Future<Map<String, dynamic>?> get cachedPermissionLocation async {
@@ -213,17 +235,47 @@ class TokenService {
     AppLogger.info('TokenService: session cleared.');
   }
 
+  /// Optional network refresher (wired from [AppBindings] → AuthService).
+  /// Returns true when a new access token was saved.
+  Future<bool> Function()? networkRefresher;
+
   /// Checks whether the stored access token is still usable.
   ///
-  /// Full refresh-token rotation requires a backend `/auth/refresh` endpoint.
-  /// Until that exists: expired tokens clear the session and return false so
-  /// callers log the user out instead of sending dead credentials.
-  Future<bool> tryRefreshSession() async {
+  /// - [forceNetwork] false (default): skip network if not locally expired;
+  ///   on local expiry try refresh, otherwise keep session for `/auth/me`.
+  /// - [forceNetwork] true (401 recovery): always call [networkRefresher];
+  ///   returns true only when a new token was saved.
+  Future<bool> tryRefreshSession({bool forceNetwork = false}) async {
     final token = await accessToken;
     if (token == null) return false;
-    if (!token.isExpired) return true;
-    await clearSession();
-    AppLogger.info('TokenService: access token expired; session cleared.');
-    return false;
+    if (!forceNetwork && !token.isExpired) return true;
+
+    final refresher = networkRefresher;
+    if (refresher != null) {
+      try {
+        final ok = await refresher();
+        if (ok) {
+          AppLogger.info('TokenService: access token refreshed via network.');
+          return true;
+        }
+      } catch (e) {
+        AppLogger.info('TokenService: network refresh failed: $e');
+      }
+    }
+
+    if (forceNetwork) {
+      AppLogger.info(
+        'TokenService: forced network refresh failed; session not renewed.',
+      );
+      return false;
+    }
+
+    // Do not clearSession() on local expiry — that caused surprise logouts
+    // when expires_in was short or the clock skewed. Server 401 + /auth/me
+    // remains the authority for ending a session.
+    AppLogger.info(
+      'TokenService: access token past local expiry; keeping session for /auth/me.',
+    );
+    return true;
   }
 }

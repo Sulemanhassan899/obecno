@@ -108,7 +108,10 @@ void main() {
     // Orphan 12:05 AM check-out closes 10:42 PM → next day 12:05 AM.
     expect(summary.lastCheckOut, DateTime(2026, 10, 14, 0, 5));
     expect(summary.isCheckedIn, isFalse);
-    // Matches portal week list hours (~23h 53m).
-    expect(summary.totalWorkingDuration, const Duration(hours: 23, minutes: 53));
+    // Segments: 12:12 AM→10:40 PM + 10:42 PM→12:05 AM (gap ~2m unpaid).
+    expect(
+      summary.totalWorkingDuration,
+      const Duration(hours: 23, minutes: 51, seconds: 7),
+    );
   });
 }

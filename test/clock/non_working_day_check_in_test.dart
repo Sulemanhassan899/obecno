@@ -120,7 +120,7 @@ void main() {
   });
 
   group('Attendance calendar: full week with punching', () {
-    test('punched weekdays are worked; punched weekend stays weekend', () {
+    test('punched weekdays and punched weekend are worked', () {
       final punched = {
         for (final day in week)
           DateTime(day.year, day.month, day.day),
@@ -139,14 +139,15 @@ void main() {
         holidays: const [],
       );
 
+      // Punches win over "weekend" (beige via isWeekendContext in the list).
       expect(classified.map((day) => day.type), [
         DayCardType.worked,
         DayCardType.worked,
         DayCardType.worked,
         DayCardType.worked,
         DayCardType.worked,
-        DayCardType.weekend,
-        DayCardType.weekend,
+        DayCardType.worked,
+        DayCardType.worked,
       ]);
     });
   });
@@ -207,10 +208,13 @@ void main() {
       );
 
       for (var day = 10; day <= 16; day++) {
+        // Weekend grouping adds a banner dated Sunday — pick the punch row.
         final record = month.records.firstWhere(
-          (item) => item.date.year == 2026 &&
+          (item) =>
+              item.date.year == 2026 &&
               item.date.month == 8 &&
-              item.date.day == day,
+              item.date.day == day &&
+              item.status != AttendanceDayStatus.weekend,
         );
         expect(record.status, AttendanceDayStatus.normal, reason: 'day $day');
         expect(record.checkIn, '09:00 AM', reason: 'day $day');

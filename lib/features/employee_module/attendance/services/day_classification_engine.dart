@@ -85,19 +85,22 @@ class DayClassificationEngine {
       }
     }
 
-    if (!workingWeekdays.contains(dateOnly.weekday)) {
-      return DayClassification(date: dateOnly, type: DayCardType.weekend);
-    }
-
+    // Leave / punches win over "weekend" so Sat/Sun activity still lists as
+    // On Leave or worked rows (with weekend beige via isWeekendContext).
     if (leaveDates.contains(dateOnly)) {
       return DayClassification(date: dateOnly, type: DayCardType.onLeave);
     }
 
     final hasAttendance = attendanceDates.contains(dateOnly);
-    return DayClassification(
-      date: dateOnly,
-      type: hasAttendance ? DayCardType.worked : DayCardType.absent,
-    );
+    if (hasAttendance) {
+      return DayClassification(date: dateOnly, type: DayCardType.worked);
+    }
+
+    if (!workingWeekdays.contains(dateOnly.weekday)) {
+      return DayClassification(date: dateOnly, type: DayCardType.weekend);
+    }
+
+    return DayClassification(date: dateOnly, type: DayCardType.absent);
   }
 
   static List<DayClassification> classifyWeek({

@@ -67,17 +67,8 @@ abstract class BaseProvider extends ChangeNotifier {
       if (existing != null && !existing.isCancelled) {
         final age = DateTime.now().difference(existing.createdAt);
         if (age < _staleCallTimeout) {
-          debugPrint(
-            '[BaseProvider] "$operationKey" blocked -- another call under '
-            'this key is still in flight (age: ${age.inSeconds}s).',
-          );
           return false;
         }
-
-        debugPrint(
-          '[BaseProvider] "$operationKey" had a stale token '
-          '(${age.inSeconds}s old) -- treating as stuck, not blocking.',
-        );
       }
     }
 
@@ -88,9 +79,6 @@ abstract class BaseProvider extends ChangeNotifier {
       final response = await request(cancelToken);
 
       if (cancelToken.isCancelled) {
-        debugPrint(
-          '[BaseProvider] "$operationKey" superseded/cancelled, skipping.',
-        );
         return false;
       }
 
@@ -105,9 +93,8 @@ abstract class BaseProvider extends ChangeNotifier {
         return true;
       }
 
-      debugPrint(
-        '[BaseProvider] <- "$operationKey" failed: ${response.message}',
-      );
+      // Silent polls must not wipe a healthy UI into an error banner.
+      if (silent) return false;
       setError(response.message ?? 'Something went wrong. Please try again.');
       return false;
     } finally {

@@ -720,18 +720,20 @@ class LocationFlagDemoController extends ChangeNotifier {
       return;
     }
 
-    if (type == null || body == null) return;
-    if (_premisesAlreadyNotified(type, now)) return;
+    // Reaching here means type/body were set by a non-return branch above.
+    final alertType = type;
+    final alertBody = body;
+    if (_premisesAlreadyNotified(alertType, now)) return;
 
     await ReminderNotificationService.instance.showCustom(
       id: notifId,
       title: title,
-      body: body,
+      body: alertBody,
       payload: payload,
     );
     _lastPremisesNotifySlot = slotStart(now);
-    _lastPremisesNotifyType = type;
-    lastMessage = body;
+    _lastPremisesNotifyType = alertType;
+    lastMessage = alertBody;
   }
 
   Future<GpsSample> _liveSample(DateTime time) => readLiveSample(time);

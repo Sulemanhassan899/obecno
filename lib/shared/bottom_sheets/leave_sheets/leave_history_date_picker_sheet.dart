@@ -8,9 +8,8 @@ import 'package:obecno/widgets/my_button.dart';
 
 /// Result of leave-history duration picker: single day, range, or cleared.
 class LeaveHistoryDateRange {
-  const LeaveHistoryDateRange({required DateTime start, DateTime? end})
-    : start = start,
-      end = end ?? start,
+  const LeaveHistoryDateRange({required DateTime this.start, DateTime? end})
+    : end = end ?? start,
       isCleared = false;
 
   const LeaveHistoryDateRange.cleared()

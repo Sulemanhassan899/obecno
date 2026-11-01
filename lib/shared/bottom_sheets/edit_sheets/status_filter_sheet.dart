@@ -192,10 +192,8 @@ class _StatusFilterSheetBodyState extends State<_StatusFilterSheetBody> {
     _selectedId = widget.initialSelectedId;
   }
 
-  List<StatusFilterOption> get _options =>
-      (widget.options != null && widget.options!.isNotEmpty)
-      ? widget.options!
-      : StatusFilterOption.options;
+  /// Caller must pass API (or screen-specific) options — no hardcoded catalog.
+  List<StatusFilterOption> get _options => widget.options ?? const [];
 
   @override
   Widget build(BuildContext context) {

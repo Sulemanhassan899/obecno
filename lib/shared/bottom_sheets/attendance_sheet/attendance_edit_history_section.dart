@@ -73,7 +73,9 @@ class AttendanceEditHistorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unique = AttendanceEditRequest.dedupe(requests);
+    final unique = _collapseDuplicateRequests(
+      AttendanceEditRequest.dedupe(requests),
+    );
     if (unique.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -85,6 +87,57 @@ class AttendanceEditHistorySection extends StatelessWidget {
         ...unique.expand(_rowsFor),
       ],
     );
+  }
+
+  /// Drops a pending "Fix Request Sent" when the same new time was already
+  /// approved/rejected, and collapses identical decided rows (API often
+  /// returns the same edit in both `changes` and `change_requests`).
+  static List<AttendanceEditRequest> _collapseDuplicateRequests(
+    List<AttendanceEditRequest> raw,
+  ) {
+    if (raw.length <= 1) return raw;
+
+    final sorted = List<AttendanceEditRequest>.of(raw)
+      ..sort((a, b) {
+        if (a.isPending != b.isPending) return a.isPending ? 1 : -1;
+        final aAt = a.actionedAt ?? a.requestedAt;
+        final bAt = b.actionedAt ?? b.requestedAt;
+        return bAt.compareTo(aAt);
+      });
+
+    String clockKey(AttendanceEditRequest request, String label) {
+      final parsed = AttendanceEditRequest.parseClockTime(
+        label,
+        date: request.requestedAt,
+      );
+      if (parsed == null) {
+        final trimmed = label.trim().toLowerCase();
+        if (trimmed.isEmpty || trimmed == '--') return '--';
+        return trimmed;
+      }
+      if (AttendanceEditRequest.isPlaceholderMint(parsed)) return '--';
+      return '${parsed.hour}:${parsed.minute}';
+    }
+
+    final decidedNewTimes = <String>{
+      for (final request in sorted)
+        if (!request.isPending) clockKey(request, request.newTime),
+    };
+
+    final out = <AttendanceEditRequest>[];
+    final seen = <String>{};
+    for (final request in sorted) {
+      final newTime = clockKey(request, request.newTime);
+      if (request.isPending && decidedNewTimes.contains(newTime)) {
+        continue;
+      }
+      final key = request.isPending
+          ? 'pending|$newTime'
+          : '${request.status.name}|${clockKey(request, request.originalTime)}|$newTime';
+      if (!seen.add(key)) continue;
+      out.add(request);
+    }
+    return out;
   }
 }
 

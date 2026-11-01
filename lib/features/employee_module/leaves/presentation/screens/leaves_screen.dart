@@ -1,12 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/app_animations.dart';
+import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
-import 'package:obecno/features/employee_module/leaves/data/mock/leaves_mock_store.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
+import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/screens/holidays_calendar_screen.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/screens/leave_history_screen.dart';
@@ -17,6 +20,7 @@ import 'package:obecno/features/employee_module/leaves/presentation/widgets/leav
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:obecno/main.dart';
 
 class LeavesScreen extends StatefulWidget {
   const LeavesScreen({super.key});
@@ -25,19 +29,32 @@ class LeavesScreen extends StatefulWidget {
   State<LeavesScreen> createState() => _LeavesScreenState();
 }
 
-class _LeavesScreenState extends State<LeavesScreen> {
-  final LeavesMockStore _store = LeavesMockStore.instance;
+class _LeavesScreenState extends State<LeavesScreen>
+    with WidgetsBindingObserver {
+  final LeavesStore _store = bindings.leavesStore;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _store.addListener(_refresh);
+    _store.ensureLoaded();
+    _store.watchPendingStatuses();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _store.unwatchPendingStatuses();
     _store.removeListener(_refresh);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _store.refresh();
+    }
   }
 
   void _refresh() {
@@ -46,6 +63,7 @@ class _LeavesScreenState extends State<LeavesScreen> {
 
   Future<void> _openApply() async {
     await ApplyLeaveSheet.show(context);
+    await _store.refresh();
   }
 
   @override
@@ -65,33 +83,40 @@ class _LeavesScreenState extends State<LeavesScreen> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _summaryCard(balances),
-                  const SizedBox(height: 12),
-                  _linksCard(),
-                  if (requests.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    AppText.p1(
-                      'Recent Requests',
-                      weight: FontWeight.w600,
-                      align: TextAlign.left,
-                    ),
+              child: ShimmerRefreshIndicator(
+                instagramStyle: true,
+                triggerFraction: 0.40,
+                showOrb: false,
+                onRefresh: () => _store.refresh(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  children: [
+                    _summaryCard(balances),
                     const SizedBox(height: 12),
-                    for (final request in requests.take(8)) ...[
-                      LeaveRequestCard(
-                        request: request,
-                        onTap: () => LeaveDetailSheet.show(
-                          context,
-                          requestId: request.id,
-                        ),
+                    _linksCard(),
+                    if (requests.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      AppText.p1(
+                        'Recent Requests',
+                        weight: FontWeight.w600,
+                        align: TextAlign.left,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+                      for (final request in requests.take(8)) ...[
+                        LeaveRequestCard(
+                          request: request,
+                          onTap: () => LeaveDetailSheet.show(
+                            context,
+                            requestId: request.id,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                     ],
+                    const SizedBox(height: 90),
                   ],
-                  const SizedBox(height: 90),
-                ],
+                ),
               ),
             ),
           ],
@@ -269,9 +294,16 @@ class _LeavesScreenState extends State<LeavesScreen> {
             icon: Assets.imagesLeavesFilledIcon,
             size: 26,
             onTap: () {
+              final isManager =
+                  context.read<AuthProvider>().homeTarget ==
+                  AuthHomeTarget.manager;
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const HolidaysCalendarScreen(),
+                  builder: (_) => HolidaysCalendarScreen(
+                    mode: isManager
+                        ? HolidaysCalendarMode.manager
+                        : HolidaysCalendarMode.employee,
+                  ),
                 ),
               );
             },
