@@ -613,7 +613,7 @@ class ManagerLocationsService {
     }
 
     return ApiResponse.success(
-      readBack ?? written.data ?? schedule,
+      readBack,
       message: written.message,
       statusCode: written.statusCode,
     );

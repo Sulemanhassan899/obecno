@@ -1958,27 +1958,148 @@ class ManagerEmployeesRepository extends BaseRepository {
   }
 
   List<HolidayInfo> _parseHolidays(dynamic json) {
-    dynamic raw = json;
-    if (json is Map) {
-      final map = Map<String, dynamic>.from(json);
-      raw = map['data'] ?? map['holidays'] ?? map['items'] ?? json;
-    }
-    if (raw is! List) return const [];
     final holidays = <HolidayInfo>[];
-    for (final item in raw) {
-      if (item is! Map) continue;
-      final map = Map<String, dynamic>.from(item);
-      final dateRaw = map['date'] ?? map['holiday_date'] ?? map['day'];
-      final parsed = DateTime.tryParse(dateRaw?.toString() ?? '');
-      if (parsed == null) continue;
+    final seen = <String>{};
+
+    DateTime? asDate(dynamic raw) {
+      if (raw == null) return null;
+      final text = raw.toString().trim();
+      if (text.isEmpty) return null;
+      // Prefer YYYY-MM-DD prefix so timezones don't shift the calendar day.
+      final dateOnly = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(text);
+      if (dateOnly != null) {
+        return DateTime(
+          int.parse(dateOnly.group(1)!),
+          int.parse(dateOnly.group(2)!),
+          int.parse(dateOnly.group(3)!),
+        );
+      }
+      final parsed = DateTime.tryParse(text);
+      if (parsed == null) return null;
+      final local = parsed.isUtc ? parsed.toLocal() : parsed;
+      return DateTime(local.year, local.month, local.day);
+    }
+
+    void add(DateTime date, String name) {
+      final key = '${date.year}-${date.month}-${date.day}';
+      if (!seen.add(key)) return;
+      final trimmed = name.trim();
       holidays.add(
         HolidayInfo(
-          date: DateTime(parsed.year, parsed.month, parsed.day),
-          name:
-              (map['name'] ?? map['title'] ?? map['label'] ?? 'Public Holiday')
-                  .toString(),
+          date: date,
+          name: trimmed.isEmpty ? 'Public Holiday' : trimmed,
         ),
       );
+    }
+
+    void consumeMap(Map<String, dynamic> map) {
+      final date = asDate(
+        map['date'] ??
+            map['holiday_date'] ??
+            map['day'] ??
+            map['start_date'] ??
+            map['from_date'] ??
+            map['holidayDate'],
+      );
+      final status = (map['day_status'] ??
+              map['status'] ??
+              map['type'] ??
+              map['event_type'] ??
+              map['eventType'] ??
+              '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final explicitHoliday =
+          map['is_holiday'] == true ||
+          map['is_holiday'] == 1 ||
+          map['is_holiday'] == '1' ||
+          map['isHoliday'] == true ||
+          map['isHoliday'] == 1 ||
+          map['isHoliday'] == '1' ||
+          status.contains('holiday');
+      final holidayName = (map['name'] ??
+              map['title'] ??
+              map['label'] ??
+              map['holiday_name'] ??
+              map['holidayName'] ??
+              map['event_name'] ??
+              map['eventName'])
+          ?.toString()
+          .trim();
+      final looksLikeDayShell =
+          map.containsKey('day_status') ||
+          map.containsKey('is_holiday') ||
+          map.containsKey('isHoliday') ||
+          map.containsKey('attendance') ||
+          map.containsKey('check_in');
+      // Bare holiday rows (date + name) or explicit holiday flags.
+      // Skip attendance day shells that are not marked as holidays.
+      if (date != null &&
+          (explicitHoliday ||
+              (!looksLikeDayShell &&
+                  (holidayName != null && holidayName.isNotEmpty)))) {
+        add(
+          date,
+          (holidayName == null || holidayName.isEmpty)
+              ? 'Public Holiday'
+              : holidayName,
+        );
+      } else if (date != null &&
+          !looksLikeDayShell &&
+          holidayName == null &&
+          status.isEmpty) {
+        add(date, 'Public Holiday');
+      }
+
+      for (final key in const [
+        'holidays',
+        'public_holidays',
+        'publicHolidays',
+        'company_holidays',
+        'companyHolidays',
+        'holiday_dates',
+        'holidayDates',
+        'events',
+        'items',
+        'days',
+        'entries',
+        'calendar',
+        'data',
+      ]) {
+        final nested = map[key];
+        if (nested is List) {
+          for (final item in nested) {
+            if (item is Map) {
+              consumeMap(Map<String, dynamic>.from(item));
+            } else {
+              final d = asDate(item);
+              if (d != null) add(d, 'Public Holiday');
+            }
+          }
+        } else if (nested is Map) {
+          Map<String, dynamic>.from(nested).forEach((k, v) {
+            final keyDate = asDate(k);
+            if (v is Map) {
+              final m = Map<String, dynamic>.from(v);
+              if (keyDate != null && m['date'] == null) m['date'] = k;
+              consumeMap(m);
+            } else if (keyDate != null) {
+              add(keyDate, v?.toString() ?? 'Public Holiday');
+            }
+          });
+        }
+      }
+    }
+
+    if (json is List) {
+      for (final item in json) {
+        if (item is Map) consumeMap(Map<String, dynamic>.from(item));
+      }
+      return holidays;
+    }
+    if (json is Map) {
+      consumeMap(Map<String, dynamic>.from(json));
     }
     return holidays;
   }

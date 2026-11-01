@@ -71,18 +71,27 @@ class _LeaveDetailSheetState extends State<LeaveDetailSheet> {
   void initState() {
     super.initState();
     _store.addListener(_refresh);
+    bindings.profileProvider.addListener(_refresh);
     _store.watchPendingStatuses();
-    // Always refresh so note + reviewer name stay current after approve/reject.
-    if (_request != null && !_request!.isLocal) {
-      unawaited(_store.refresh());
-    } else {
-      unawaited(_store.ensureLoaded());
-    }
+    // Defer past this frame — refresh() notifies LeavesStore immediately, which
+    // must not run while the sheet is still mounting (setState during build).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Profile carries reports_to (manager name) when leave API omits reviewer.
+      unawaited(bindings.profileProvider.loadProfile());
+      // Always refresh so note + reviewer name stay current after approve/reject.
+      if (_request != null && !_request!.isLocal) {
+        unawaited(_store.refresh());
+      } else {
+        unawaited(_store.ensureLoaded());
+      }
+    });
   }
 
   @override
   void dispose() {
     _store.unwatchPendingStatuses();
+    bindings.profileProvider.removeListener(_refresh);
     _store.removeListener(_refresh);
     super.dispose();
   }
@@ -336,25 +345,25 @@ class _LeaveDetailSheetState extends State<LeaveDetailSheet> {
               align: TextAlign.left,
             ),
           ),
-          const Divider(height: 1, color: kBorderColor),
-          row(
-            'Document',
-            Row(
-              children: [
-                Expanded(
-                  child: AppText.p2(
-                    color: kGreyColor,
-
-                    request.documentName ?? '--',
-                    weight: FontWeight.w400,
-                    align: TextAlign.left,
+          if ((request.documentName ?? '').trim().isNotEmpty) ...[
+            const Divider(height: 1, color: kBorderColor),
+            row(
+              'Document',
+              Row(
+                children: [
+                  Expanded(
+                    child: AppText.p2(
+                      color: kGreyColor,
+                      request.documentName!.trim(),
+                      weight: FontWeight.w400,
+                      align: TextAlign.left,
+                    ),
                   ),
-                ),
-                if (request.documentName != null)
                   AppText.p2('View', color: kBlack, weight: FontWeight.w400),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
           const Divider(height: 1, color: kBorderColor),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),

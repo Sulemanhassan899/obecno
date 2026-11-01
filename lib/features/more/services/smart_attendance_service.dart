@@ -465,14 +465,22 @@ class SmartAttendanceService extends ChangeNotifier {
 
   Future<GpsReading?> _readGps() async {
     try {
-      return await _locationService.getCurrentReading();
+      final reading = await _locationService.getCurrentReading();
+      if (reading.isMocked) return null;
+      return reading;
+    } on MockLocationDetectedException {
+      return null;
     } on LocationPermissionDeniedException {
       return null;
     } on LocationServiceDisabledException {
       return null;
     } catch (_) {
       try {
-        return await _locationService.getLastKnownReading();
+        final last = await _locationService.getLastKnownReading();
+        if (last == null || last.isMocked) return null;
+        return last;
+      } on MockLocationDetectedException {
+        return null;
       } catch (_) {
         return null;
       }

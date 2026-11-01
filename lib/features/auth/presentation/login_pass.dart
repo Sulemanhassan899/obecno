@@ -17,6 +17,7 @@ import 'package:obecno/core/monitors/app_guard.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -85,57 +86,59 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
     setState(() => _isSubmitting = true);
 
     final password = _passController.text.trim();
-    final join = context.read<JoinInviteProvider>();
-    await join.ensureLoaded();
-    final invite = join.matchCredentials(
-      contact: widget.email,
-      password: password,
-    );
 
-    if (invite != null) {
-      final ok = await context.read<AuthProvider>().loginWithLocalInvite(
-            contact: widget.email,
-            companyName: invite.companyName,
-            locationName: invite.locationName,
-          );
+    // Local-invite bypass is debug/profile only. Release always uses the API.
+    if (!kReleaseMode) {
+      final join = context.read<JoinInviteProvider>();
+      await join.ensureLoaded();
       if (!mounted) return;
-      if (!ok) {
-        setState(() {
-          _isSubmitting = false;
-          _errorText =
-              context.read<AuthProvider>().errorMessage ?? 'Login failed';
-        });
+      final invite = join.matchCredentials(
+        contact: widget.email,
+        password: password,
+      );
+
+      if (invite != null) {
+        final ok = await context.read<AuthProvider>().loginWithLocalInvite(
+              contact: widget.email,
+              companyName: invite.companyName,
+              locationName: invite.locationName,
+            );
+        if (!mounted) return;
+        if (!ok) {
+          setState(() {
+            _isSubmitting = false;
+            _errorText =
+                context.read<AuthProvider>().errorMessage ?? 'Login failed';
+          });
+          return;
+        }
+
+        final joined = await join.completeJoin(
+          invite.id,
+          contact: widget.email,
+        );
+        if (!mounted) return;
+
+        // Debug-only path. Release never marks devices approved locally.
+        JoinDeviceAutoApprove.sync(
+          auth: context.read<AuthProvider>(),
+          join: join,
+          devices: context.read<DeviceProvider>(),
+        );
+
+        setState(() => _isSubmitting = false);
+
+        final viaLink = (joined ?? invite).source == JoinInviteSource.link;
+        final dest = viaLink ? '/youve_joined' : '/employee_nav';
+        final extra = viaLink ? (joined ?? invite).companyName : null;
+        await _routeAfterAuth(dest: dest, extra: extra);
         return;
       }
-
-      final joined = await join.completeJoin(
-        invite.id,
-        contact: widget.email,
-      );
-      if (!mounted) return;
-
-      // Manual invite is already account-approved → first device auto-approves.
-      // Via-link stays pending until manager approves account (then device too).
-      // No separate device-request is sent for local invite sessions.
-      JoinDeviceAutoApprove.sync(
-        auth: context.read<AuthProvider>(),
-        join: join,
-        devices: context.read<DeviceProvider>(),
-      );
-
-      setState(() => _isSubmitting = false);
-
-      final viaLink = (joined ?? invite).source == JoinInviteSource.link;
-      final dest = viaLink
-          ? '/youve_joined'
-          : '/employee_nav';
-      final extra = viaLink ? (joined ?? invite).companyName : null;
-      await _routeAfterAuth(dest: dest, extra: extra);
-      return;
     }
 
     // STEP 2: email (carried from screen 1) + password against the same
     // POST /api/auth/login endpoint, this time as a real sign-in.
+    if (!mounted) return;
     final ok = await context.read<AuthProvider>().loginWithPassword(
       password,
       rememberMe: _rememberMe,
@@ -181,6 +184,7 @@ class _LoginPasswordScreenState extends State<LoginPasswordScreen> {
 
     if (setupDone || osReady) {
       if (!setupDone) await tokens.markPermissionsSetupCompleted();
+      if (!mounted) return;
       AppGuard.permissionOnboardingPending = false;
       AppLogger.info(
         '[LoginPasswordScreen] Going to $dest (permissions setup done)',

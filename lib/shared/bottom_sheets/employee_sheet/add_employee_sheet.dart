@@ -171,16 +171,8 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
     try {
       final join = context.read<JoinInviteProvider>();
       final companyName = _companyName;
-      final record = await join.prepareLinkShare(companyName: companyName);
-      final message = JoinShareLinks.shareMessage(
-        email: record.contact,
-        password: record.password,
-        companyName: companyName,
-      );
-      debugPrint(
-        '[AddEmployee] link share email=${record.contact} '
-        'password=${record.password}',
-      );
+      await join.prepareLinkShare(companyName: companyName);
+      final message = JoinShareLinks.shareMessage(companyName: companyName);
       await Share.share(message, subject: 'Join $companyName on Obecno');
     } catch (e) {
       if (!mounted) return;
@@ -227,16 +219,10 @@ class _AddEmployeeSheetBodyState extends State<_AddEmployeeSheetBody> {
           })
           .toList(growable: false);
 
-      final created = await join.sendManualInvites(
+      await join.sendManualInvites(
         rows: rows,
         companyName: companyName,
       );
-      for (final invite in created) {
-        debugPrint(
-          '[AddEmployee] invite email=${invite.contact} '
-          'password=${invite.password}',
-        );
-      }
       if (!mounted) return;
 
       final navigator = Navigator.of(context, rootNavigator: true);

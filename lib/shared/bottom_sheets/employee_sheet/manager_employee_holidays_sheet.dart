@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/features/employee_module/attendance/services/day_classification_engine.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
+import 'package:obecno/features/employee_module/leaves/data/services/leaves_service.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_format.dart';
 import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
@@ -16,28 +17,20 @@ class ManagerEmployeeHolidaysSheet {
   static Future<void> show({
     required BuildContext context,
     required int userId,
-    String? employeeName,
   }) {
     return AppSheet.show<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ManagerEmployeeHolidaysSheetBody(
-        userId: userId,
-        employeeName: employeeName,
-      ),
+      builder: (_) => _ManagerEmployeeHolidaysSheetBody(userId: userId),
     );
   }
 }
 
 class _ManagerEmployeeHolidaysSheetBody extends StatefulWidget {
-  const _ManagerEmployeeHolidaysSheetBody({
-    required this.userId,
-    this.employeeName,
-  });
+  const _ManagerEmployeeHolidaysSheetBody({required this.userId});
 
   final int userId;
-  final String? employeeName;
 
   @override
   State<_ManagerEmployeeHolidaysSheetBody> createState() =>
@@ -63,29 +56,65 @@ class _ManagerEmployeeHolidaysSheetBodyState
     });
     try {
       final now = DateTime.now();
+      final years = <int>{now.year, now.year + 1};
       final from = DateTime(now.year, 1, 1);
       final to = DateTime(now.year + 1, 12, 31);
-      final res = await bindings.managerEmployeesService.loadEmployeeHolidays(
-        userId: widget.userId,
-        dateFrom: _ymd(from),
-        dateTo: _ymd(to),
-      );
-      if (!mounted) return;
+      final byKey = <String, LeaveHoliday>{};
 
-      final items = (res.success && res.data != null)
-          ? res.data!
-          : const <HolidayInfo>[];
-      final holidays = items
-          .map((h) => LeaveHoliday(date: h.date, name: h.name))
-          .toList(growable: false)
+      void merge(Iterable<LeaveHoliday> incoming) {
+        for (final holiday in incoming) {
+          final key =
+              '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}';
+          byKey.putIfAbsent(key, () => holiday);
+        }
+      }
+
+      // 1) Holidays assigned / allowed for this employee.
+      merge(
+        await _loadEmployeeHolidays(
+          dateFrom: _ymd(from),
+          dateTo: _ymd(to),
+        ),
+      );
+      if (byKey.isEmpty) {
+        merge(await _loadEmployeeHolidays());
+      }
+
+      // 2) Employee calendar months — holidays stamped on this person's
+      // attendance calendar (office / country / schedule aware).
+      if (byKey.isEmpty) {
+        merge(await _loadFromEmployeeCalendar(years));
+      }
+
+      // 3) Company public holidays (month-by-month — same path Leaves / Attendance
+      // use). Applies to the employee when no per-employee list exists.
+      if (byKey.isEmpty) {
+        merge(await _loadCompanyHolidaysByMonth(years));
+      }
+      if (byKey.isEmpty) {
+        merge(await _loadCompanyHolidaysByYear(years));
+      }
+
+      // 4) Already-warmed leaves store cache.
+      if (byKey.isEmpty) {
+        try {
+          await bindings.leavesStore.ensureHolidaysLoaded();
+          merge(
+            bindings.leavesStore.holidays.where(
+              (h) => years.contains(h.date.year),
+            ),
+          );
+        } catch (_) {}
+      }
+
+      final holidays = byKey.values.toList(growable: false)
         ..sort((a, b) => a.date.compareTo(b.date));
 
+      if (!mounted) return;
       setState(() {
         _holidays = holidays;
         _loading = false;
-        if (!res.success) {
-          _error = 'Could not load holidays';
-        }
+        _error = holidays.isEmpty ? 'No holidays found' : null;
       });
     } catch (_) {
       if (!mounted) return;
@@ -94,6 +123,111 @@ class _ManagerEmployeeHolidaysSheetBodyState
         _error = 'Could not load holidays';
       });
     }
+  }
+
+  Future<List<LeaveHoliday>> _loadEmployeeHolidays({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    try {
+      final res = await bindings.managerEmployeesService.loadEmployeeHolidays(
+        userId: widget.userId,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+      if (!res.success || res.data == null) return const [];
+      return res.data!
+          .map((h) => LeaveHoliday(date: h.date, name: h.name))
+          .toList(growable: false);
+    } catch (_) {}
+    return const [];
+  }
+
+  Future<List<LeaveHoliday>> _loadFromEmployeeCalendar(Set<int> years) async {
+    final byKey = <String, LeaveHoliday>{};
+    final months = <String>[
+      for (final year in years)
+        for (var month = 1; month <= 12; month++)
+          '$year-${month.toString().padLeft(2, '0')}',
+    ];
+
+    const chunkSize = 6;
+    for (var i = 0; i < months.length; i += chunkSize) {
+      final chunk = months.sublist(
+        i,
+        i + chunkSize > months.length ? months.length : i + chunkSize,
+      );
+      final results = await Future.wait(
+        chunk.map(
+          (month) => bindings.managerEmployeesService.loadEmployeeCalendar(
+            userId: widget.userId,
+            month: month,
+          ),
+        ),
+      );
+      for (final res in results) {
+        if (!res.success || res.data == null) continue;
+        for (final holiday in res.data!.holidays) {
+          final key =
+              '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}';
+          byKey.putIfAbsent(
+            key,
+            () => LeaveHoliday(date: holiday.date, name: holiday.name),
+          );
+        }
+      }
+    }
+    return byKey.values.toList(growable: false);
+  }
+
+  Future<List<LeaveHoliday>> _loadCompanyHolidaysByMonth(Set<int> years) async {
+    final byKey = <String, LeaveHoliday>{};
+    final service = AttendanceService(bindings.apiClient);
+    final months = <String>[
+      for (final year in years)
+        for (var month = 1; month <= 12; month++)
+          '$year-${month.toString().padLeft(2, '0')}',
+    ];
+
+    const chunkSize = 6;
+    for (var i = 0; i < months.length; i += chunkSize) {
+      final chunk = months.sublist(
+        i,
+        i + chunkSize > months.length ? months.length : i + chunkSize,
+      );
+      final responses = await Future.wait(
+        chunk.map((month) => service.getCompanyHolidays(month: month)),
+      );
+      for (final response in responses) {
+        if (!response.success || response.data == null) continue;
+        for (final holiday in response.data!) {
+          final key =
+              '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}';
+          byKey.putIfAbsent(
+            key,
+            () => LeaveHoliday(date: holiday.date, name: holiday.name),
+          );
+        }
+      }
+    }
+    return byKey.values.toList(growable: false);
+  }
+
+  Future<List<LeaveHoliday>> _loadCompanyHolidaysByYear(Set<int> years) async {
+    final byKey = <String, LeaveHoliday>{};
+    final service = LeavesService(bindings.apiClient);
+    for (final year in years) {
+      try {
+        final res = await service.getCompanyHolidaysForYear(year);
+        if (!res.success || res.data == null) continue;
+        for (final holiday in res.data!) {
+          final key =
+              '${holiday.date.year}-${holiday.date.month}-${holiday.date.day}';
+          byKey.putIfAbsent(key, () => holiday);
+        }
+      } catch (_) {}
+    }
+    return byKey.values.toList(growable: false);
   }
 
   String _ymd(DateTime d) =>

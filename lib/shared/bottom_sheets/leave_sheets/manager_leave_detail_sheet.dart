@@ -208,8 +208,7 @@ class _ManagerLeaveDetailSheetState extends State<ManagerLeaveDetailSheet> {
           break;
         }
         final start = ManagerTeamLeaveItem.parseLeaveDate(item.fromDate);
-        final end =
-            ManagerTeamLeaveItem.parseLeaveDate(item.toDate) ?? start;
+        final end = ManagerTeamLeaveItem.parseLeaveDate(item.toDate) ?? start;
         if (start == null) continue;
         if (start == DateTime(from.year, from.month, from.day) &&
             end == DateTime(to.year, to.month, to.day)) {
@@ -251,8 +250,9 @@ class _ManagerLeaveDetailSheetState extends State<ManagerLeaveDetailSheet> {
         }
       }
     }
-    final name =
-        (widget.employeeName ?? _leave.employeeName ?? '').trim().toLowerCase();
+    final name = (widget.employeeName ?? _leave.employeeName ?? '')
+        .trim()
+        .toLowerCase();
     if (name.isEmpty) return null;
     for (final member in employees) {
       if (member.name.trim().toLowerCase() == name) {
@@ -636,17 +636,9 @@ class _ManagerLeaveDetailSheetState extends State<ManagerLeaveDetailSheet> {
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          approved ? Icons.check : Icons.close,
-          size: 20,
-          color: color,
-        ),
+        Icon(approved ? Icons.check : Icons.close, size: 20, color: color),
         const SizedBox(width: 8),
-        AppText.p1(
-          label,
-          color: color,
-          weight: FontWeight.w600,
-        ),
+        AppText.p1(label, color: color, weight: FontWeight.w600),
       ],
     );
   }
@@ -857,46 +849,49 @@ class _ManagerLeaveDetailSheetState extends State<ManagerLeaveDetailSheet> {
               align: TextAlign.left,
             ),
           ),
-          const Divider(height: 1, color: kBorderColor),
-          row(
-            'Document',
-            Row(
-              children: [
-                Expanded(
-                  child: AppText.p2(
-                    hasDocument ? documentName : '--',
+          if (hasDocument) ...[
+            const Divider(height: 1, color: kBorderColor),
+            row(
+              'Document',
+              Row(
+                children: [
+                  Expanded(
+                    child: AppText.p2(
+                      documentName,
+                      color: kGreyColor,
+                      weight: FontWeight.w400,
+                      align: TextAlign.left,
+                    ),
+                  ),
+                  AppText.p2('View', color: kPurple, weight: FontWeight.w500),
+                ],
+              ),
+            ),
+          ],
+          if (note != null && note.isNotEmpty) ...[
+            const Divider(height: 1, color: kBorderColor),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppText.p2(
+                    'Note',
                     color: kGreyColor,
                     weight: FontWeight.w400,
                     align: TextAlign.left,
                   ),
-                ),
-                if (hasDocument)
-                  AppText.p2('View', color: kPurple, weight: FontWeight.w500),
-              ],
+                  const SizedBox(height: 6),
+                  AppText.p2(
+                    note,
+                    color: kGreyColor,
+                    weight: FontWeight.w400,
+                    align: TextAlign.left,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: kBorderColor),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AppText.p2(
-                  'Note',
-                  color: kGreyColor,
-                  weight: FontWeight.w400,
-                  align: TextAlign.left,
-                ),
-                const SizedBox(height: 6),
-                AppText.p2(
-                  (note == null || note.isEmpty) ? '--' : note,
-                  color: kGreyColor,
-                  weight: FontWeight.w400,
-                  align: TextAlign.left,
-                ),
-              ],
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -937,10 +932,10 @@ class ManagerLeaveView {
     final status = item.isRejectedLeave
         ? LeaveRequestStatus.rejected
         : item.isPendingInInbox
-            ? LeaveRequestStatus.pending
-            : item.countsAsOnLeave
-                ? LeaveRequestStatus.approved
-                : _statusFrom(item.status ?? item.statusLabel);
+        ? LeaveRequestStatus.pending
+        : item.countsAsOnLeave
+        ? LeaveRequestStatus.approved
+        : _statusFrom(item.status ?? item.statusLabel);
     return ManagerLeaveView(
       id: item.id,
       typeName: (item.leaveType ?? 'Leave').trim().isEmpty

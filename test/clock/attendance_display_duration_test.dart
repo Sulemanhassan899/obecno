@@ -26,9 +26,10 @@ void main() {
     final summary = AttendanceEngine.compute(events);
     final now = DateTime(2026, 10, 19, 22, 7);
 
-    // Card header: first in of the day, latest completed out.
+    // Card header: first in of the day; checkout hidden while day still open.
     expect(summary.displayCheckIn, DateTime(2026, 10, 19, 14, 38));
-    expect(summary.displayCheckOut, DateTime(2026, 10, 19, 15, 32));
+    expect(summary.displayCheckOut, isNull);
+    expect(summary.isCheckedIn, isTrue);
     expect(summary.liveWorkingDuration(now: now), const Duration(hours: 2, minutes: 39));
   });
 
@@ -127,7 +128,8 @@ void main() {
       ),
     ]);
     expect(out10Open.displayCheckIn, firstIn);
-    expect(out10Open.displayCheckOut, DateTime(2026, 10, 20, 22));
+    // Still clocked in after 10:10 PM re-in — hide checkout until day closes.
+    expect(out10Open.displayCheckOut, isNull);
     expect(out10Open.isCheckedIn, isTrue);
   });
 }

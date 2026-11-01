@@ -187,13 +187,18 @@ class HistoryAttendanceRepository {
     final rejectedLeaveDates = leaves == null
         ? const <DateTime>{}
         : EmployeeLeaveDates.rejectedDates(leaves);
+    final pendingLeaveDates = leaves == null
+        ? const <DateTime>{}
+        : EmployeeLeaveDates.pendingDates(leaves);
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
     final leaveDates = <DateTime>{
       ...?calendar?.leaveDates,
       if (leaves != null) ...EmployeeLeaveDates.approvedDates(leaves),
     }..removeWhere(
-      (d) => rejectedLeaveDates.any(
-        (r) => r.year == d.year && r.month == d.month && r.day == d.day,
-      ),
+      (d) =>
+          rejectedLeaveDates.any((r) => sameDay(r, d)) ||
+          pendingLeaveDates.any((p) => sameDay(p, d)),
     );
 
     final days = List<AttendanceDay>.from(history.history)
@@ -205,7 +210,7 @@ class HistoryAttendanceRepository {
     final daysWithLeave = EmployeeLeaveDates.overlay(
       days,
       leaveDates,
-      rejectedDates: rejectedLeaveDates,
+      rejectedDates: {...rejectedLeaveDates, ...pendingLeaveDates},
     );
 
     // 🔥 fill every calendar day (ascending, gap-free), then flip back to
@@ -227,6 +232,7 @@ class HistoryAttendanceRepository {
       stampedDays,
       calendar,
       extraLeaveDates: leaveDates,
+      blockedLeaveDates: {...rejectedLeaveDates, ...pendingLeaveDates},
     );
     final summary = _buildSummary(
       records: records,
@@ -530,15 +536,23 @@ class HistoryAttendanceRepository {
     List<AttendanceDay> days,
     AttendanceCalendarData? calendar, {
     Set<DateTime> extraLeaveDates = const {},
+    Set<DateTime> blockedLeaveDates = const {},
   }) {
     final holidays = _holidaysFor(days, calendar);
+    final blocked = {
+      for (final date in blockedLeaveDates)
+        DateTime(date.year, date.month, date.day),
+    };
+    bool isBlocked(DateTime date) => blocked.any(
+      (b) => b.year == date.year && b.month == date.month && b.day == date.day,
+    );
     final leaveDates = {
       ..._leaveDatesFor(days),
       ...extraLeaveDates,
       ...?calendar?.leaveDates.map(
         (date) => DateTime(date.year, date.month, date.day),
       ),
-    };
+    }..removeWhere(isBlocked);
     return days
         .map(
           (day) =>

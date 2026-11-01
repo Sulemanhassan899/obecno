@@ -25,11 +25,13 @@ class ManagerEmployeeHistoryMapper {
     required List<ManagerEmployeeAttendanceDay> history,
     Set<int> workingWeekdays = const {1, 2, 3, 4, 5},
     List<HolidayInfo> holidays = const [],
-    /// Leave days from `/employees/{id}/leaves` (pending + approved).
+    /// Leave days from `/employees/{id}/leaves` (approved only).
     /// Merged with any `is_leave` flags on attendance history days.
     Set<DateTime> extraLeaveDates = const {},
     /// Rejected leave days must never show as On Leave (force Absent).
     Set<DateTime> rejectedLeaveDates = const {},
+    /// Pending leave days stay Absent until approved (ignore history is_leave).
+    Set<DateTime> pendingLeaveDates = const {},
     TimeOfDay? scheduledCheckIn,
     int graceMinutes = 0,
     TimeOfDay? scheduledCheckOut,
@@ -70,14 +72,16 @@ class ManagerEmployeeHistoryMapper {
 
     final byDate = <String, ManagerEmployeeAttendanceDay>{};
     final attendanceDates = <DateTime>{};
-    final rejected = {
+    final blockedOnLeave = {
       for (final d in rejectedLeaveDates) DateTime(d.year, d.month, d.day),
+      for (final d in pendingLeaveDates) DateTime(d.year, d.month, d.day),
     };
-    bool isRejectedDay(DateTime d) =>
-        rejected.any((r) => r.year == d.year && r.month == d.month && r.day == d.day);
+    bool isBlockedOnLeaveDay(DateTime d) => blockedOnLeave.any(
+      (r) => r.year == d.year && r.month == d.month && r.day == d.day,
+    );
     final leaveDates = <DateTime>{
       for (final d in extraLeaveDates)
-        if (!isRejectedDay(d)) DateTime(d.year, d.month, d.day),
+        if (!isBlockedOnLeaveDay(d)) DateTime(d.year, d.month, d.day),
     };
     final mergedHolidays = [...holidays];
     for (final day in history) {
@@ -100,7 +104,8 @@ class ManagerEmployeeHistoryMapper {
           ),
         );
       }
-      if (day.isLeave && !isRejectedDay(dateOnly)) {
+      // History is_leave can appear for pending requests — keep those Absent.
+      if (day.isLeave && !isBlockedOnLeaveDay(dateOnly)) {
         leaveDates.add(dateOnly);
       }
     }

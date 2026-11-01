@@ -196,21 +196,27 @@ class _LeaveTypeCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              AppText.caption(
-                type.resetLabel,
-                color: kGreyColor,
-                weight: FontWeight.w400,
-                align: TextAlign.left,
+              Expanded(
+                child: AppText.caption(
+                  type.resetLabel,
+                  color: kGreyColor,
+                  weight: FontWeight.w400,
+                  align: TextAlign.left,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               ButtonAnimations.press(
                 onTap: () {},
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     AppText.caption(
                       'View details',
                       color: kSubText,
                       weight: FontWeight.w500,
+                      maxLines: 1,
                     ),
                     const Icon(Icons.chevron_right, size: 16, color: kSubText),
                   ],

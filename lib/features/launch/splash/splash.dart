@@ -179,12 +179,18 @@ class _SplashScreenState extends State<SplashScreen>
       await tokenService.markPermissionsSetupCompleted();
     }
 
+    final homePath = authProvider.homeTarget == AuthHomeTarget.manager
+        ? '/manager_nav'
+        : '/employee_nav';
+
     try {
+      if (!mounted) return homePath;
       final deviceProvider = context.read<DeviceProvider>();
       if (authProvider.isLocalInviteSession) {
         // Join invite: no separate device request. Account approval covers device.
         final join = context.read<JoinInviteProvider>();
         await join.ensureLoaded();
+        if (!mounted) return homePath;
         JoinDeviceAutoApprove.sync(
           auth: authProvider,
           join: join,

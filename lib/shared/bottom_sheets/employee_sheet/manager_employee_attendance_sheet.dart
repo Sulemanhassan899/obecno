@@ -229,8 +229,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
           .loadEmployeePermissions(userId: userId);
       final profileFuture = bindings.managerEmployeesService
           .loadEmployeeProfile(userId: userId);
-      // Attendance history often omits leave flags; overlay from leaves API
-      // so pending/approved leave days show as leave (not absent).
+      // Attendance history often omits leave flags; overlay approved leaves
+      // only (pending stays Absent until the manager approves).
       final leavesFuture = bindings.managerEmployeesService.loadEmployeeLeaves(
         userId: userId,
         dateFrom: _yyyyMMdd(from),
@@ -282,6 +282,11 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         from: from,
         to: to,
       );
+      final pendingLeaveDates = _pendingDatesFromRequests(
+        leaveList,
+        from: from,
+        to: to,
+      );
 
       final month = ManagerEmployeeHistoryMapper.build(
         month: _month,
@@ -292,6 +297,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
         holidays: holidays.data ?? const [],
         extraLeaveDates: leaveDates,
         rejectedLeaveDates: rejectedLeaveDates,
+        pendingLeaveDates: pendingLeaveDates,
         scheduledCheckIn: policy.checkIn,
         graceMinutes: policy.graceMinutes,
         scheduledCheckOut: policy.checkOut,
@@ -512,8 +518,8 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
     return '${hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} $period';
   }
 
-  /// Expands leave request ranges into calendar days (approved / pending only).
-  /// Rejected leaves never become On Leave — those days stay Absent.
+  /// Expands approved leave ranges into On Leave days.
+  /// Pending / rejected never become On Leave — those days stay Absent.
   Set<DateTime> _leaveDatesFromRequests(
     List<ManagerEmployeeLeaveRequest> leaves, {
     required DateTime from,
@@ -523,7 +529,7 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       leaves,
       from: from,
       to: to,
-      include: (status) => !_isRejectedLeave(status),
+      include: _isApprovedLeave,
     );
   }
 
@@ -537,6 +543,19 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
       from: from,
       to: to,
       include: _isRejectedLeave,
+    );
+  }
+
+  Set<DateTime> _pendingDatesFromRequests(
+    List<ManagerEmployeeLeaveRequest> leaves, {
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return _expandLeaveDates(
+      leaves,
+      from: from,
+      to: to,
+      include: _isPendingLeave,
     );
   }
 
@@ -568,10 +587,28 @@ class _EmployeeHistorySheetBodyState extends State<_EmployeeHistorySheetBody> {
   }
 
   bool _isRejectedLeave(String? status) {
-    final value = (status ?? '').trim().toLowerCase();
+    final value = (status ?? '').trim().toLowerCase().replaceAll(' ', '_');
     return value.contains('reject') ||
         value.contains('deny') ||
-        value.contains('declined');
+        value.contains('declined') ||
+        value.contains('cancel');
+  }
+
+  bool _isPendingLeave(String? status) {
+    final value = (status ?? '').trim().toLowerCase().replaceAll(' ', '_');
+    return value.contains('pend') ||
+        value.contains('await') ||
+        value.contains('request') ||
+        value.contains('submit') ||
+        value == 'new' ||
+        value == '0' ||
+        value == 'false';
+  }
+
+  /// Approved (or blank status) — same product rule as employee attendance.
+  bool _isApprovedLeave(String? status) {
+    if (_isRejectedLeave(status) || _isPendingLeave(status)) return false;
+    return true;
   }
 
   DateTime? _parseLeaveDate(String? raw) {

@@ -52,6 +52,7 @@ class EmployeeProfileModel {
     this.cityId,
     this.departmentId,
     this.department,
+    this.reportsToName,
     this.countries = const [],
     this.cities = const [],
     this.departments = const [],
@@ -73,6 +74,9 @@ class EmployeeProfileModel {
   /// Direct department name from the API when provided as a string
   /// (e.g. login/profile `"department": "Sales"`).
   final String? department;
+
+  /// Direct manager display name from `reports_to` / manager fields.
+  final String? reportsToName;
 
   final List<LookupItem> countries;
   final List<LookupItem> cities;
@@ -155,9 +159,17 @@ class EmployeeProfileModel {
         ? json['company'] as Map<String, dynamic>
         : const <String, dynamic>{};
 
-    final reportsTo = json['reports_to'] is Map<String, dynamic>
-        ? json['reports_to'] as Map<String, dynamic>
-        : const <String, dynamic>{};
+    Map<String, dynamic> asMap(dynamic raw) =>
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+
+    final reportsTo = asMap(
+      json['reports_to'] ??
+          profile['reports_to'] ??
+          json['manager'] ??
+          profile['manager'] ??
+          json['line_manager'] ??
+          profile['line_manager'],
+    );
 
     String? designation = (profile['job_title'] ?? profile['designation'])
         ?.toString();
@@ -171,6 +183,15 @@ class EmployeeProfileModel {
     // Department may arrive as a plain string, an id, a nested object,
     // or manager-style `department_title`.
     String? departmentName = _readDepartmentName(profile, json, company);
+
+    final reportsToName = _readPersonName(
+      reportsTo.isNotEmpty
+          ? reportsTo
+          : (json['reports_to_name'] ??
+                profile['reports_to_name'] ??
+                json['manager_name'] ??
+                profile['manager_name']),
+    );
 
     final profileFields = _buildProfileFields(
       json: json,
@@ -197,11 +218,35 @@ class EmployeeProfileModel {
       cityId: profile['city_id']?.toString(),
       departmentId: profile['department_id']?.toString(),
       department: departmentName,
+      reportsToName: reportsToName,
       countries: countries,
       cities: cities,
       departments: departments,
       profileFields: profileFields,
     );
+  }
+
+  static String? _readPersonName(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      return _readPersonName(
+        map['name'] ??
+            map['full_name'] ??
+            map['fullName'] ??
+            map['user_name'] ??
+            map['display_name'] ??
+            map['title'],
+      );
+    }
+    final value = raw.toString().trim();
+    if (value.isEmpty ||
+        value == '—' ||
+        value.toLowerCase() == 'manager' ||
+        int.tryParse(value) != null) {
+      return null;
+    }
+    return value;
   }
 
   Map<String, dynamic> toCacheJson() {
@@ -216,6 +261,7 @@ class EmployeeProfileModel {
       'department_id': departmentId,
       'country_id': countryId,
       'city_id': cityId,
+      if (reportsToName != null) 'reports_to_name': reportsToName,
       'company': {'id': employeeCode, 'address': address},
       'profile_fields': [for (final field in profileFields) field.toJson()],
     };

@@ -1,21 +1,13 @@
-import 'dart:async';
 
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
-import 'package:obecno/core/monitors/app_guard.dart';
-import 'package:obecno/core/services/logger.dart';
-import 'package:obecno/core/services/permission_helper.dart';
-import 'package:obecno/core/state/change_notifier_provider.dart';
 
-import 'package:obecno/features/auth/providers/auth_provider.dart';
-import 'package:obecno/features/more/providers/device_provider.dart';
 import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/custom_textfield.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 
 class LoginOtpScreen extends StatefulWidget {
   const LoginOtpScreen({super.key, required this.email});

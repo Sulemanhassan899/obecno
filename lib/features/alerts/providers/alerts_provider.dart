@@ -8,7 +8,6 @@ import 'package:obecno/features/alerts/data/models/device_alert_item.dart';
 import 'package:obecno/features/alerts/services/alert_notification_service.dart';
 import 'package:obecno/features/alerts/services/alert_seen_store.dart';
 import 'package:obecno/features/alerts/services/leave_alert_store.dart';
-import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/features/manager_module/Manager_employees/providers/manager_employees_provider.dart';
 import 'package:obecno/features/manager_module/Manager_employees/services/manager_employees_service.dart';
@@ -93,6 +92,8 @@ class AlertsProvider extends ChangeNotifier {
   bool _leaveSyncing = false;
   bool _unseenNotification = false;
   bool _alertsTabVisible = false;
+  /// Manager device fan-out (1 GET per employee) waits until Alerts opens.
+  bool _managerDeviceAlertsWarmed = false;
   Set<String> _knownPendingKeys = {};
 
   /// Non-pending cards marked seen this session stay visible until restart.
@@ -129,6 +130,8 @@ class AlertsProvider extends ChangeNotifier {
     if (visible) {
       _alertsTabVisible = true;
       markAlertsSeen();
+      // First open: load per-employee devices + full leave inbox.
+      _ensureManagerDeviceAlertsWarmed();
       // Fresh sync + faster poll only while Alerts is on screen.
       unawaited(syncLeaveAlerts());
       _armLeavePoll();
@@ -139,6 +142,13 @@ class AlertsProvider extends ChangeNotifier {
     markAlertsSeen();
     _alertsTabVisible = false;
     _armLeavePoll();
+  }
+
+  void _ensureManagerDeviceAlertsWarmed() {
+    if (!_managerView || _managerDeviceAlertsWarmed) return;
+    _managerDeviceAlertsWarmed = true;
+    unawaited(refresh());
+    _armPoll();
   }
 
   void markAlertsSeen() {
@@ -197,10 +207,20 @@ class AlertsProvider extends ChangeNotifier {
       _hasLeaveSyncedOnce = false;
       _leaveAlerts = const [];
       _focusLeaveKey = null;
+      _managerDeviceAlertsWarmed = false;
     }
     _managerView = nextManager;
     // Allow a fresh sync even if a pre-auth attempt left _leaveSyncing stuck.
     _leaveSyncing = false;
+    if (_managerView) {
+      // Light: pending-leave badge only. Device fan-out waits for Alerts tab.
+      unawaited(syncLeaveAlerts(silent: true));
+      _armLeavePoll();
+      if (_alertsTabVisible || _managerDeviceAlertsWarmed) {
+        _ensureManagerDeviceAlertsWarmed();
+      }
+      return;
+    }
     unawaited(refresh());
     unawaited(syncLeaveAlerts());
     _armPoll();
@@ -215,8 +235,11 @@ class AlertsProvider extends ChangeNotifier {
 
   void _armPoll() {
     _pollTimer?.cancel();
+    // Manager: only after Alerts has been opened (avoids N device GETs at login).
+    if (_managerView && !_managerDeviceAlertsWarmed) return;
     _pollTimer = Timer.periodic(_pollInterval, (_) {
       if (!_auth.isAuthenticated) return;
+      if (_managerView && !_managerDeviceAlertsWarmed) return;
       unawaited(refresh(silent: true));
     });
   }
@@ -481,10 +504,12 @@ class AlertsProvider extends ChangeNotifier {
     );
     if (!result.success) {
       _actingLeaveKey = null;
-      ToastHelper.error(
-        context,
-        message: result.message ?? 'Unable to $action leave',
-      );
+      if (context.mounted) {
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Unable to $action leave',
+        );
+      }
       notifyListeners();
       return false;
     }
@@ -492,10 +517,12 @@ class AlertsProvider extends ChangeNotifier {
     await _managerLeaveStore.markReviewed(key: key, action: action);
     _leaveAlerts = _managerLeaveStore.items;
     _actingLeaveKey = null;
-    ToastHelper.success(
-      context,
-      message: action == 'approve' ? 'Leave approved' : 'Leave rejected',
-    );
+    if (context.mounted) {
+      ToastHelper.success(
+        context,
+        message: action == 'approve' ? 'Leave approved' : 'Leave rejected',
+      );
+    }
     notifyListeners();
     // Refresh remote pending in background — local archive already keeps card.
     unawaited(syncLeaveAlerts(silent: true));
@@ -761,8 +788,8 @@ class AlertsProvider extends ChangeNotifier {
     _actingKey = null;
     if (ok) {
       _items = _items.where((e) => e.key != item.key).toList(growable: false);
-      ToastHelper.deviceDeleted(context);
-    } else {
+      if (context.mounted) ToastHelper.deviceDeleted(context);
+    } else if (context.mounted) {
       ToastHelper.deviceDeleteFailed(context, message: _devices.errorMessage);
     }
     notifyListeners();
@@ -789,18 +816,22 @@ class AlertsProvider extends ChangeNotifier {
 
     _actingKey = null;
     if (!result.success) {
-      ToastHelper.error(
-        context,
-        message: result.message ?? 'Failed to update device.',
-      );
+      if (context.mounted) {
+        ToastHelper.error(
+          context,
+          message: result.message ?? 'Failed to update device.',
+        );
+      }
       notifyListeners();
       return false;
     }
 
-    if (action == 'approve') {
-      ToastHelper.deviceApproved(context);
-    } else {
-      ToastHelper.deviceRejected(context);
+    if (context.mounted) {
+      if (action == 'approve') {
+        ToastHelper.deviceApproved(context);
+      } else {
+        ToastHelper.deviceRejected(context);
+      }
     }
     await refresh();
     return true;
@@ -836,6 +867,7 @@ class AlertsProvider extends ChangeNotifier {
     _keepVisibleThisSession = {};
     _unseenNotification = false;
     _alertsTabVisible = false;
+    _managerDeviceAlertsWarmed = false;
     _managerView = false;
     _observedEmployeeStatus = null;
     _emitApprovalInFlight = null;

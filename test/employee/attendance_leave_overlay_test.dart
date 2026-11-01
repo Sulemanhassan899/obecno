@@ -80,6 +80,9 @@ void main() {
       expect(dates.contains(DateTime(2026, 10, 21)), isFalse);
       expect(dates.contains(DateTime(2026, 10, 22)), isFalse);
       expect(dates.contains(DateTime(2026, 10, 23)), isFalse);
+
+      final pending = EmployeeLeaveDates.pendingDates(leaves);
+      expect(pending, {DateTime(2026, 10, 22)});
     });
   });
 

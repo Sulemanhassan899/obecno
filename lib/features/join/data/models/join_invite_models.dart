@@ -76,7 +76,8 @@ class JoinInviteRecord {
         'contact': contact,
         'channel': channel.name,
         'source': source.name,
-        'password': password,
+        // Never persist invite passwords on disk.
+        'password': '',
         'status': status.name,
         'created_at': createdAt.toIso8601String(),
         'location_id': locationId,
@@ -98,7 +99,8 @@ class JoinInviteRecord {
         (e) => e.name == json['source'],
         orElse: () => JoinInviteSource.manual,
       ),
-      password: (json['password'] ?? '').toString(),
+      // Strip any legacy plaintext passwords loaded from prefs.
+      password: '',
       status: JoinInviteStatus.values.firstWhere(
         (e) => e.name == json['status'],
         orElse: () => JoinInviteStatus.invited,
@@ -133,9 +135,8 @@ class JoinShareLinks {
     return 'invite.$stamp$suffix@obecno.app';
   }
 
+  /// Invite share text uses install / open links only — never credentials.
   static String shareMessage({
-    required String email,
-    required String password,
     String companyName = 'Acme Corporation',
   }) {
     return '''
@@ -144,9 +145,12 @@ You're invited to join $companyName on Obecno.
 Install the app:
 $downloadApk
 
-After installing, open the app and sign in with:
-Email: $email
-Password: $password
+Open invite link:
+$displayInviteLink
+
+Or open: $appDeepLink
+
+Sign in with the account your manager created for you (server invite). Passwords are not shared in this message.
 '''.trim();
   }
 }

@@ -22,7 +22,6 @@ import '../../services/employee_trusted_time.dart';
 import 'package:obecno/features/more/data/models/reminder_type.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/main.dart';
-import 'package:obecno/core/constants/app_enums.dart' show AttendanceDayStatus;
 
 class SyncedClockScreenController extends ClockScreenController {
   SyncedClockScreenController({
@@ -559,6 +558,11 @@ class SyncedClockScreenController extends ClockScreenController {
     GpsReading? reading;
     try {
       reading = await _locationService.getCurrentReading();
+    } on MockLocationDetectedException {
+      isInRange = false;
+      lastServerMessage =
+          'Fake or mock location detected. Turn off mock location to check in.';
+      return false;
     } on LocationPermissionDeniedException {
       isInRange = false;
       lastServerMessage = AppStrings.locationPermissionRequired;
@@ -570,7 +574,6 @@ class SyncedClockScreenController extends ClockScreenController {
     } on LocationAccuracyTooLowException catch (e) {
       reading = await _locationService.getLastKnownReading();
       if (reading == null) {
-        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
         isInRange = false;
         lastServerMessage =
             'Location accuracy too low (${e.accuracyMeters.toStringAsFixed(0)}m). Move to an open area and try again.';
@@ -579,7 +582,6 @@ class SyncedClockScreenController extends ClockScreenController {
     } on LocationTimeoutException {
       reading = await _locationService.getLastKnownReading();
       if (reading == null) {
-        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
         isInRange = false;
         lastServerMessage =
             'Getting your location is taking too long. Check your GPS signal and try again.';
@@ -594,17 +596,16 @@ class SyncedClockScreenController extends ClockScreenController {
       );
       reading = await _locationService.getLastKnownReading();
       if (reading == null) {
-        if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
         isInRange = false;
         lastServerMessage = 'Unable to get your location. Please try again.';
         return false;
       }
     }
 
-    if (reading == null) {
-      if (!trustedNetworkOnline) return _allowOfflinePunchWithoutFix();
+    if (reading.isMocked) {
       isInRange = false;
-      lastServerMessage = 'Unable to get your location. Please try again.';
+      lastServerMessage =
+          'Fake or mock location detected. Turn off mock location to check in.';
       return false;
     }
 
@@ -697,12 +698,6 @@ class SyncedClockScreenController extends ClockScreenController {
       refreshProfile: false,
     );
     selectedLocationName = match.location.name;
-  }
-
-  /// Offline GPS (especially A-GPS / fused location) often fails. Keep the
-  /// last cached geofence result so the punch can still be queued.
-  bool _allowOfflinePunchWithoutFix() {
-    return true;
   }
 
   Future<void> _notifyGeofenceTransition({

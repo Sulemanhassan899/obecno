@@ -703,7 +703,7 @@ class ClockScreenController extends ChangeNotifier {
     // chronologically — hold it to close a later evening open session.
     final orphanEarlyCheckOuts = <AttendanceEvent>[];
 
-    DateTime _effectiveOut(DateTime raw, DateTime openStart) {
+    DateTime effectiveOut(DateTime raw, DateTime openStart) {
       if (raw.isAfter(openStart)) return raw;
       return raw.add(const Duration(days: 1));
     }
@@ -727,7 +727,7 @@ class ClockScreenController extends ChangeNotifier {
           _ClockPunchSession(
             checkInTime: checkInTime,
             events: List<AttendanceEvent>.unmodifiable(current),
-            checkOutTime: _effectiveOut(event.effectiveTime, checkInTime),
+            checkOutTime: effectiveOut(event.effectiveTime, checkInTime),
           ),
         );
         current = <AttendanceEvent>[];
@@ -743,7 +743,7 @@ class ClockScreenController extends ChangeNotifier {
           _ClockPunchSession(
             checkInTime: checkInTime,
             events: List<AttendanceEvent>.unmodifiable(current),
-            checkOutTime: _effectiveOut(orphan.effectiveTime, checkInTime),
+            checkOutTime: effectiveOut(orphan.effectiveTime, checkInTime),
           ),
         );
       } else {

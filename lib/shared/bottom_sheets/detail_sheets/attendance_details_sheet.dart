@@ -32,7 +32,6 @@ import 'package:obecno/shared/bottom_sheets/attendance_sheet/timeline_sort.dart'
 import 'package:obecno/features/employee_module/attendance/services/attendance_edit_request_store.dart';
 import 'package:obecno/features/employee_module/attendance/domain/attendance_timeline_assembler.dart';
 import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
-import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/widgets/leave_timeline_cards.dart';
 import 'package:obecno/shared/bottom_sheets/app_sheet.dart';
@@ -123,7 +122,23 @@ class _AttendanceDetailsSheetBodyState
     _events = widget.events;
     _summary = widget.summary;
     _loadingDetails = widget.events.isEmpty;
+    bindings.profileProvider.addListener(_onProfileChanged);
+    // Manager name for leave "Rejected by" when API omits reviewer.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bindings.profileProvider.loadProfile();
+    });
     _loadDetailsFromApi();
+  }
+
+  void _onProfileChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    bindings.profileProvider.removeListener(_onProfileChanged);
+    super.dispose();
   }
 
   @override

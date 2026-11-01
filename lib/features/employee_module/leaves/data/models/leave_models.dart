@@ -242,21 +242,30 @@ class LeaveTimelineEvent {
       kind: kind,
       at: _asDateTime(json['at'] ?? json['date'] ?? json['created_at']) ??
           DateTime.now(),
-      actorName: _personName(
-        json['actor_name'] ??
-            json['actor'] ??
-            json['reviewer'] ??
-            json['reviewer_name'] ??
-            json['manager_name'] ??
-            json['approver_name'] ??
-            json['approved_by_name'] ??
-            json['rejected_by_name'] ??
-            json['reviewed_by_name'] ??
-            json['approved_by'] ??
-            json['rejected_by'] ??
-            json['reviewed_by'] ??
-            json['by'],
-      ),
+      actorName: _firstPersonName(json, const [
+        'actor_name',
+        'actioned_by_name',
+        'actioned_by',
+        'reviewer_name',
+        'manager_name',
+        'approver_name',
+        'approved_by_name',
+        'rejected_by_name',
+        'reviewed_by_name',
+        'updated_by_name',
+        'performed_by',
+        'causer',
+        'user',
+        'actor',
+        'reviewer',
+        'approver',
+        'approved_by',
+        'rejected_by',
+        'reviewed_by',
+        'manager',
+        'updated_by',
+        'by',
+      ]),
       reason: _asNullableString(
         json['reason'] ??
             json['remarks'] ??
@@ -458,22 +467,28 @@ class LeaveRequest {
     );
 
     final timelineRaw = json['timeline'] ?? json['events'] ?? json['history'];
-    final reviewerName = _personName(
-      json['reviewed_by'] ??
-          json['reviewed_by_name'] ??
-          json['approver'] ??
-          json['approver_name'] ??
-          json['approved_by'] ??
-          json['approved_by_name'] ??
-          json['rejected_by'] ??
-          json['rejected_by_name'] ??
-          json['manager_name'] ??
-          json['manager'] ??
-          json['actor_name'] ??
-          json['actor'] ??
-          json['reviewer'] ??
-          json['reviewer_name'],
-    );
+    // Try each key until a real display name is found — an id-only
+    // `reviewed_by: {id: N}` must not block `reviewed_by_name` / `actioned_by`.
+    final reviewerName = _firstPersonName(json, const [
+      'actioned_by_name',
+      'actioned_by',
+      'reviewed_by_name',
+      'approver_name',
+      'approved_by_name',
+      'rejected_by_name',
+      'manager_name',
+      'updated_by_name',
+      'actor_name',
+      'reviewer_name',
+      'reviewed_by',
+      'approver',
+      'approved_by',
+      'rejected_by',
+      'manager',
+      'updated_by',
+      'actor',
+      'reviewer',
+    ]);
     List<LeaveTimelineEvent> timeline;
     if (timelineRaw is List) {
       timeline = timelineRaw
@@ -806,23 +821,42 @@ String? _asNullableString(dynamic raw) {
   return value;
 }
 
+/// Tries [keys] in order; returns the first value that yields a display name.
+String? _firstPersonName(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final name = _personName(json[key]);
+    if (name != null && name.isNotEmpty) return name;
+  }
+  return null;
+}
+
 /// Extracts a display name from a string or nested `{ name / full_name }` map.
 String? _personName(dynamic raw) {
   if (raw == null) return null;
+  if (raw is num) return null;
   if (raw is Map) {
     final map = Map<String, dynamic>.from(raw);
-    return _personName(
+    final direct = _personName(
       map['name'] ??
           map['full_name'] ??
+          map['fullName'] ??
           map['user_name'] ??
           map['display_name'] ??
-          map['first_name'],
+          map['username'],
     );
+    if (direct != null) return direct;
+    final first = _asString(map['first_name'] ?? map['firstName']);
+    final last = _asString(map['last_name'] ?? map['lastName']);
+    final combined = '$first $last'.trim();
+    if (combined.isNotEmpty) return combined;
+    // Nested `{ user: { name } }` / `{ data: { name } }` shapes.
+    return _personName(map['user'] ?? map['data'] ?? map['person']);
   }
   final value = raw.toString().trim();
   if (value.isEmpty ||
       value == 'null' ||
       value.toLowerCase() == 'manager' ||
+      int.tryParse(value) != null ||
       value.startsWith('Instance of') ||
       value.startsWith('{')) {
     return null;

@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:obecno/core/api/base_provider.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
 import 'package:obecno/features/manager_module/Manager_locations/domain/location_filter_mapper.dart';
@@ -16,8 +13,6 @@ class ManagerLocationsProvider extends BaseProvider {
 
   /// Survives API reloads when the list payload omits `is_active`.
   final Set<String> _inactiveOverrideIds = {};
-
-  int _statsGeneration = 0;
 
   List<LocationFilterOption> get filterOptions =>
       LocationFilterMapper.toFilterOptions(locations);
@@ -70,28 +65,9 @@ class ManagerLocationsProvider extends BaseProvider {
         locations = _applyActiveOverrides(data);
       },
     );
-    if (ok) {
-      unawaited(_enrichAttendanceStats());
-    }
+    // Do not fan out team-attendance here on every Overview/Attendance load.
+    // Location detail screens load attendance themselves when opened.
     return ok;
-  }
-
-  /// Background pass so Overview count is not blocked on team attendance.
-  Future<void> _enrichAttendanceStats() async {
-    final generation = ++_statsGeneration;
-    final snapshot = List<ManagerLocationModel>.from(locations);
-    if (snapshot.isEmpty) return;
-
-    final stamped = await _service.enrichWithAttendanceStats(
-      locations: snapshot,
-      date: DateTime.now(),
-    );
-    if (generation != _statsGeneration) return;
-    if (stamped.isEmpty) return;
-
-    // Keep any activate/deactivate overrides applied while stats were loading.
-    locations = _applyActiveOverrides(stamped);
-    notifyListeners();
   }
 
   List<ManagerLocationModel> _applyActiveOverrides(
@@ -118,7 +94,6 @@ class ManagerLocationsProvider extends BaseProvider {
   Future<bool> refresh() => load();
 
   void reset() {
-    _statsGeneration++;
     cancelAll();
     resetViewState();
     locations = const [];

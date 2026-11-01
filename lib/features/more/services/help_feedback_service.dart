@@ -28,10 +28,10 @@ class HelpFeedbackService {
     if (!kDebugMode) return;
 
     final pretty = const JsonEncoder.withIndent('  ').convert(payload);
-    print('$_red========== HELP & FEEDBACK SUBMIT ==========');
-    print('Endpoint: ${EmployeeApiEndpoints.tickets}');
-    print('Payload sent:');
-    print(pretty);
-    print('==========================================$_reset');
+    debugPrint('$_red========== HELP & FEEDBACK SUBMIT ==========');
+    debugPrint('Endpoint: ${EmployeeApiEndpoints.tickets}');
+    debugPrint('Payload sent:');
+    debugPrint(pretty);
+    debugPrint('==========================================$_reset');
   }
 }

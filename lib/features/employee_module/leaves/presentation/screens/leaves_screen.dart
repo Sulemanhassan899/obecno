@@ -7,6 +7,8 @@ import 'package:obecno/core/constants/app_fonts.dart';
 import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
+import 'package:obecno/core/state/change_notifier_provider.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/employee_module/leaves/data/models/leave_models.dart';
 import 'package:obecno/features/employee_module/leaves/presentation/screens/holidays_calendar_screen.dart';
@@ -292,10 +294,15 @@ class _LeavesScreenState extends State<LeavesScreen>
             icon: Assets.imagesLeavesFilledIcon,
             size: 26,
             onTap: () {
+              final isManager =
+                  context.read<AuthProvider>().homeTarget ==
+                  AuthHomeTarget.manager;
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const HolidaysCalendarScreen(
-                    mode: HolidaysCalendarMode.employee,
+                  builder: (_) => HolidaysCalendarScreen(
+                    mode: isManager
+                        ? HolidaysCalendarMode.manager
+                        : HolidaysCalendarMode.employee,
                   ),
                 ),
               );

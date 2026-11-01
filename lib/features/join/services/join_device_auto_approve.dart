@@ -16,16 +16,14 @@ class JoinDeviceAutoApprove {
         invite.status == JoinInviteStatus.approved;
   }
 
-  /// When this phone is a local-invite employee session and the invite
-  /// account is already approved (manual auto-approve, or manager approved
-  /// a via-link join), mark the current device approved locally.
+  /// Previously marked the device approved in memory for local-invite
+  /// sessions. That bypassed server device approval and is intentionally
+  /// disabled — approval must come from `/employee/devices` only.
   static void sync({
     required AuthProvider auth,
     required JoinInviteProvider join,
     required DeviceProvider devices,
   }) {
-    if (!auth.isLocalInviteSession) return;
-    if (!isAccountApproved(join.activeInvite)) return;
-    devices.markApprovedForLocalInvite();
+    // No-op: never trust client-only device approval.
   }
 }

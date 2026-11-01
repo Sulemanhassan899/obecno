@@ -372,11 +372,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Authenticates a locally invited employee without calling the API.
+  ///
+  /// Disabled in release builds — invitees must use a real server session.
   Future<bool> loginWithLocalInvite({
     required String contact,
     required String companyName,
     String? locationName,
   }) async {
+    if (kReleaseMode) {
+      _errorMessage =
+          'Invite login is not available. Open your invite link, then sign in with your account password.';
+      notifyListeners();
+      return false;
+    }
+
     final trimmed = contact.trim();
     if (trimmed.isEmpty) {
       _errorMessage = 'Please enter your email again.';
@@ -548,6 +557,12 @@ class AuthProvider extends ChangeNotifier {
     }
     _restoredRole ??= await _service.getCachedRole();
     _isLocalInviteSession = await _service.isLocalInviteSession();
+
+    // Release builds must never keep a synthetic local-invite session.
+    if (kReleaseMode && _isLocalInviteSession) {
+      await logout();
+      return false;
+    }
 
     await restoreCompanyAndLocationsFromCache();
     // Offline restore: /auth/me may fail with "No internet" while a local

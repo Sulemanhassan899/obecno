@@ -7,14 +7,12 @@ import 'package:obecno/core/constants/app_sizes.dart';
 import 'package:obecno/core/constants/text_styles.dart';
 import 'package:obecno/core/generated/assets.dart';
 import 'package:obecno/core/state/change_notifier_provider.dart';
-import 'package:obecno/core/helpers/toast_helper.dart';
 import 'package:obecno/features/alerts/data/models/device_alert_item.dart';
 import 'package:obecno/features/alerts/presentation/widgets/device_alert_card.dart';
 import 'package:obecno/features/alerts/presentation/widgets/leave_alert_card.dart';
 import 'package:obecno/features/alerts/providers/alerts_provider.dart';
 import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/employee_module/attendance/presentation/widgets/attendence_header.dart';
-import 'package:obecno/features/employee_module/leaves/data/leaves_store.dart';
 import 'package:obecno/features/join/data/models/join_invite_models.dart';
 import 'package:obecno/features/join/presentation/widgets/join_employee_alert_card.dart';
 import 'package:obecno/features/join/providers/join_invite_provider.dart';
@@ -27,7 +25,6 @@ import 'package:obecno/main.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/leave_detail_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/leave_sheets/manager_leave_detail_sheet.dart';
 import 'package:obecno/shared/bottom_sheets/location_sheet/select_default_location_sheet.dart';
-import 'package:obecno/widgets/back_button.dart';
 import 'package:obecno/widgets/common_image_view_widget.dart';
 import 'package:obecno/widgets/my_button.dart';
 import 'package:flutter/cupertino.dart';
@@ -59,7 +56,14 @@ class AlertsScreenState extends State<AlertsScreen>
     duration: const Duration(milliseconds: 900),
   );
 
-  final List<CurvedAnimation> _entranceAnimations = [];
+  /// List-only entrance — filter changes replay this without touching date/chips.
+  late final AnimationController _listEntranceController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  final List<CurvedAnimation> _chromeAnimations = [];
+  final List<CurvedAnimation> _listAnimations = [];
 
   static const _shortMonths = [
     'Jan',
@@ -105,6 +109,7 @@ class AlertsScreenState extends State<AlertsScreen>
       bindings.reminderSettingsProvider.addListener(_onRemindersChanged);
     });
     _entranceController.forward();
+    _listEntranceController.forward();
   }
 
   List<ManagerTeamLeaveItem> _visibleLeaves(AlertsProvider provider) {
@@ -167,6 +172,16 @@ class AlertsScreenState extends State<AlertsScreen>
     _entranceController
       ..reset()
       ..forward();
+    _listEntranceController
+      ..reset()
+      ..forward();
+  }
+
+  void playListEntranceAnimation() {
+    if (!mounted) return;
+    _listEntranceController
+      ..reset()
+      ..forward();
   }
 
   /// Used when Clock / notifications open Alerts on a specific chip
@@ -199,40 +214,84 @@ class AlertsScreenState extends State<AlertsScreen>
     if (next == _AlertFilter.all || next == _AlertFilter.reminder) {
       unawaited(_loadReminders());
     }
-    playEntranceAnimation();
+    playListEntranceAnimation();
   }
 
   @override
   void dispose() {
     _pulseTimer?.cancel();
     bindings.reminderSettingsProvider.removeListener(_onRemindersChanged);
-    for (final animation in _entranceAnimations) {
+    for (final animation in _chromeAnimations) {
+      animation.dispose();
+    }
+    for (final animation in _listAnimations) {
       animation.dispose();
     }
     _entranceController.dispose();
+    _listEntranceController.dispose();
     super.dispose();
   }
 
-  CurvedAnimation _curveFor(int index, int total) {
+  CurvedAnimation _curveFor(
+    AnimationController parent,
+    int index,
+    int total,
+  ) {
     final safeTotal = total <= 1 ? 1 : total;
     final start = (index / safeTotal) * 0.6;
     final end = (start + 0.4).clamp(0.0, 1.0);
     return CurvedAnimation(
-      parent: _entranceController,
+      parent: parent,
       curve: Interval(start.clamp(0.0, 1.0), end, curve: Curves.easeOutCubic),
     );
   }
 
-  Widget _staggered(int index, int total, Widget child) {
-    if (_entranceAnimations.length != total) {
-      for (final animation in _entranceAnimations) {
+  Widget _staggeredChrome(int index, Widget child) {
+    const total = 2;
+    if (_chromeAnimations.length != total) {
+      for (final animation in _chromeAnimations) {
         animation.dispose();
       }
-      _entranceAnimations
+      _chromeAnimations
         ..clear()
-        ..addAll(List.generate(total, (i) => _curveFor(i, total)));
+        ..addAll(
+          List.generate(
+            total,
+            (i) => _curveFor(_entranceController, i, total),
+          ),
+        );
     }
-    final animation = _entranceAnimations[index];
+    final animation = _chromeAnimations[index];
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animation.value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - animation.value) * 18),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _staggeredList(int index, int total, Widget child) {
+    if (_listAnimations.length != total) {
+      for (final animation in _listAnimations) {
+        animation.dispose();
+      }
+      _listAnimations
+        ..clear()
+        ..addAll(
+          List.generate(
+            total,
+            (i) => _curveFor(_listEntranceController, i, total),
+          ),
+        );
+    }
+    final animation = _listAnimations[index];
     return AnimatedBuilder(
       animation: animation,
       child: child,
@@ -516,7 +575,7 @@ class AlertsScreenState extends State<AlertsScreen>
                 leaves.isEmpty));
 
     // Build a merged timeline of joins, devices, leaves, and reminders.
-    // Leave approval cards stay on top (above reminders / older items).
+    // Newest stamp first across all alert types (date-wise).
     final timeline = <({DateTime stamp, Object item})>[
       for (final join in joins)
         (stamp: _stampForJoin(join), item: join as Object),
@@ -526,14 +585,11 @@ class AlertsScreenState extends State<AlertsScreen>
         (stamp: leave.alertSortTime, item: leave as Object),
       for (final log in reminders) (stamp: log.firedAt, item: log as Object),
     ]..sort((a, b) {
-      final aLeave = a.item is ManagerTeamLeaveItem;
-      final bLeave = b.item is ManagerTeamLeaveItem;
-      if (aLeave != bLeave) return aLeave ? -1 : 1;
       // Focused leave from notification tap rises to the top.
-      if (aLeave && bLeave && focusLeaveKey != null) {
-        final aFocus =
+      if (focusLeaveKey != null) {
+        final aFocus = a.item is ManagerTeamLeaveItem &&
             (a.item as ManagerTeamLeaveItem).alertKey == focusLeaveKey;
-        final bFocus =
+        final bFocus = b.item is ManagerTeamLeaveItem &&
             (b.item as ManagerTeamLeaveItem).alertKey == focusLeaveKey;
         if (aFocus != bFocus) return aFocus ? -1 : 1;
       }
@@ -549,6 +605,7 @@ class AlertsScreenState extends State<AlertsScreen>
           triggerFraction: 0.40,
           showOrb: false,
           onRefresh: () async {
+            playEntranceAnimation();
             await Future.wait([
               provider.refresh(),
               joinProvider.ensureLoaded(),
@@ -560,7 +617,7 @@ class AlertsScreenState extends State<AlertsScreen>
           },
           child: Builder(
             builder: (context) {
-              final contentCount =
+              final listCount =
                   isInitialLoad ||
                       (!showingReminders &&
                           reminders.isEmpty &&
@@ -570,8 +627,6 @@ class AlertsScreenState extends State<AlertsScreen>
                       totalCount == 0
                   ? 1
                   : timeline.length;
-              // 0 header, 1 filters, then content
-              final total = 2 + contentCount;
 
               return CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -582,9 +637,8 @@ class AlertsScreenState extends State<AlertsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 5),
-                        _staggered(
+                        _staggeredChrome(
                           0,
-                          total,
                           _AlertsHeader(
                             monthLabel:
                                 '${_monthNames[_month.month - 1]} ${_month.year}',
@@ -593,9 +647,8 @@ class AlertsScreenState extends State<AlertsScreen>
                           ),
                         ),
                         const SizedBox(height: 16),
-                        _staggered(
+                        _staggeredChrome(
                           1,
-                          total,
                           _AlertFilterRow(
                             selected: _filter,
                             pulsed: _pulseFilters,
@@ -605,6 +658,7 @@ class AlertsScreenState extends State<AlertsScreen>
                                   filter == _AlertFilter.reminder) {
                                 unawaited(_loadReminders());
                               }
+                              playListEntranceAnimation();
                             },
                           ),
                         ),
@@ -615,9 +669,9 @@ class AlertsScreenState extends State<AlertsScreen>
                   if (isInitialLoad)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: _staggered(
-                        2,
-                        total,
+                      child: _staggeredList(
+                        0,
+                        listCount,
                         const Center(child: ShimmerProgress()),
                       ),
                     )
@@ -628,9 +682,9 @@ class AlertsScreenState extends State<AlertsScreen>
                       joins.isEmpty)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: _staggered(
-                        2,
-                        total,
+                      child: _staggeredList(
+                        0,
+                        listCount,
                         Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -656,9 +710,9 @@ class AlertsScreenState extends State<AlertsScreen>
                   else if (totalCount == 0)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: _staggered(
-                        2,
-                        total,
+                      child: _staggeredList(
+                        0,
+                        listCount,
                         Center(
                           child: AppText.h6(
                             'No alerts',
@@ -678,9 +732,9 @@ class AlertsScreenState extends State<AlertsScreen>
                             _groupLabel(timeline[index - 1].stamp) !=
                                 _groupLabel(stamp);
                         final item = entry.item;
-                        return _staggered(
-                          2 + index,
-                          total,
+                        return _staggeredList(
+                          index,
+                          listCount,
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: Column(

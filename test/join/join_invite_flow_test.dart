@@ -37,15 +37,16 @@ void main() {
       );
 
       expect(created, hasLength(1));
-      expect(created.first.password.length, greaterThanOrEqualTo(6));
+      expect(created.first.password, isEmpty);
       expect(created.first.source, JoinInviteSource.manual);
       expect(created.first.status, JoinInviteStatus.invited);
 
+      // Local passwords are not stored — credential match always fails.
       final match = provider.matchCredentials(
         contact: 'employee@email.com',
-        password: created.first.password,
+        password: 'any-password',
       );
-      expect(match, isNotNull);
+      expect(match, isNull);
 
       final joined = await provider.completeJoin(
         created.first.id,
@@ -67,14 +68,14 @@ void main() {
         final link = await provider.prepareLinkShare(companyName: 'TheDemo');
         expect(link.source, JoinInviteSource.link);
         expect(AddEmployeePayloadish.isValidEmail(link.contact), isTrue);
-        expect(link.password.length, greaterThanOrEqualTo(6));
+        expect(link.password, isEmpty);
         expect(provider.hasOpenLinkInvite, isTrue);
 
         final match = provider.matchCredentials(
           contact: link.contact,
-          password: link.password,
+          password: 'any-password',
         );
-        expect(match, isNotNull);
+        expect(match, isNull);
 
         final joined = await provider.completeJoin(link.id);
         expect(joined?.status, JoinInviteStatus.pendingApproval);
@@ -104,17 +105,13 @@ void main() {
     });
   });
 
-  test('share message has email/password and no join link line', () {
-    final email = JoinShareLinks.generateTempEmail();
-    final message = JoinShareLinks.shareMessage(
-      email: email,
-      password: 'Secret12',
-      companyName: 'TheDemo',
-    );
+  test('share message has install/invite links and no credentials', () {
+    final message = JoinShareLinks.shareMessage(companyName: 'TheDemo');
     expect(message, contains(JoinShareLinks.downloadApk));
-    expect(message, contains('Email: $email'));
-    expect(message, contains('Password: Secret12'));
-    expect(message, isNot(contains('Join link:')));
+    expect(message, contains(JoinShareLinks.displayInviteLink));
+    expect(message, contains(JoinShareLinks.appDeepLink));
+    expect(message, isNot(contains('Password:')));
+    expect(message, isNot(contains('Email:')));
     expect(message, isNot(contains('obecno.com/download/demo')));
     expect(message, contains("You're invited to join TheDemo on Obecno."));
   });

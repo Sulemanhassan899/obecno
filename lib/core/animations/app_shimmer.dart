@@ -300,30 +300,41 @@ class _ShimmerRefreshIndicatorState extends State<ShimmerRefreshIndicator>
         _pullOffset = 0;
       }
     });
+    Object? error;
+    StackTrace? stack;
     try {
       await widget.onRefresh();
-    } finally {
-      if (!mounted) return;
-
-      if (widget.instagramStyle) {
-        // Data ready → drop orb, shimmer reveal, then show list.
-        setState(() {
-          _refreshing = false;
-          _fingerPull = 0;
-          _pullOffset = 0;
-          _revealing = true;
-        });
-        await Future<void>.delayed(widget.revealShimmerDuration);
-        if (!mounted) return;
-        setState(() => _revealing = false);
-      } else {
-        setState(() {
-          _refreshing = false;
-          _fingerPull = 0;
-          _pullOffset = 0;
-        });
-      }
+    } catch (e, st) {
+      error = e;
+      stack = st;
     }
+    if (!mounted) {
+      if (error != null) Error.throwWithStackTrace(error, stack!);
+      return;
+    }
+
+    if (widget.instagramStyle) {
+      // Data ready → drop orb, shimmer reveal, then show list.
+      setState(() {
+        _refreshing = false;
+        _fingerPull = 0;
+        _pullOffset = 0;
+        _revealing = true;
+      });
+      await Future<void>.delayed(widget.revealShimmerDuration);
+      if (!mounted) {
+        if (error != null) Error.throwWithStackTrace(error, stack!);
+        return;
+      }
+      setState(() => _revealing = false);
+    } else {
+      setState(() {
+        _refreshing = false;
+        _fingerPull = 0;
+        _pullOffset = 0;
+      });
+    }
+    if (error != null) Error.throwWithStackTrace(error, stack!);
   }
 
   Future<void> _animateOffsetTo(double target) async {

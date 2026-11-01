@@ -545,7 +545,7 @@ class _ManagerEmployeeProfileSheetBodyState
                   _settingsGroup(
                     children: [
                       _settingsTile(
-                        iconAsset: Assets.imagesCalendarStar,
+                        iconAsset: Assets.imagesLeavesFilledIcon,
                         title: "Holidays",
                         onTap: () {
                           final userId = _data.userId;
@@ -553,13 +553,12 @@ class _ManagerEmployeeProfileSheetBodyState
                           ManagerEmployeeHolidaysSheet.show(
                             context: context,
                             userId: userId,
-                            employeeName: _data.name,
                           );
                         },
                       ),
                       const Divider(height: 1, color: kDividerColor),
                       _settingsTile(
-                        iconAsset: Assets.imagesLeavesFilledIcon,
+                        iconAsset: Assets.imagesCalendarDay,
                         title: "Leaves",
                         onTap: () {
                           final userId = _data.userId;

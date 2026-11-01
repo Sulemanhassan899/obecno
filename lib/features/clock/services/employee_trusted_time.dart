@@ -183,7 +183,7 @@ class EmployeeTrustedTime with WidgetsBindingObserver, ChangeNotifier {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(milliseconds: 400), () {
         final ctx = rootNavigatorKey.currentContext;
-        if (ctx == null) return;
+        if (ctx == null || !ctx.mounted) return;
         SnackbarHelper.showTopToast(
           ctx,
           message: message,

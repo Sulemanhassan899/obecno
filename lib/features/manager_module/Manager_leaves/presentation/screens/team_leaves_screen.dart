@@ -47,12 +47,16 @@ class _EmployeeLeaveBar {
     required this.taken,
     required this.remaining,
     required this.total,
+    this.userId,
+    this.isSelf = false,
   });
 
   final String name;
   final int taken;
   final int remaining;
   final int total;
+  final int? userId;
+  final bool isSelf;
 
   double get progress => total <= 0 ? 0.0 : (taken / total).clamp(0.0, 1.0);
 }
@@ -462,7 +466,10 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
   }
 
   Future<void> _fetchCalendarExtrasForMonth(String monthKey) async {
-    // Prefer manager team-calendar (portal parity), then employee company-calendar.
+    // Merge team + company calendars — one source may have holidays while
+    // the other has birthdays / leave chips.
+    final year =
+        int.tryParse(monthKey.split('-').first) ?? DateTime.now().year;
     for (final path in [
       ManagerEmployeeApiEndpoints.teamCalendar,
       EmployeeApiEndpoints.companyCalendar,
@@ -474,17 +481,14 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
         );
         if (raw.statusCode >= 400) continue;
         final parsed = _parseCompanyCalendarExtras(raw.data);
-        if (parsed.holidays.isNotEmpty ||
-            parsed.birthdays.isNotEmpty ||
-            parsed.leaves.isNotEmpty) {
-          final year =
-              int.tryParse(monthKey.split('-').first) ?? DateTime.now().year;
+        if (parsed.holidays.isNotEmpty) {
           _mergeYearHolidays(year, parsed.holidays);
+        }
+        if (parsed.birthdays.isNotEmpty) {
           _mergeBirthdays(parsed.birthdays);
-          if (parsed.leaves.isNotEmpty) {
-            _mergeYearLeaves(year, parsed.leaves);
-          }
-          return;
+        }
+        if (parsed.leaves.isNotEmpty) {
+          _mergeYearLeaves(year, parsed.leaves);
         }
       } catch (_) {}
     }
@@ -527,7 +531,9 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
           map['full_name'] ??
           map['person_name'] ??
           map['holiday_name'] ??
-          map['event_name'];
+          map['event_name'] ??
+          map['employee'] ??
+          map['user'];
       if (raw is Map) {
         return (raw['name'] ?? raw['full_name'] ?? raw['title'] ?? '')
             .toString()
@@ -536,10 +542,29 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
       return (raw ?? '').toString().trim();
     }
 
-    void consume(dynamic node) {
+    bool keyLooksLikeBirthday(String key) {
+      final k = key.toLowerCase();
+      return k.contains('birthday') || k.contains('bday') || k == 'dob';
+    }
+
+    void addBirthday(DateTime date, String name) {
+      final trimmed = name.trim();
+      final display = trimmed.isEmpty ||
+              trimmed.toLowerCase() == 'birthday' ||
+              trimmed.toLowerCase() == 'bday'
+          ? 'Birthday'
+          : trimmed;
+      final key = '${date.month}-${date.day}-${display.toLowerCase()}';
+      if (!seenBirthday.add(key)) return;
+      birthdays.add(
+        _CalBirthday(month: date.month, day: date.day, name: display),
+      );
+    }
+
+    void consume(dynamic node, {bool preferBirthday = false}) {
       if (node is List) {
         for (final item in node) {
-          consume(item);
+          consume(item, preferBirthday: preferBirthday);
         }
         return;
       }
@@ -556,32 +581,97 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
         'weeks',
         'holidays',
         'public_holidays',
+        'publicHolidays',
         'holiday_dates',
+        'holidayDates',
         'birthdays',
         'birthday_dates',
+        'birthdayDates',
         'leaves',
         'team_leaves',
         'approved_leaves',
         'pending_leaves',
         'data',
       ]) {
-        if (map[key] != null) consume(map[key]);
+        if (map[key] == null) continue;
+        consume(
+          map[key],
+          preferBirthday: preferBirthday || keyLooksLikeBirthday(key),
+        );
+      }
+
+      if (preferBirthday) {
+        map.forEach((k, v) {
+          if (keyLooksLikeBirthday(k) ||
+              const {
+                'events',
+                'items',
+                'days',
+                'entries',
+                'data',
+                'calendar',
+              }.contains(k)) {
+            return;
+          }
+          final keyDate = asDate(k);
+          if (keyDate == null) return;
+          if (v is Map) {
+            final nested = Map<String, dynamic>.from(v);
+            nested.putIfAbsent('date', () => k);
+            consume(nested, preferBirthday: true);
+          } else {
+            addBirthday(keyDate, v?.toString() ?? '');
+          }
+        });
       }
 
       final date = asDate(
         map['date'] ??
             map['holiday_date'] ??
             map['birthday_date'] ??
+            map['birthdayDate'] ??
+            map['date_of_birth'] ??
+            map['dateOfBirth'] ??
+            map['dob'] ??
+            map['birth_date'] ??
+            map['birthDate'] ??
             map['day'] ??
             map['start_date'] ??
             map['from_date'] ??
             map['date_from'],
       );
+      DateTime? resolved = date;
+      if (resolved == null) {
+        final month = int.tryParse(
+          '${map['month'] ?? map['birth_month'] ?? map['birthMonth'] ?? ''}',
+        );
+        final day = int.tryParse(
+          '${map['day'] ?? map['birth_day'] ?? map['birthDay'] ?? ''}',
+        );
+        if (month != null &&
+            day != null &&
+            month >= 1 &&
+            month <= 12 &&
+            day >= 1 &&
+            day <= 31) {
+          resolved = DateTime(DateTime.now().year, month, day);
+        }
+      }
 
+      final name = nameOf(map);
+      final nameBlob = name.toLowerCase();
       final isBirthday =
+          preferBirthday ||
           type.contains('birthday') ||
+          type.contains('bday') ||
           map['is_birthday'] == true ||
-          map['isBirthday'] == true;
+          map['is_birthday'] == 1 ||
+          map['is_birthday'] == '1' ||
+          map['isBirthday'] == true ||
+          map['isBirthday'] == 1 ||
+          map['isBirthday'] == '1' ||
+          nameBlob.contains('birthday') ||
+          nameBlob.contains('bday');
       final isHoliday =
           type.contains('holiday') ||
           map['is_holiday'] == true ||
@@ -592,25 +682,17 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
           map['leave_type_id'] != null ||
           map['date_from'] != null;
 
-      if (isBirthday && date != null) {
-        final name = nameOf(map);
-        if (name.isEmpty) return;
-        final key = '${date.month}-${date.day}-${name.toLowerCase()}';
-        if (seenBirthday.add(key)) {
-          birthdays.add(
-            _CalBirthday(month: date.month, day: date.day, name: name),
-          );
-        }
+      if (isBirthday && resolved != null) {
+        addBirthday(resolved, name);
         return;
       }
 
-      if (isHoliday && date != null) {
-        final name = nameOf(map);
-        final key = '${date.year}-${date.month}-${date.day}';
+      if (isHoliday && resolved != null) {
+        final key = '${resolved.year}-${resolved.month}-${resolved.day}';
         if (seenHoliday.add(key)) {
           holidays.add(
             HolidayInfo(
-              date: DateTime(date.year, date.month, date.day),
+              date: DateTime(resolved.year, resolved.month, resolved.day),
               name: name.isEmpty ? 'Public Holiday' : name,
             ),
           );
@@ -619,7 +701,6 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
       }
 
       if (isLeave && !isBirthday) {
-        // Only accept leave-looking rows that have a date range / employee.
         if (map['date_from'] != null ||
             map['from_date'] != null ||
             map['start_date'] != null ||
@@ -659,9 +740,24 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
         .toList(growable: false);
     if (active.isEmpty) return const [];
 
+    final selfIdStr = (bindings.authProvider.user?.id ?? '').trim();
+    final selfId = int.tryParse(selfIdStr);
+
+    bool isSelf(ManagerEmployeeModel m) {
+      if (selfId != null && m.userId == selfId) return true;
+      if (selfIdStr.isNotEmpty && m.id.trim() == selfIdStr) return true;
+      return false;
+    }
+
+    // Logged-in manager first, then everyone else (still capped for load).
+    final ordered = [
+      ...active.where(isSelf),
+      ...active.where((m) => !isSelf(m)),
+    ];
+
     final service = bindings.managerEmployeesService;
     // Cap parallel balance calls — enough for the usage card, keeps load snappy.
-    final limited = active.take(8).toList(growable: false);
+    final limited = ordered.take(8).toList(growable: false);
     final bars = await Future.wait(
       limited.map((member) async {
         final userId = member.userId;
@@ -695,14 +791,21 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
           taken: taken,
           remaining: left,
           total: total > 0 ? total : (taken + left),
+          userId: userId,
+          isSelf: isSelf(member),
         );
       }),
     );
 
     final filtered = bars
         .where((b) => b.total > 0 || b.taken > 0)
-        .toList(growable: false);
-    return filtered.isEmpty ? bars : filtered;
+        .toList(growable: true);
+    final list = filtered.isEmpty ? bars.toList(growable: true) : filtered;
+    list.sort((a, b) {
+      if (a.isSelf != b.isSelf) return a.isSelf ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
   }
 
   (int, int, int) _balanceTotals(ManagerEmployeeLeaveBalance balance) {
@@ -831,9 +934,7 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
       employeeName: item.employeeName,
       employeePhoto: _employeePhotoFor(item),
     );
-    if ((changed == true ||
-            changed == 'approve' ||
-            changed == 'reject') &&
+    if ((changed == true || changed == 'approve' || changed == 'reject') &&
         mounted) {
       if (changed == 'approve' || changed == 'reject') {
         unawaited(
@@ -858,10 +959,7 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
       return;
     }
     setState(() => _actingLeaveKey = 'leave_$id');
-    final result = await _leavesLoader.review(
-      leaveId: id,
-      action: action,
-    );
+    final result = await _leavesLoader.review(leaveId: id, action: action);
     if (!mounted) return;
     setState(() => _actingLeaveKey = null);
     if (!result.success) {
@@ -875,9 +973,7 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
       context,
       message: action == 'approve' ? 'Leave approved' : 'Leave rejected',
     );
-    unawaited(
-      context.read<AlertsProvider>().archiveLeaveReview(item, action),
-    );
+    unawaited(context.read<AlertsProvider>().archiveLeaveReview(item, action));
     await _load();
     if (!mounted) return;
     unawaited(context.read<ManagerOverviewProvider>().refresh());
@@ -906,6 +1002,7 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
             const SizedBox(height: 10),
             _filtersRow(),
             const SizedBox(height: 10),
+
             Expanded(
               child: _loading
                   ? const Center(child: ShimmerProgress())
@@ -920,15 +1017,15 @@ class _TeamLeavesScreenState extends State<TeamLeavesScreen> {
                         children: [
                           if (_error != null)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: _sectionGap),
+                              padding: const EdgeInsets.only(
+                                bottom: _sectionGap,
+                              ),
                               child: AppText.p2(_error!, color: kGreyColor),
                             ),
-                          _linksCard(),
+                          _usageCard(),
                           const SizedBox(height: _sectionGap),
                           _requestsSection(),
                           const SizedBox(height: _sectionGap),
-                          _usageCard(),
-                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
@@ -1347,9 +1444,7 @@ class _TeamCompanyCalendarGridState extends State<_TeamCompanyCalendarGrid> {
       final name = birthday.name.trim();
       events.add(
         _CalDayEvent(
-          label: name.isEmpty
-              ? 'Birthday'
-              : 'Bday · ${widget.shortName(name)}',
+          label: name.isEmpty ? 'Birthday' : 'Bday · ${widget.shortName(name)}',
           kind: _CalEventKind.birthday,
         ),
       );
@@ -1703,9 +1798,9 @@ class _TeamCompanyCalendarGridState extends State<_TeamCompanyCalendarGrid> {
                         color: kWhite.withValues(alpha: 0.95),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: chipColor(events[i].kind).withValues(
-                            alpha: 0.55,
-                          ),
+                          color: chipColor(
+                            events[i].kind,
+                          ).withValues(alpha: 0.55),
                           width: 0.8,
                         ),
                       ),

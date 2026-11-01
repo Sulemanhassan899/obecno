@@ -443,10 +443,12 @@ class ManagerOverviewService {
   }) async {
     final service = _attendanceService;
     if (service == null) return items;
+    // Skip per-employee punch hydrate on Overview — detail sheets fetch later.
     return service.withOwnerAttendance(
       items: items,
       members: members,
       date: date,
+      hydrateMissingPunches: false,
     );
   }
 

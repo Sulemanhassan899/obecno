@@ -1,6 +1,7 @@
 import 'package:obecno/features/auth/presentation/enable_permission.dart';
 import 'package:obecno/features/auth/presentation/login_email.dart';
 import 'package:obecno/features/auth/presentation/login_pass.dart';
+import 'package:obecno/features/auth/providers/auth_provider.dart';
 import 'package:obecno/features/more/presentation/screens/device_blocked_screen.dart';
 
 import 'package:obecno/demo/monotonic_clock/presentation/monotonic_clock_demo_screen.dart';
@@ -20,9 +21,63 @@ import 'package:go_router/go_router.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
+const _publicPaths = <String>{
+  '/',
+  '/onboarding',
+  '/login',
+  '/login/password',
+  '/bookdemo',
+};
+
+bool _isPublicPath(String location) {
+  if (_publicPaths.contains(location)) return true;
+  if (location == MonotonicClockDemoScreen.routePath) return true;
+  return false;
+}
+
+bool _isManagerPath(String location) {
+  return location == '/manager_nav' || location.startsWith('/manager/');
+}
+
+bool _isProtectedPath(String location) {
+  return location == '/employee_nav' ||
+      _isManagerPath(location) ||
+      location == '/enable_permissions' ||
+      location == '/device_blocked' ||
+      location == '/youve_joined';
+}
+
+/// Sync redirect using [bindings.authProvider] once DI is ready.
+String? _authRedirect(BuildContext context, GoRouterState state) {
+  final location = state.matchedLocation;
+  if (_isPublicPath(location)) return null;
+  if (!_isProtectedPath(location)) return null;
+
+  AuthProvider auth;
+  try {
+    auth = bindings.authProvider;
+  } catch (_) {
+    // AppBindings not initialized yet (very early boot) — allow splash flow.
+    return null;
+  }
+
+  if (!auth.isAuthenticated) {
+    return '/login';
+  }
+
+  // Employees must not open manager shell or manager list routes.
+  if (_isManagerPath(location) &&
+      auth.homeTarget != AuthHomeTarget.manager) {
+    return '/employee_nav';
+  }
+
+  return null;
+}
+
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,
   observers: [routeObserver],
+  redirect: _authRedirect,
   routes: [
     GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
     GoRoute(

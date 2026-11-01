@@ -7,6 +7,7 @@ import 'package:obecno/features/manager_module/Manager_attendance/domain/manager
 import 'package:obecno/features/manager_module/Manager_attendance/domain/pending_attendance_overlay.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/domain/team_attendance_mapper.dart';
 import 'package:obecno/features/manager_module/Manager_attendance/repositories/manager_attendance_repository.dart';
+import 'package:obecno/features/employee_module/attendance/services/attendance_service.dart';
 import 'package:obecno/features/manager_module/Manager_employees/data/models/manager_employee_model.dart';
 import 'package:obecno/features/manager_module/Manager_employees/domain/manager_employee_policy.dart';
 import 'package:obecno/features/manager_module/Manager_locations/data/models/manager_location_model.dart';
@@ -654,6 +655,35 @@ void main() {
       expect(events, [
         {'type': 'checkin', 'time': '09:00:00', 'id': 1001},
       ]);
+    });
+
+    test('open-shift checkout uses §4.1 simple body without orphan events', () {
+      final body = ManagerAttendanceRepository.employeeAttendanceSaveBody(
+        attendanceId: 415,
+        userId: 30,
+        date: '2026-10-20',
+        deviceDetails: 'iPhone',
+        lat: 33.73,
+        lon: 73.17,
+        checkIn: '14:09:00',
+        checkInDetailId: '1504',
+        checkOut: '19:00:00',
+        checkOutDetailId: null,
+        changes: [
+          AttendanceChangeRequestPayload(
+            attendanceDetailId: null,
+            oldValue: '17:00:00',
+            newValue: '19:00:00',
+            type: 'check out',
+          ),
+        ],
+      );
+
+      expect(body['attendance_id'], 415);
+      expect(body['check_in'], '14:09:00');
+      expect(body['check_out'], '19:00:00');
+      expect(body.containsKey('events'), isFalse);
+      expect(body.containsKey('changes'), isFalse);
     });
   });
 

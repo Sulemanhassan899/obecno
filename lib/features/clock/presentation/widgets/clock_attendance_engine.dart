@@ -130,7 +130,7 @@ class AttendanceEngine {
           // An approved check-in edit can land inside an already-open break
           // (break start is earlier on the timeline). Keep that break so the
           // full break duration still counts.
-          if (openBreakStart != null && openBreakStart!.isBefore(at)) {
+          if (openBreakStart != null && openBreakStart.isBefore(at)) {
             isOnBreak = true;
             openWorkStart = null;
           } else {

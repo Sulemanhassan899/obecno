@@ -111,8 +111,19 @@ class ManagerAttendanceScreenState extends State<ManagerAttendanceScreen>
   }
 
   void _openDetails(ManagerAttendanceModel employee, DateTime day) {
+    final provider = context.read<ManagerAttendanceProvider>();
     final status = employee.status.toLowerCase().trim();
-    final isOnLeave = status == 'leave' || status == 'on leave';
+    final raw = employee.userId == null
+        ? null
+        : provider.items
+              .where((e) => e.userId == employee.userId)
+              .firstOrNull;
+    final isOnLeave =
+        status == 'leave' ||
+        status == 'on leave' ||
+        status == 'onleave' ||
+        status.contains('leave') ||
+        (raw?.isOnLeave ?? false);
     if (isOnLeave) {
       unawaited(
         ManagerLeaveDetailSheet.showForDay(
@@ -127,7 +138,6 @@ class ManagerAttendanceScreenState extends State<ManagerAttendanceScreen>
       return;
     }
 
-    final provider = context.read<ManagerAttendanceProvider>();
     ManagerAttendanceDetailsSheet.show(
       context: context,
       data: ManagerAttendanceDetailsData.fromEmployee(

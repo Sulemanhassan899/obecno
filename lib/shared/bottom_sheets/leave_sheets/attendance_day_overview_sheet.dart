@@ -93,11 +93,18 @@ class _AttendanceDayOverviewSheetState
   void initState() {
     super.initState();
     _store.addListener(_onStoreChanged);
+    bindings.profileProvider.addListener(_onStoreChanged);
     _store.ensureLoaded();
+    // Manager name for "Rejected by" when leave API omits reviewer.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bindings.profileProvider.loadProfile();
+    });
   }
 
   @override
   void dispose() {
+    bindings.profileProvider.removeListener(_onStoreChanged);
     _store.removeListener(_onStoreChanged);
     super.dispose();
   }

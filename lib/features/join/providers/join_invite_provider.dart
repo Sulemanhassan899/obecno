@@ -125,14 +125,8 @@ class JoinInviteProvider extends ChangeNotifier {
   List<JoinInviteRecord> managerAlerts() => _store.managerAlertItems();
 
   String buildShareMessage({
-    required String email,
-    required String password,
     String companyName = 'Acme Corporation',
   }) {
-    return JoinShareLinks.shareMessage(
-      email: email,
-      password: password,
-      companyName: companyName,
-    );
+    return JoinShareLinks.shareMessage(companyName: companyName);
   }
 }

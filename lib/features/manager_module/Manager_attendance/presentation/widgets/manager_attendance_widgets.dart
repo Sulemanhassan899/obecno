@@ -503,6 +503,7 @@ class ManagerAttendanceTile extends StatelessWidget {
     }
   }
 
+  /// No punches and not leave/working → circular dash Absent mark.
   bool get _showEmptyState =>
       !_hasCheckIn && !_hasCheckOut && !_isRecognizedStatus;
 
@@ -709,16 +710,22 @@ class ManagerAttendanceTile extends StatelessWidget {
 
   /// Right-side: times and/or status badge.
   /// Late: red triangle immediately before red check-in time.
-  /// Leave rows: `5 Days` / `09:05 AM` —●——●— `On Leave`
+  /// Leave rows: `On Leave` pill. Absent / no-punch: circular dash mark.
   /// A later re-check-in keeps the Working / On Break badge even if an
   /// earlier checkout is still on the record.
   Widget _trailing() {
+    // Absent (no punch, not on leave) → circular grey dash badge.
     if (_showEmptyState) return _emptyState();
 
     final statusLabel = _statusText();
     final hideCheckout = _showLiveStatusBadge;
     final showBadgeInsteadOfCheckout =
         statusLabel.isNotEmpty && (!_hasCheckOut || hideCheckout);
+
+    // On Leave with no punches — leave pill only.
+    if (!_hasCheckIn && !_hasCheckOut && _isLeave) {
+      return _statusBadge();
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,

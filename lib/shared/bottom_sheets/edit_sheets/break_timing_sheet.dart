@@ -258,7 +258,7 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       maxBreakMinutes: ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60,
       breakLocationTracking: saved.breakLocationTracking,
     );
@@ -326,7 +326,7 @@ class _BreakTimingSheetBodyState extends State<_BreakTimingSheetBody> {
       );
       return;
     }
-    final confirmed = saved!.copyWith(
+    final confirmed = saved.copyWith(
       maxBreakMinutes: ManagerEmployeePolicy.parseMinutes(_maxBreak) ?? 60,
       breakLocationTracking: _trackLocation,
     );

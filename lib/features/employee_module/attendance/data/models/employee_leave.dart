@@ -113,6 +113,14 @@ class EmployeeLeaveDates {
     };
   }
 
+  /// Pending leave days stay Absent on attendance until approved.
+  static Set<DateTime> pendingDates(Iterable<EmployeeLeave> leaves) {
+    return {
+      for (final leave in leaves)
+        if (leave.isPending) ...leave.datesInRange,
+    };
+  }
+
   /// Marks matching days as leave and inserts leave-only placeholders so
   /// the month list can show On Leave even when there is no punch record.
   ///

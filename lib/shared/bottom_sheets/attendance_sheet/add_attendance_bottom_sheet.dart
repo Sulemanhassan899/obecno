@@ -179,6 +179,7 @@ class AddAttendanceBottomSheet {
       final contentKey = GlobalKey<_AttendanceContentState>();
 
       sheetOpened = true;
+      if (!context.mounted) return null;
       return await CommonBottomSheet.show<AddAttendanceSaveResult>(
         context: context,
         acquired: true,
@@ -291,6 +292,57 @@ class AddAttendanceBottomSheet {
             case AttendanceHisotryEventType.breakEnd:
               addUnique(breakEnds, time, item.id, had: true);
               break;
+          }
+        }
+      } catch (_) {}
+    } else {
+      try {
+        final response = await bindings.managerAttendanceService
+            .loadEmployeeAttendance(userId: employeeUserId, date: day);
+        final dayRow = response.data?.history.isNotEmpty == true
+            ? response.data!.history.first
+            : null;
+        for (final detail in dayRow?.details ?? const []) {
+          final occurred = detail.occurredAt;
+          TimeOfDay? time;
+          final raw = (detail.attendanceTime ?? '').trim();
+          if (raw.isNotEmpty) {
+            final parts = raw.split(RegExp(r'[:\s]'));
+            final h = int.tryParse(parts.isNotEmpty ? parts[0] : '');
+            final m = int.tryParse(parts.length > 1 ? parts[1] : '');
+            if (h != null && m != null) {
+              time = TimeOfDay(hour: h % 24, minute: m % 60);
+            }
+          }
+          time ??= occurred == null
+              ? null
+              : TimeOfDay(hour: occurred.hour, minute: occurred.minute);
+          if (time == null) continue;
+          if (AttendanceEditRequest.isPlaceholderMint(
+            DateTime(day.year, day.month, day.day, time.hour, time.minute),
+          )) {
+            continue;
+          }
+          final type = detail.type.trim().toLowerCase();
+          final id = detail.id?.toString();
+          if (type.contains('check out') ||
+              type == 'checkout' ||
+              type == 'check-out' ||
+              type == 'check_out') {
+            addUnique(checkOuts, time, id, had: true);
+          } else if (type.contains('break out') ||
+              type == 'breakout' ||
+              type.contains('break start')) {
+            addUnique(breakStarts, time, id, had: true);
+          } else if (type.contains('break in') ||
+              type == 'breakin' ||
+              type.contains('break end')) {
+            addUnique(breakEnds, time, id, had: true);
+          } else if (type.contains('check in') ||
+              type == 'checkin' ||
+              type == 'check-in' ||
+              type == 'check_in') {
+            addUnique(checkIns, time, id, had: true);
           }
         }
       } catch (_) {}
@@ -928,24 +980,29 @@ class _AttendanceContentState extends State<_AttendanceContent>
     var breakEndHms = clockHms(primaryBreak.initialEnd);
 
     final attendanceService = AttendanceService(widget.apiClient);
-    try {
-      final snapshot = await attendanceService.loadPunchSnapshot(
-        _yyyyMMdd(widget.day),
-      );
-      attendanceId ??= snapshot.attendanceId;
-      checkInId ??= snapshot.checkInId;
-      checkOutId ??= snapshot.checkOutId;
-      breakStartId ??= snapshot.breakStartId;
-      breakEndId ??= snapshot.breakEndId;
-      checkInHms = snapshot.checkInHms ?? checkInHms;
-      checkOutHms = snapshot.checkOutHms ?? checkOutHms;
-      breakStartHms = snapshot.breakStartHms ?? breakStartHms;
-      breakEndHms = snapshot.breakEndHms ?? breakEndHms;
-    } catch (_) {}
+    // Employee self-edit only: snapshot is GET /employee/attendance/details
+    // for the signed-in user. Manager apply-now must never borrow those ids
+    // (it was closing Employee2 with the manager's checkout detail).
+    if (!widget.applyImmediately) {
+      try {
+        final snapshot = await attendanceService.loadPunchSnapshot(
+          _yyyyMMdd(widget.day),
+        );
+        attendanceId ??= snapshot.attendanceId;
+        checkInId ??= snapshot.checkInId;
+        checkOutId ??= snapshot.checkOutId;
+        breakStartId ??= snapshot.breakStartId;
+        breakEndId ??= snapshot.breakEndId;
+        checkInHms = snapshot.checkInHms ?? checkInHms;
+        checkOutHms = snapshot.checkOutHms ?? checkOutHms;
+        breakStartHms = snapshot.breakStartHms ?? breakStartHms;
+        breakEndHms = snapshot.breakEndHms ?? breakEndHms;
+      } catch (_) {}
+    }
 
     if (attendanceId == null ||
         checkInId == null ||
-        checkOutId == null ||
+        (primary.hadInitialEnd && checkOutId == null) ||
         (hasBreakSection &&
             (primaryBreak.hadInitialStart ||
                 _timeChanged(primaryBreak.initialStart, primaryBreak.start)) &&
@@ -953,17 +1010,27 @@ class _AttendanceContentState extends State<_AttendanceContent>
         (hasBreakSection &&
             (primaryBreak.hadInitialEnd ||
                 _timeChanged(primaryBreak.initialEnd, primaryBreak.end)) &&
-            breakEndId == null)) {
+            breakEndId == null) ||
+        widget.applyImmediately) {
       final resolved = await _resolveDayDetails();
       attendanceId ??= resolved.attendanceId;
       checkInId ??= resolved.checkInDetailId;
-      checkOutId ??= resolved.checkOutDetailId;
+      // Only attach a checkout detail when the sheet already had a checkout.
+      if (primary.hadInitialEnd) {
+        checkOutId ??= resolved.checkOutDetailId;
+      }
       breakStartId ??= resolved.breakStartDetailId;
       breakEndId ??= resolved.breakEndDetailId;
     }
 
+    // Open shift: never send a foreign/stale checkout detail id.
+    // Spec §4.1 closes open shifts with top-level check_out (no detail id).
+    if (!primary.hadInitialEnd) {
+      checkOutId = null;
+    }
+
     primary.startDetailId = checkInId ?? primary.startDetailId;
-    primary.endDetailId = checkOutId ?? primary.endDetailId;
+    primary.endDetailId = checkOutId;
     if (hasBreakSection) {
       primaryBreak.startDetailId = breakStartId ?? primaryBreak.startDetailId;
       primaryBreak.endDetailId = breakEndId ?? primaryBreak.endDetailId;
@@ -1475,6 +1542,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
           fallbackHms: checkOutHms,
           hadInitial: primary.hadInitialEnd,
           force: true,
+          allowWithoutDetailId: !primary.hadInitialEnd,
         );
       } else {
         maybeAdd(
@@ -1779,7 +1847,11 @@ class _AttendanceContentState extends State<_AttendanceContent>
               deviceDetails: deviceDetails,
               lat: gps.lat,
               lon: gps.lon,
-              checkIn: clockIf(primary.start, include: sendCheckIn),
+              // Open-shift close (§4.1) needs both times on the simple body.
+              checkIn: clockIf(
+                primary.start,
+                include: sendCheckIn || closingOpenShift,
+              ),
               checkOut: clockIf(primary.end, include: sendCheckOut),
               breakStart: clockIf(primaryBreak.start, include: sendBreakStart),
               breakEnd: clockIf(primaryBreak.end, include: sendBreakEnd),
@@ -1788,7 +1860,8 @@ class _AttendanceContentState extends State<_AttendanceContent>
               breakStartDetailId: breakStartId,
               breakEndDetailId: breakEndId,
               additionalEvents: additionalManagerEvents,
-              changes: payloads,
+              // Manager apply uses top-level times / events with ids only.
+              changes: const [],
             )
           : await attendanceService.submitAttendanceChangeRequests(
               attendanceId: attendanceId,
@@ -1861,7 +1934,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
           // does not revive an open check-in after a checkout was applied.
           final syncUserId =
               widget.employeeUserId?.toString() ??
-              bindings.authProvider.user?.id?.toString();
+              bindings.authProvider.user?.id.toString();
           await ClockLocalSessionSync.applyManagerSave(
             userId: syncUserId,
             day: widget.day,
@@ -1876,6 +1949,7 @@ class _AttendanceContentState extends State<_AttendanceContent>
             message: result.data,
           );
         }
+        if (!mounted) return;
         Navigator.of(context, rootNavigator: true).pop(saved);
       } else {
         if (widget.applyImmediately) {

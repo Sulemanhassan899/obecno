@@ -4,7 +4,6 @@ import 'package:obecno/features/employee_module/attendance/data/models/attendanc
     as normalized;
 import 'package:obecno/features/employee_module/attendance/data/models/attendence_event.dart';
 import 'package:obecno/features/employee_module/attendance/domain/controllers/attendence_controller.dart';
-import 'package:obecno/core/animations/app_animations.dart';
 import 'package:obecno/core/animations/app_shimmer.dart';
 import 'package:obecno/core/constants/all_colors.dart';
 import 'package:obecno/core/constants/app_enums.dart';
@@ -380,6 +379,7 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen>
 
     if (noPunches) {
       await _requestStore.ensureLoaded();
+      if (!mounted) return;
       final pending = _requestStore
           .forDay(record.date)
           .where((request) => request.isPending)
@@ -400,6 +400,7 @@ class EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen>
         return;
       }
 
+      if (!mounted) return;
       await AttendanceDayOverviewSheet.show(
         context,
         day: record.date,

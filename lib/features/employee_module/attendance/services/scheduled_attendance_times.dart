@@ -71,15 +71,11 @@ class ScheduledAttendanceTimes {
     String? breakEndDetailId;
 
     final policyFuture = _policyFor(employeeUserId);
-    final detailsFuture = employeeUserId == null
-        ? AttendanceService(
-            apiClient,
-          ).getAttendanceDetails(date: _yyyyMMdd(day))
-        : null;
-
-    if (detailsFuture != null) {
+    if (employeeUserId == null) {
       try {
-        final response = await detailsFuture;
+        final response = await AttendanceService(
+          apiClient,
+        ).getAttendanceDetails(date: _yyyyMMdd(day));
         final data = response.data;
         attendanceId = data?.attendanceId;
         _applyDetails(
@@ -101,6 +97,61 @@ class ScheduledAttendanceTimes {
             breakEndDetailId ??= AttendanceDetailItem.serverDetailId(id);
           },
         );
+      } catch (_) {}
+    } else {
+      // Manager editing an employee: load THAT employee's day details.
+      try {
+        final response = await bindings.managerAttendanceService
+            .loadEmployeeAttendance(userId: employeeUserId, date: day);
+        final dayRow = response.data?.history.isNotEmpty == true
+            ? response.data!.history.first
+            : null;
+        attendanceId = dayRow?.id;
+        for (final detail in dayRow?.details ?? const []) {
+          final id = detail.id?.toString();
+          if (id == null || id.isEmpty) continue;
+          final raw = (detail.attendanceTime ?? '').trim();
+          TimeOfDay? tod;
+          if (raw.isNotEmpty) {
+            final parts = raw.split(RegExp(r'[:\s]'));
+            final h = int.tryParse(parts.isNotEmpty ? parts[0] : '');
+            final m = int.tryParse(parts.length > 1 ? parts[1] : '');
+            if (h != null && m != null) {
+              tod = TimeOfDay(hour: h % 24, minute: m % 60);
+            }
+          }
+          tod ??= detail.occurredAt == null
+              ? null
+              : TimeOfDay(
+                  hour: detail.occurredAt!.hour,
+                  minute: detail.occurredAt!.minute,
+                );
+          if (tod == null) continue;
+          final type = detail.type.trim().toLowerCase();
+          if (type.contains('check out') ||
+              type == 'checkout' ||
+              type == 'check-out' ||
+              type == 'check_out') {
+            checkOut ??= tod;
+            checkOutDetailId ??= id;
+          } else if (type.contains('break out') ||
+              type == 'breakout' ||
+              type.contains('break start')) {
+            breakStart ??= tod;
+            breakStartDetailId ??= id;
+          } else if (type.contains('break in') ||
+              type == 'breakin' ||
+              type.contains('break end')) {
+            breakEnd ??= tod;
+            breakEndDetailId ??= id;
+          } else if (type.contains('check in') ||
+              type == 'checkin' ||
+              type == 'check-in' ||
+              type == 'check_in') {
+            checkIn ??= tod;
+            checkInDetailId ??= id;
+          }
+        }
       } catch (_) {}
     }
 

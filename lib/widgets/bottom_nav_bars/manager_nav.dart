@@ -74,13 +74,28 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   final GlobalKey<ProfileSettingsScreenState> _moreKey =
       GlobalKey<ProfileSettingsScreenState>();
 
-  late final List<Widget> screens = [
-    OverviewScreen(key: _overviewKey),
-    ClockScreen(key: _clockKey),
-    ManagerAttendanceScreen(key: _attendanceKey),
-    AlertsScreen(key: _alertsKey),
-    ProfileSettingsScreen(key: _moreKey),
-  ];
+  /// Only mount a tab the first time it is opened so Clock / Attendance /
+  /// Alerts / More do not fire their initState API loads on login.
+  final Set<int> _mountedTabs = {0};
+  final List<Widget?> _tabScreens = List<Widget?>.filled(5, null);
+
+  Widget _screenFor(int index) {
+    final existing = _tabScreens[index];
+    if (existing != null) return existing;
+    final created = switch (index) {
+      0 => OverviewScreen(key: _overviewKey),
+      1 => ClockScreen(key: _clockKey),
+      2 => ManagerAttendanceScreen(key: _attendanceKey),
+      3 => AlertsScreen(key: _alertsKey),
+      _ => ProfileSettingsScreen(key: _moreKey),
+    };
+    _tabScreens[index] = created;
+    return created;
+  }
+
+  void _ensureTabMounted(int index) {
+    _mountedTabs.add(index);
+  }
 
   @override
   void initState() {
@@ -91,6 +106,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     final pendingLeaveKey = ManagerBottomNavBar.pendingAlertsLeaveKey;
     if (openAlerts) {
       selectedIndex = 3;
+      _ensureTabMounted(3);
       ManagerBottomNavBar.openAlertsOnBuild = false;
       ManagerBottomNavBar.pendingAlertsFilter = null;
       ManagerBottomNavBar.pendingAlertsLeaveKey = null;
@@ -114,9 +130,6 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       }
       unawaited(context.read<ReminderSettingsProvider>().activateFromClock());
       unawaited(context.read<JoinInviteProvider>().ensureLoaded());
-      if (context.read<AlertsProvider>().isManagerView) {
-        unawaited(context.read<AlertsProvider>().syncLeaveAlerts());
-      }
     });
   }
 
@@ -127,6 +140,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
     ManagerBottomNavBar.pendingAlertsFilter = null;
     ManagerBottomNavBar.pendingAlertsLeaveKey = null;
     setState(() {
+      _ensureTabMounted(3);
       selectedIndex = 3;
       ManagerBottomNavBar.openAlertsOnBuild = false;
     });
@@ -149,6 +163,7 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
   void openAttendance({String? statusFilter}) {
     final leftAlerts = selectedIndex == 3;
     setState(() {
+      _ensureTabMounted(2);
       selectedIndex = 2;
       _attendanceStatusFilter = statusFilter;
     });
@@ -159,7 +174,9 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
 
   void _selectTab(int index) {
     final previousIndex = selectedIndex;
+    final firstMount = !_mountedTabs.contains(index);
     setState(() {
+      _ensureTabMounted(index);
       if (index != 2) {
         _attendanceStatusFilter = null;
       } else if (_attendanceStatusFilter == null) {
@@ -179,7 +196,8 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
       alerts.setAlertsTabVisible(false);
     }
     if (index == previousIndex) return;
-    if (index == 2) {
+    // First open: screen initState already loads. Later visits: refresh list.
+    if (index == 2 && !firstMount) {
       unawaited(context.read<ManagerAttendanceProvider>().load());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -241,7 +259,15 @@ class _ManagerBottomNavBarState extends State<ManagerBottomNavBar> {
         (selectedIndex != 3 && joinPending);
     final metrics = BottomNavMetrics.of(context);
     return Scaffold(
-      body: IndexedStack(index: selectedIndex, children: screens),
+      body: IndexedStack(
+        index: selectedIndex,
+        children: List.generate(5, (index) {
+          if (!_mountedTabs.contains(index)) {
+            return const SizedBox.shrink();
+          }
+          return _screenFor(index);
+        }),
+      ),
       bottomNavigationBar: Container(
         padding: EdgeInsets.symmetric(
           horizontal: metrics.paddingH,

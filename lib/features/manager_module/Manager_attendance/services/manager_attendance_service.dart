@@ -108,8 +108,10 @@ class ManagerAttendanceService {
   /// Overlay team-leaves onto attendance so On Leave filter works (incl. weekends).
   ///
   /// Past dates often omit leave from team-attendance punches, so we resolve
-  /// approved leaves the same way Overview does (day `date` / from-to / month
-  /// / no-status fallbacks) instead of only two approved range queries.
+  /// approved leaves the same way Overview does (day / month / bare fallbacks).
+  /// If team-leaves still returns nothing, fall back to per-employee leaves for
+  /// people with no punch that day (covers backends that only expose leave
+  /// under `/manager/employees/{id}/leaves`).
   Future<List<ManagerTeamAttendanceItem>> _stampLeavesForDate({
     required List<ManagerTeamAttendanceItem> attendance,
     required DateTime date,
@@ -140,7 +142,8 @@ class ManagerAttendanceService {
       } else if (!allowMissingDates) {
         return;
       }
-      final userId = leave.userId ??
+      final userId =
+          leave.userId ??
           nameToUserId[leave.employeeName?.trim().toLowerCase() ?? ''];
       if (userId == null) return;
       if (leave.isRejectedLeave) {
@@ -193,30 +196,72 @@ class ManagerAttendanceService {
           }
         }
 
-        // Contract: at most two queries — day range, then month range.
-        final dayBatch = await pull(
-          status: 'approved',
-          dateFrom: dayKey,
-          dateTo: dayKey,
-        );
-        ingest(dayBatch, assumeApprovedQuery: true, allowMissingDates: true);
-
-        if (leaveByUser.isEmpty) {
-          final monthBatch = await pull(
-            status: 'approved',
-            dateFrom: monthFrom,
-            dateTo: monthTo,
-          );
-          ingest(
-            monthBatch,
-            assumeApprovedQuery: true,
-            allowMissingDates: false,
-          );
+        // Same fallback ladder as Overview `_loadLeavesCoveringDay`.
+        for (final attempt in <Future<void> Function()>[
+          () async {
+            ingest(
+              await pull(status: 'approved', dateFrom: dayKey, dateTo: dayKey),
+              assumeApprovedQuery: true,
+              allowMissingDates: true,
+            );
+          },
+          () async {
+            ingest(
+              await pull(status: 'approved', date: dayKey),
+              assumeApprovedQuery: true,
+              allowMissingDates: true,
+            );
+          },
+          () async {
+            ingest(
+              await pull(
+                status: 'approved',
+                dateFrom: monthFrom,
+                dateTo: monthTo,
+              ),
+              assumeApprovedQuery: true,
+              allowMissingDates: false,
+            );
+          },
+          () async {
+            ingest(
+              await pull(dateFrom: dayKey, dateTo: dayKey),
+              assumeApprovedQuery: false,
+              allowMissingDates: true,
+            );
+          },
+          () async {
+            ingest(
+              await pull(dateFrom: monthFrom, dateTo: monthTo),
+              assumeApprovedQuery: false,
+              allowMissingDates: false,
+            );
+          },
+          () async {
+            ingest(
+              await pull(status: 'approved'),
+              assumeApprovedQuery: true,
+              allowMissingDates: false,
+            );
+          },
+        ]) {
+          if (leaveByUser.isNotEmpty) break;
+          await attempt();
         }
       } catch (_) {
         // Leave overlay is best-effort; list still shows punch/directory rows.
       }
     }
+
+    // Fill gaps for people team-leaves missed (e.g. Employee3 approved but
+    // not in the team-leaves payload). No-ops when everyone is already stamped.
+    await _stampLeavesFromEmployeeApis(
+      attendance: attendance,
+      day: day,
+      leaveByUser: leaveByUser,
+      rejectedUserIds: rejectedUserIds,
+      cancelToken: cancelToken,
+    );
 
     if (leaveByUser.isEmpty && rejectedUserIds.isEmpty) return attendance;
 
@@ -260,6 +305,87 @@ class ManagerAttendanceService {
       );
     }
     return result;
+  }
+
+  /// When `/manager/team-leaves` misses approved days, resolve from each
+  /// employee's leave list (only no-punch rows not already stamped).
+  Future<void> _stampLeavesFromEmployeeApis({
+    required List<ManagerTeamAttendanceItem> attendance,
+    required DateTime day,
+    required Map<int, ManagerTeamLeaveItem> leaveByUser,
+    required Set<int> rejectedUserIds,
+    ApiCancelToken? cancelToken,
+  }) async {
+    final employees = _employeesRepository;
+    if (employees == null) return;
+
+    final dayKey = _yyyyMMdd(day);
+    final monthFrom = _yyyyMMdd(DateTime(day.year, day.month, 1));
+    final monthTo = _yyyyMMdd(DateTime(day.year, day.month + 1, 0));
+    final candidates = <ManagerTeamAttendanceItem>[
+      for (final item in attendance)
+        if (item.userId != null &&
+            !item.hasCheckIn &&
+            !leaveByUser.containsKey(item.userId) &&
+            !item.isOnLeave)
+          item,
+    ];
+    if (candidates.isEmpty) return;
+
+    await Future.wait(
+      candidates.map((item) async {
+        final userId = item.userId!;
+        try {
+          var leaves =
+              (await employees.getEmployeeLeaves(
+                userId: userId,
+                dateFrom: dayKey,
+                dateTo: dayKey,
+                cancelToken: cancelToken,
+              )).data ??
+              const [];
+          // Some backends ignore day filters — retry the month window once.
+          if (leaves.isEmpty) {
+            leaves =
+                (await employees.getEmployeeLeaves(
+                  userId: userId,
+                  dateFrom: monthFrom,
+                  dateTo: monthTo,
+                  cancelToken: cancelToken,
+                )).data ??
+                const [];
+          }
+          for (final leave in leaves) {
+            final status = leave.status;
+            final mapped = ManagerTeamLeaveItem(
+              id: int.tryParse(leave.id),
+              userId: userId,
+              employeeName: item.employeeName,
+              dateFrom: leave.fromDate,
+              dateTo: leave.toDate ?? leave.fromDate,
+              status: status,
+              statusLabel: status,
+              leaveType: leave.type,
+              note: leave.reason,
+            );
+            if ((mapped.dateFrom ?? '').trim().isNotEmpty &&
+                !mapped.coversDay(day)) {
+              continue;
+            }
+            if (mapped.isRejectedLeave) {
+              rejectedUserIds.add(userId);
+              continue;
+            }
+            // Pending stays Absent; blank / approved → On Leave (same product
+            // rule as the employee month attendance overlay).
+            if (mapped.isPendingLeave) continue;
+            leaveByUser.putIfAbsent(userId, () => mapped);
+          }
+        } catch (_) {
+          // Best-effort per employee.
+        }
+      }),
+    );
   }
 
   Future<ApiResponse<ManagerEmployeeAttendanceData>> loadEmployeeAttendance({
@@ -325,6 +451,34 @@ class ManagerAttendanceService {
       if (h == day) return holiday;
     }
     return null;
+  }
+
+  /// Mints a missing punch detail for an employee day (open-shift checkout).
+  Future<({String? detailId, String? hms, int? attendanceId})>
+  mintEmployeePunch({
+    required int userId,
+    required DateTime day,
+    required String action,
+    required String deviceDetails,
+    required double lat,
+    required double lon,
+    int? attendanceId,
+    String? preferredTimeHms,
+    Set<String> excludeDetailIds = const {},
+    ApiCancelToken? cancelToken,
+  }) {
+    return _repository.mintEmployeePunch(
+      userId: userId,
+      date: _yyyyMMdd(day),
+      action: action,
+      deviceDetails: deviceDetails,
+      lat: lat,
+      lon: lon,
+      attendanceId: attendanceId,
+      preferredTimeHms: preferredTimeHms,
+      excludeDetailIds: excludeDetailIds,
+      cancelToken: cancelToken,
+    );
   }
 
   Future<ApiResponse<String>> saveEmployeeAttendance({

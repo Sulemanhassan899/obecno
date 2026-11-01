@@ -195,7 +195,15 @@ class ManagerEmployeeLeaveRequest {
         json['days'] ?? json['total_days'] ?? json['duration'],
       ),
       reason: _asNullableString(
-        json['reason'] ?? json['remarks'] ?? json['comment'] ?? json['note'],
+        json['reason'] ??
+            json['remarks'] ??
+            json['comment'] ??
+            json['note'] ??
+            json['description'] ??
+            json['leave_note'] ??
+            json['leave_reason'] ??
+            json['message'] ??
+            json['details'],
       ),
     );
   }
